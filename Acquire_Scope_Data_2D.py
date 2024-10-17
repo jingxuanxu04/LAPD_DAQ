@@ -31,7 +31,6 @@ from LeCroy_Scope import LeCroy_Scope, WAVEDESC_SIZE
 from Motor_Control_2D import Motor_Control_2D
 
 #----------------------------------------------------------------------------------------
-
 #----------------------------------------------------------------------------------------
 
 def acquire_displayed_traces(scope, datasets, hdr_data, pos_ndx):
@@ -53,11 +52,7 @@ def acquire_displayed_traces(scope, datasets, hdr_data, pos_ndx):
 		datasets[tr][pos_ndx, 0:NTimes] = scope.acquire(tr)[0:NTimes]    # sometimes for 10000 the scope hardware returns 10001 samples, so we have to specify [0:NTimes]
 
 	for tr in traces:
-		hdr_data[tr][pos_ndx] = numpy.void(scope.header_bytes())    # valid after scope.acquire()
-
-		#?#	 datasets[tr].flush()
-		#?# hdr_data[tr].flush()
-		#?# are there consequences in timing or compression size if we do the flush()s recommend for the SWMR function?
+		hdr_data[tr][pos_ndx] = numpy.void(scope.header_bytes())    # valid after scope.acquire() call
 
 	scope.set_trigger_mode('NORM')   # resume triggering
 
@@ -110,7 +105,7 @@ def clean(agilent, cleaning):
 	agilent.burst(True, 1, 0)
 
 #----------------------------------------------------------------------------------------
-def Acquire_Scope_Data_3D(get_positions, get_channel_description, ip_addresses, cleaning):
+def Acquire_Scope_Data(get_positions, get_channel_description, ip_addresses):
 	# The main data acquisition routine
 	#
 	# 	Arguments are user-provided callback functions that return the following:
@@ -146,15 +141,13 @@ def Acquire_Scope_Data_3D(get_positions, get_channel_description, ip_addresses, 
 	#============================
 	# position array given by Data_Run_3D.py: (ignore_data from Data_Run_3D defines points cannot reach by probe drive)
 
-	positions, xpos, ypos, zpos, ignore_data = get_positions()
+	positions, xpos, ypos = get_positions()
 
 	# Create empty position arrays
 	if xpos is None:
 		xpos = numpy.array([])
 	if ypos is None:
 		ypos = numpy.array([])
-	if zpos is None:
-		zpos = numpy.array([])
 
 	#============================
 	######### HDF5 OUTPUT FILE SETUP #########
@@ -191,12 +184,13 @@ def Acquire_Scope_Data_3D(get_positions, get_channel_description, ip_addresses, 
 
 	pos_ds = pos_grp.create_dataset('positions_setup_array', data=positions)
 	pos_ds.attrs['xpos'] = xpos                                                    # not legacy
-	pos_ds.attrs['ypos'] = ypos                                                     # not legacy
-	pos_ds.attrs['zpos'] = zpos                                                     # not legacy
+	pos_ds.attrs['ypos'] = ypos                                                    # not legacy
+
+	pos_ds = pos_grp.create_dataset('positions_array', shape=len(positions), dtype=[('Line_number', '>u4'), ('x', '>f4'), ('y', '>f4')])
 
 	
 	# Connect to motor
-	mc = Motor_Control_2D(x_ip_addr = ip_addresses['x'], y_ip_addr = ip_addresses['y'], z_ip_addr = ip_addresses['z'])
+	mc = Motor_Control_2D(x_ip_addr = ip_addresses['x'], y_ip_addr = ip_addresses['y'])
 
 	# create the scope access object, and iterate over positions
 	with LeCroy_Scope(ip_addresses['scope'], verbose=False) as scope:
@@ -219,8 +213,6 @@ def Acquire_Scope_Data_3D(get_positions, get_channel_description, ip_addresses, 
 		datasets['C4'] = scope_grp.create_dataset('Channel4', shape=(NPos,NTimes), fletcher32=True, compression='gzip', compression_opts=9)
 
 		# create other datasets, one for each displayed trace (but not C1-4, which we just did)
-		# todo: should we maybe just ignore these?  or have a user option to include them?
-
 		traces = scope.displayed_traces()
 		for tr in traces:
 			name = scope.expanded_name(tr)
@@ -228,9 +220,12 @@ def Acquire_Scope_Data_3D(get_positions, get_channel_description, ip_addresses, 
 				ds = scope_grp.create_dataset(name, (NPos,NTimes), chunks=(1,NTimes), fletcher32=True, compression='gzip', compression_opts=9)
 				datasets[tr] = ds
 
-		# For each trace we are storing, we will write one header per position (immediately after
-       #    the data for that position has been acquired); these compress to an insignificant size
-		# For whatever stupid reason we need to write the header as a binary blob using an "HDF5 opaque" type - here void type 'V346'  (otherwise I could not manage to avoid invisible string processing and interpretation)
+		'''
+		For each trace we are storing, we will write one header per position
+		(immediately after the data for that position has been acquired); these compress to an insignificant size
+		For whatever stupid reason we need to write the header as a binary blob using an "HDF5 opaque" type - here void type 'V346'
+		(otherwise I could not manage to avoid invisible string processing and interpretation)
+		'''
 		for tr in traces:
 			name = scope.expanded_name(tr)
 			hdr_data[tr] = header_grp.create_dataset(name, shape=(NPos,), dtype="V%i"%(WAVEDESC_SIZE), fletcher32=True, compression='gzip', compression_opts=9)  # V346 = void type, 346 bytes long
@@ -261,8 +256,8 @@ def Acquire_Scope_Data_3D(get_positions, get_channel_description, ip_addresses, 
 
 				print('------------------', scope.gaaak_count, '-------------------- ',pos[0],sep='')
 
+				# Acquire enough sweeps for the averaging, then read displayed scope trace data into HDF5 datasets
 				acquire_displayed_traces(scope, datasets, hdr_data, pos[0]-1)   # argh the pos[0] index is 1-based
-
 
 				if pos[0] == 1:
 					time_ds[0:NTimes] = scope.time_array()[0:NTimes] # at least get one time array recorded for swmr functions
@@ -270,7 +265,8 @@ def Acquire_Scope_Data_3D(get_positions, get_channel_description, ip_addresses, 
 				time_per_pos = (time.time()-acquisition_loop_start_time) / 3600
 				print ('Remaining time:%6.2f h'%((len(positions) - pos[0]) * time_per_pos))
 
-
+				x,y = mc.probe_positions
+				pos_ds[pos[0]-1] = (pos[0], x, y)
 
 			######### END MAIN ACQUISITION LOOP #########
 
@@ -298,14 +294,7 @@ def Acquire_Scope_Data_3D(get_positions, get_channel_description, ip_addresses, 
 				datasets[tr].attrs['description'] = get_channel_description(tr)                              # callback arg to the current function
 				datasets[tr].attrs['recorded']    = True
 
-
 	f.close()  # close the HDF5 file
 	
-    
-    # Move out of the plasma
-	mc.enable
-	time.sleep(1)    
-	mc.probe_positions = 0, 0, 0
-	#done
 	return ofn
 

@@ -104,35 +104,35 @@ def get_positions():
 	"""
 	global xmin, xmax, nx
 	global ymin, ymax, ny
-	global zmin, zmax, nz
 
-	if nx==0 or ny==0 or nz==0:
+	if nx==0 or ny==0:
 		sys.exit('Position array is empty.') 
         
 	xpos = numpy.linspace(xmin,xmax,nx)
 	ypos = numpy.linspace(ymin,ymax,ny)
-	zpos = numpy.linspace(zmin,zmax,nz)
 
 	nx = len(xpos)
 	ny = len(ypos)
-	nz = len(zpos)
 
 	# allocate the positions array, fill it with zeros
-	positions = numpy.zeros((nx*ny*nz*num_duplicate_shots*num_run_repeats), dtype=[('Line_number', '>u4'), ('x', '>f4'), ('y', '>f4'), ('z','>f4')])
+	positions = numpy.zeros((nx*ny*num_duplicate_shots*num_run_repeats), dtype=[('Line_number', '>u4'), ('x', '>f4'), ('y', '>f4')])
 
 	#create rectangular shape position array with height z
 	index = 0
 
 	for repeat_cnt in range(num_run_repeats):
-		for z in zpos:
-			for y in ypos:
-				for x in xpos:
-					for dup_cnt in range(num_duplicate_shots):
-						positions[index] = (index+1, x, y, z)
-						index += 1  
 
-############################################################################################################################
-############################################################################################################################
+		for y in ypos:
+			for x in xpos:
+				for dup_cnt in range(num_duplicate_shots):
+					positions[index] = (index+1, x, y)
+					index += 1
+					
+	return positions, xpos, ypos
+
+#===============================================================================================================================================
+#<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
+#===============================================================================================================================================
 
 # standalone: run the program
 if __name__ == '__main__':
@@ -140,29 +140,8 @@ if __name__ == '__main__':
 	import time
 	t_start = time.time()
 
-	#	from Motor_Control_3D import Motor_Control_3D
+	hdf5_filename = Acquire_Scope_Data(get_positions, get_channel_description, ip_addrs)
 
-	# the args are the above callback functions
-	
-#==============================================================================
-# 	positions, xpos, ypos, zpos, ignore_data = get_positions()
-# 	
-# 	a = 0
-# 	for pos in positions:
-# 		if ignore_data(pos[1], pos[2]) == False:
-# 			print(pos, end=' ')
-# 			a += 1
-# 			print('total measuring data points = ', a)
-#==============================================================================
-	
-
-	if step_sweep == 1:
-		hdf5_filename = Acquire_Scope_Data_LangmuirStep(get_positions, get_channel_description, ip_addrs)
-		print(hdf5_filename)
-	if step_sweep == 0:
-		hdf5_filename = Acquire_Scope_Data_3D(get_positions, get_channel_description, ip_addrs,cleaning)
-	if step_sweep == 2:
-		hdf5_filename = Acquire_Scope_Data_withAgilent(get_positions, get_channel_description, ip_addrs)
 	# when done, find size of hdf5 file
 	if os.path.isfile(hdf5_filename):
 		size = os.stat(hdf5_filename).st_size/(1024*1024)
@@ -172,22 +151,3 @@ if __name__ == '__main__':
 		print('*********** file "', hdf5_filename, '" is not found - this seems bad', sep='')
 
 	print('\ndone, %.2f hours'%((time.time()-t_start)/3600))
-
-
-
-
-
-
-#	mc = Motor_Control_3D(x_ip_addr = "192.168.0.40", y_ip_addr = "192.168.0.50", z_ip_addr = "192.168.0.60")
-#	for pos in positions:
-#				# move to next position
-#		try:
-#			print('position index =', pos[0], '  x =', pos[1], '  y =', pos[2], '  z =', pos[3], end='')
-#			mc.move_to_position(pos[1], pos[2], pos[3])
-#			time.sleep(1)
-#		except (KeyboardInterrupt, SystemExit):
-#			mc.stop_now()
-#			print ("Stop!!!!!")
-#			raise
-#		except KeyboardInterrupt:
-#			print ("AHHHHHH")

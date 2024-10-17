@@ -27,7 +27,7 @@ properties: motor_velocity, motor_positions, stop_now, reset_motor, set_zero, en
 """
 class Motor_Control_2D:
 
-	def __init__(self, x_ip_addr = None, y_ip_addr = None, z_ip_addr = None):
+	def __init__(self, x_ip_addr = None, y_ip_addr = None):
 
 		self.x_mc = Motor_Control(verbose=True, server_ip_addr= x_ip_addr, name='x')
 		self.y_mc = Motor_Control(verbose=True, server_ip_addr= y_ip_addr, name='y')
@@ -41,9 +41,7 @@ class Motor_Control_2D:
 		self.ph = 20.5 # Height from probe shaft to where z-motor actually moves
 
 
-#############################################################################################
-#############################################################################################
-
+	#-------------------------------------------------------------------------------------------
 	"""
 	Set and get the target velocity of motor in units of rev/sec
 	"""
@@ -57,9 +55,7 @@ class Motor_Control_2D:
 		xv, yv = v
 		self.x_mc.motor_speed = xv
 		self.y_mc.motor_speed = yv
-
-
-#-------------------------------------------------------------------------------------------
+	#-------------------------------------------------------------------------------------------
 	"""
 	Set motor velocity according to its current position and target position
 	"""
@@ -199,7 +195,8 @@ class Motor_Control_2D:
 		args = [motor_x, motor_y]
 		X0   = [motor_x, motor_y]
 		res = minimize(fun, X0, (args,), options={'maxiter':15000}, method='BFGS')
-		return round(res.x[0],3), round(res.x[1],3), round(res.x[2],3)
+		
+		return round(res.x[0],3), round(res.x[1],3)
 
 #-------------------------------------------------------------------------------------------------
 	"""
@@ -248,10 +245,27 @@ class Motor_Control_2D:
 
 
 
-########################################################################################################
-# standalone testing:
+def test_loop(positions):
 
-if __name__ == '__main__':
+	mc = Motor_Control(x_ip_addr = "192.168.0.40", y_ip_addr = "192.168.0.50")
+	
+	for pos in positions:
+				# move to next position
+		try:
+			print('position index =', pos[0], '  x =', pos[1], '  y =', pos[2], end='')
+			mc.move_to_position(pos[1], pos[2])
+			time.sleep(1)
+		except (KeyboardInterrupt, SystemExit):
+			mc.stop_now()
+			print ("Stop!!!!!")
+			raise
+		except KeyboardInterrupt:
+			print ("AHHHHHH")
+
+#===============================================================================================================================================
+#<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
+#===============================================================================================================================================
+if __name__ == '__main__': # standalone testing:
 
 	mc = Motor_Control_2D(x_ip_addr = "192.168.0.40", y_ip_addr = "192.168.0.50", z_ip_addr = "192.168.0.60")
 
