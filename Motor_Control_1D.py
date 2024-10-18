@@ -20,7 +20,6 @@ import select
 import time
 import logging
 
-cm_per_turn = 0.254        # Velmex model number NN10-0300-E01-21 (short black linear drives)
 #steps_per_turn = 20000
 #encoder_step = 4000
 
@@ -47,8 +46,9 @@ class Motor_Control:
     # - - - - - - - - - - - - - - - - -
     # To search IP address:
 
-    def __init__(self, server_ip_addr = None, msipa_cache_fn = None, verbose = True, name='not named'):
+    def __init__(self, server_ip_addr = None, cm_per_turn = 0.254, msipa_cache_fn = None, verbose = True, name='not named'):
 
+        self.cm_per_turn = cm_per_turn
         self.verbose = verbose
         self.name = name
         if msipa_cache_fn == None:
@@ -96,8 +96,8 @@ class Motor_Control:
         # Setup encoder and motor steps
         self.__stepsPerRev = self.steps_per_rev()
         
-        # Setup motor to stop when limit switch is hit
-        self.send_text('DL2')
+        # Setup motor to stop when limit switch is hit; uncomment this line only when stop switch is connected properly
+        # self.send_text('DL2')
         
         # Check and clear alarm present on motor
         alarm = self.check_alarm
@@ -111,9 +111,9 @@ class Motor_Control:
             self.clear_alarm
             print(self.name, ' current status ', cur_stat)
         
-        if self.motor_speed == 10 and 'D' not in cur_stat:
-            print('Motor has likely been power cycled and lost zero position')
-            self.disable            
+        # if self.motor_speed == 10 and 'D' not in cur_stat:
+        #     print('Motor has likely been power cycled and lost zero position')
+        #     self.disable            
 
 
 
@@ -258,17 +258,11 @@ class Motor_Control:
 
     def cm_to_steps(self, d:float) -> int:
         """ worker: convert distance in cm to number of turns motor rotates"""
-
-        global cm_per_turn
-
-        return int(d / cm_per_turn * self.__stepsPerRev)
+        return int(d / self.cm_per_turn * self.__stepsPerRev)
 
     def steps_to_cm(self, step:int) -> float:
         """opposite conversion from cm_to_steps"""
-
-        global cm_per_turn
-        
-        return step / self.__stepsPerRev * cm_per_turn
+        return step / self.__stepsPerRev * self.cm_per_turn
 
 #-------------------------------------------------------------------------------------------
     """
@@ -304,7 +298,6 @@ class Motor_Control:
         '''Return current motor position in cm. Note that encoder resolution is different from steps_per_turn.
             set_motor position: Call to move motor with input in cm, convert to steps and send to motor
         '''
-        global cm_per_turn
         
         RETRIES = 100
         retry_count = 0
@@ -315,8 +308,8 @@ class Motor_Control:
             resp1 = self.send_text('SP') # Ask for motor internal position
 
             try:
-                pos = float(resp[5:])  /self.__stepsPerRev * cm_per_turn
-                pos1 = float(resp1[5:])  /self.__stepsPerRev * cm_per_turn
+                pos = float(resp[5:])  /self.__stepsPerRev * self.cm_per_turn
+                pos1 = float(resp1[5:])  /self.__stepsPerRev * self.cm_per_turn
 
                 if round(pos, 2) == round(pos1, 2):
                     return pos
@@ -349,7 +342,6 @@ class Motor_Control:
     @motor_position.setter
     def motor_position(self, pos):
 
-        global cm_per_turn
         step = self.cm_to_steps(pos)
 
         self.send_text('DI'+str(step))

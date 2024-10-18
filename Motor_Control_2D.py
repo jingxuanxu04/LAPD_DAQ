@@ -16,6 +16,7 @@ import logging
 
 from scipy.optimize import minimize
 
+# TODO: fix calculate_velocity to read from cm_per_turn directly
 #############################################################################################
 #############################################################################################
 """
@@ -29,18 +30,15 @@ class Motor_Control_2D:
 
 	def __init__(self, x_ip_addr = None, y_ip_addr = None):
 
-		self.x_mc = Motor_Control(verbose=True, server_ip_addr= x_ip_addr, name='x')
-		self.y_mc = Motor_Control(verbose=True, server_ip_addr= y_ip_addr, name='y')
+		self.x_mc = Motor_Control(verbose=True, server_ip_addr= x_ip_addr, name='x', cm_per_turn = 0.254)
+		self.y_mc = Motor_Control(verbose=True, server_ip_addr= y_ip_addr, name='y', cm_per_turn = 0.508)
+        # Velmex model number NN10-0300-E01-21 (short black linear drives)
+		
+		self.probe_in = 62.948 # LAPD=>58.771 # Distance from chamber wall to chamber center
+		self.poi = 125.3624 #112.762 # Length of probe outside the chamber from pivot to end
+		self.ph = 20 # Height from probe shaft to where z-motor actually moves
 
-		self.cm_per_turn = 0.254
-		# encoder: steps_per_turn = 4000
-		#self.steps_per_turn = 20000
-
-		self.probe_in = 58.771 # Distance from chamber wall to chamber center
-		self.poi = 112.7624 # Length of probe outside the chamber from pivot to end
-		self.ph = 20.5 # Height from probe shaft to where z-motor actually moves
-
-
+		self.motor_velocity = 4,4
 	#-------------------------------------------------------------------------------------------
 	"""
 	Set and get the target velocity of motor in units of rev/sec
@@ -90,8 +88,8 @@ class Motor_Control_2D:
 			v_x = default_speed * del_x / del_r
 			v_y = default_speed * del_y / del_r
 
-		v_motor_x = v_x #1/self.D * (x*v_x + y*v_y + z*v_z)
-		v_motor_y = v_y #(v_y/x - v_x * y/x**2) * self.probe_out_initial
+		v_motor_x = v_x * 2 # factor of 2 due to different cm_per_turn
+		v_motor_y = v_y
 
 		v_motor_x = round(v_motor_x,3)
 		v_motor_y = round(v_motor_y,3)
@@ -109,7 +107,7 @@ class Motor_Control_2D:
 	
 	@motor_positions.setter
 	def motor_positions(self, mpos):
-		x_m, y_m, z_m = mpos
+		x_m, y_m = mpos
 		self.x_mc.motor_position = x_m
 		self.y_mc.motor_position = y_m
 
@@ -161,6 +159,13 @@ class Motor_Control_2D:
 		self.x_mc.reset_motor
 		self.y_mc.reset_motor
 
+	@property
+	def motor_alarm(self):
+		x_al = self.x_mc.check_alarm
+		y_al = self.y_mc.check_alarm
+
+		return x_al, y_al
+
 #-------------------------------------------------------------------------------------------
 	"""
 	Convert probe space dimensions to motor movement in unit of cm 
@@ -174,7 +179,7 @@ class Motor_Control_2D:
 		Ltc = y/x * d2
 		
 		motor_x = D - self.probe_in
-		motor_y = -self.ph + d2 + (self.poi + Ltc)*y/x
+		motor_y = self.ph - d2 - (self.poi + Ltc)*y/x
 		
 		return motor_x, motor_y
 
@@ -242,25 +247,6 @@ class Motor_Control_2D:
 
 		self.x_mc.disable
 		self.y_mc.disable
-
-
-
-def test_loop(positions):
-
-	mc = Motor_Control(x_ip_addr = "192.168.0.40", y_ip_addr = "192.168.0.50")
-	
-	for pos in positions:
-				# move to next position
-		try:
-			print('position index =', pos[0], '  x =', pos[1], '  y =', pos[2], end='')
-			mc.move_to_position(pos[1], pos[2])
-			time.sleep(1)
-		except (KeyboardInterrupt, SystemExit):
-			mc.stop_now()
-			print ("Stop!!!!!")
-			raise
-		except KeyboardInterrupt:
-			print ("AHHHHHH")
 
 #===============================================================================================================================================
 #<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>

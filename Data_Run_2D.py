@@ -16,7 +16,7 @@ Created on Oct.16.2024
 
 """
 
-import numpy
+import numpy as np
 from Acquire_Scope_Data_2D import Acquire_Scope_Data
 from LeCroy_Scope import EXPANDED_TRACE_NAMES
 
@@ -29,13 +29,13 @@ logging.basicConfig(filename='motor.log', level=logging.WARNING, format='%(ascti
 '''
 user: set up simple positions array here (see function get_positions() below)
 '''
-xmin = -20
-xmax = 0
-nx   = 41
+xmin = -10
+xmax = 10
+nx   = 21
 
-ymin = 0
-ymax = 0
-ny   = 1
+ymin = -10
+ymax = 10
+ny   = 21
 
 num_duplicate_shots = 1      # number of duplicate shots recorded at the ith location
 num_run_repeats = 1           # number of times to repeat sequentially over all locations
@@ -108,14 +108,14 @@ def get_positions():
 	if nx==0 or ny==0:
 		sys.exit('Position array is empty.') 
         
-	xpos = numpy.linspace(xmin,xmax,nx)
-	ypos = numpy.linspace(ymin,ymax,ny)
+	xpos = np.linspace(xmin,xmax,nx)
+	ypos = np.linspace(ymin,ymax,ny)
 
 	nx = len(xpos)
 	ny = len(ypos)
 
 	# allocate the positions array, fill it with zeros
-	positions = numpy.zeros((nx*ny*num_duplicate_shots*num_run_repeats), dtype=[('Line_number', '>u4'), ('x', '>f4'), ('y', '>f4')])
+	positions = np.zeros((nx*ny*num_duplicate_shots*num_run_repeats), dtype=[('Line_number', '>u4'), ('x', '>f4'), ('y', '>f4')])
 
 	#create rectangular shape position array with height z
 	index = 0
