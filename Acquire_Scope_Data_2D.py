@@ -25,7 +25,6 @@ import h5py as h5py
 import time
 import os.path
 import sys
-import tkinter
 
 from LeCroy_Scope import LeCroy_Scope, WAVEDESC_SIZE
 from Motor_Control_2D import Motor_Control_2D
@@ -37,23 +36,23 @@ def acquire_displayed_traces(scope, datasets, hdr_data, pos_ndx):
 	""" worker for below :
 		 acquire enough sweeps for the averaging, then read displayed scope trace data into HDF5 datasets
 	"""
-	timeout = 2000 # seconds
+	# timeout = 2000 # seconds
 
-	timed_out, N = scope.wait_for_max_sweeps(str(pos_ndx)+': ', timeout)  # wait for averaging to complete; leaves scope not triggering
+	# timed_out, N = scope.wait_for_max_sweeps(str(pos_ndx)+': ', timeout)  # wait for averaging to complete; leaves scope not triggering
 
-	if timed_out:
-		print('**** averaging timed out: got '+str(N)+' at %.6g s' % timeout)
-
+	# if timed_out:
+		# print('**** averaging timed out: got '+str(N)+' at %.6g s' % timeout)
+	scope.set_trigger_mode('STOP')
 	traces = scope.displayed_traces()
-
+    
 	for tr in traces:
 		NPos, NTimes = datasets[tr].shape
-
+		st = time.time()
 		datasets[tr][pos_ndx, 0:NTimes] = scope.acquire(tr)[0:NTimes]    # sometimes for 10000 the scope hardware returns 10001 samples, so we have to specify [0:NTimes]
-
+		print(time.time()-st)
 	for tr in traces:
 		hdr_data[tr][pos_ndx] = numpy.void(scope.header_bytes())    # valid after scope.acquire() call
-
+	
 	scope.set_trigger_mode('NORM')   # resume triggering
 
 
@@ -72,29 +71,6 @@ def create_sourcefile_dataset(grp, fn):
 
 #----------------------------------------------------------------------------------------
 
-def get_hdf5_filename(hdf5_filename = None) -> str:
-	""" actual callback function to return the output file name """
-
-	avoid_overwrite = True     # <-- setting this to False will allow overwriting an existing file without a prompt
-
-	#user: modify this if desired
-
-	fn = hdf5_filename       # variable assigned at the top of this file
-
-	if fn == None  or len(fn) == 0  or  (avoid_overwrite  and  os.path.isfile(fn)):
-		# if we are not allowing possible overwrites as default, and the file already exists, use file open dialog
-		tk = tkinter.Tk()
-		tk.withdraw()
-		fn = tkinter.filedialog.asksaveasfilename(title='Enter name of HDF5 file to write')
-		if len(fn) == 0:
-			raise SystemExit(0)     # user pressed 'cancel'
-		tk.destroy()
-
-	hdf5_filename = fn    # save it for later
-	return fn
-
-#----------------------------------------------------------------------------------------
-
 def clean(agilent, cleaning):
 	agilent.function = 'DC' # Goes into DC mode
 	agilent.DCoffset = cleaning  # Heat up probe to red hot
@@ -105,7 +81,7 @@ def clean(agilent, cleaning):
 	agilent.burst(True, 1, 0)
 
 #----------------------------------------------------------------------------------------
-def Acquire_Scope_Data(get_positions, get_channel_description, ip_addresses):
+def Acquire_Scope_Data(ifn, get_positions, get_channel_description, ip_addresses):
 	# The main data acquisition routine
 	#
 	# 	Arguments are user-provided callback functions that return the following:
@@ -129,7 +105,7 @@ def Acquire_Scope_Data(get_positions, get_channel_description, ip_addresses):
 	src_files = [sys.argv[0],
 				__file__,           # ASSUME this file is in the same directory as the next two:
 				os.path.dirname(__file__)+os.sep+'LeCroy_Scope.py',
-				os.path.dirname(__file__)+os.sep+'Motor_Control_3D.py'
+				os.path.dirname(__file__)+os.sep+'Motor_Control_2D.py'
 			   ]
 	#for testing, list these:
 	print('Files to record in the hdf5 archive:')
@@ -154,9 +130,7 @@ def Acquire_Scope_Data(get_positions, get_channel_description, ip_addresses):
 
 	# Open hdf5 file for writing (user callback for filename):
 
-	ofn = get_hdf5_filename()      # callback arg to the current function
-
-	f = h5py.File(ofn,  'w')  # 'w' - overwrite (we should have determined whether we want to overwrite in get_hdf5_filename())
+	f = h5py.File(ifn,  'w')  # 'w' - overwrite (we should have determined whether we want to overwrite in get_hdf5_filename())
 	# f = h5py.File(ofn,  'x')  # 'x' - no overwrite
 
 	#============================
@@ -296,5 +270,4 @@ def Acquire_Scope_Data(get_positions, get_channel_description, ip_addresses):
 
 	f.close()  # close the HDF5 file
 	
-	return ofn
-
+	return ifn

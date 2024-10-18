@@ -425,7 +425,7 @@ class LeCroy_Scope:
 
 	#-------------------------------------------------------------------------
 
-	def wait_for_max_sweeps(self, aux_text='', timeout=100)  -> (bool,int):
+	def wait_for_max_sweeps(self, aux_text='', timeout=100):
 		""" determine maximum averaging count across all displayed channels, then wait for that many sweeps
 		"""
 		NSweeps, ach = self.max_averaging_count()
@@ -440,7 +440,7 @@ class LeCroy_Scope:
 		self.write_status_msg(aux_text + msg)
 		return timed_out,N
 
-	def wait_for_sweeps(self, channel, NSweeps, timeout=100, sleep_interval=0.1) -> (bool,int):
+	def wait_for_sweeps(self, channel, NSweeps, timeout=100, sleep_interval=0.1):
 		""" Worker for above: wait for a given channel to trigger NSweeps times
 			This polls the scope to determine number of sweeps that have occurred, so may overshoot
 			(to get faster polling, set sleep_interval(seconds) to a smaller number)

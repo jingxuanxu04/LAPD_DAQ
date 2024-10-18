@@ -29,13 +29,13 @@ logging.basicConfig(filename='motor.log', level=logging.WARNING, format='%(ascti
 '''
 user: set up simple positions array here (see function get_positions() below)
 '''
-xmin = -10
-xmax = 10
-nx   = 21
+xmin = 0
+xmax = 0
+nx   = 1
 
-ymin = -10
-ymax = 10
-ny   = 21
+ymin = 0
+ymax = 0
+ny   = 1
 
 num_duplicate_shots = 1      # number of duplicate shots recorded at the ith location
 num_run_repeats = 1           # number of times to repeat sequentially over all locations
@@ -83,13 +83,13 @@ user: set known ip addresses:
    z  - Not Used
    agilent - Not Used
 '''
-ip_addrs = {'scope':'192.168.0.103', 'x':'192.168.0.40', 'y':'192.168.0.50', 'z':'192.168.0.60', 'agilent':'192.168.0.104', 'keysight':'192.168.0.106'}
+ip_addrs = {'scope':'192.168.7.63', 'x':'192.168.7.161', 'y':'192.168.7.162'}
 
 #-------------------------------------------------------------------------------------------------------------
 '''
 user: set output file name, or None for prompt (see function get_hdf5_filename() below)
 '''
-hdf5_filename = None       # or, e.g. '161014_I25_F35_P3e-4_Ar.hdf5'
+hdf5_filename = r"D:\Data\Energetic_Electron_Ring\test.hdf5"
 
 #===============================================================================================================================================
 #<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
@@ -140,7 +140,7 @@ if __name__ == '__main__':
 	import time
 	t_start = time.time()
 
-	hdf5_filename = Acquire_Scope_Data(get_positions, get_channel_description, ip_addrs)
+	hdf5_filename = Acquire_Scope_Data(hdf5_filename, get_positions, get_channel_description, ip_addrs)
 
 	# when done, find size of hdf5 file
 	if os.path.isfile(hdf5_filename):
