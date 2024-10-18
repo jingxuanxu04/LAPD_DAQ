@@ -37,7 +37,7 @@ NI VISA Manuals:
 """
 
 import numpy
-import visa
+import pyvisa as visa
 from pyvisa.resources import MessageBasedResource
 from pyvisa.errors import VisaIOError
 import collections
@@ -781,9 +781,12 @@ class LeCroy_Scope:
 			time.sleep(15)
 		else:
 			self.scope.write('AUTO_CALIBRATE OFF')
-###############################################################################
 
-scope_ip_addr = '192.168.0.110'   # '128.97.13.149'
+#===============================================================================================================================================
+#<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
+#===============================================================================================================================================
+
+scope_ip_addr = '192.168.7.146'   # '128.97.13.149'
 
 if __name__ == '__main__':
 	#from motor_control_set_position import motor_control_set_position, motor_control_inhibit, motor_control_enable
