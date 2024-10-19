@@ -3,12 +3,15 @@
 """
 Created on Oct.16.2024
 @author: Jia Han
-
-Modified from Motor_Control_1D in 45deg probe project written in Aug.2024
 Original code from motor control used in process plasma lab
 
 Motor control program for Applied motion motor through Ethernet with the use of Socket
 Command reference can be found in: https://www.applied-motion.com/sites/default/files/hardware-manuals/Host-Command-Reference_920-0002R.pdf
+
+Oct.2024 Update
+- Change cm_per_turn as input value to init; allow setting for different Velmex drives
+- Add function to turn motor by step and read motor current step
+- Minor change in init function
 """
 
 
@@ -23,10 +26,11 @@ import logging
 #steps_per_turn = 20000
 #encoder_step = 4000
 
-#TODO: Create log file that will store errors
-#logging.basicConfig(filename='motor.log', level=logging.DEBUG, format='%(asctime)s %(levelname)s %(message)s')
-########################################################################################################
-########################################################################################################
+# TODO: 'DL2' should be sent to motor when limit switch is connected properly
+#       Add boolean in init to choose when stop switch is connected or not
+
+#===============================================================================================================================================
+#===============================================================================================================================================
 
 """
 Motor control class that connects to motor through Socket.
@@ -96,8 +100,8 @@ class Motor_Control:
         # Setup encoder and motor steps
         self.__stepsPerRev = self.steps_per_rev()
         
-        # Setup motor to stop when limit switch is hit; uncomment this line only when stop switch is connected properly
-        # self.send_text('DL2')
+        # Setup motor to stop when limit switch is hit
+        self.send_text('DL2') # uncomment this line when stop switch is connected properly
         
         # Check and clear alarm present on motor
         alarm = self.check_alarm
@@ -111,9 +115,10 @@ class Motor_Control:
             self.clear_alarm
             print(self.name, ' current status ', cur_stat)
         
-        # if self.motor_speed == 10 and 'D' not in cur_stat:
-        #     print('Motor has likely been power cycled and lost zero position')
-        #     self.disable            
+        if self.motor_speed == 10:
+            print('Motor has likely been power cycled and lost zero position')
+            print('Motor disabled until futher action')
+            self.disable   
 
 
 
@@ -347,6 +352,20 @@ class Motor_Control:
         self.send_text('DI'+str(step))
         self.send_text('FP')
 
+#-------------------------------------------------------------------------------------------
+    def turn_to(self, step):
+        '''
+        Turn motor by step
+        '''
+        self.send_text('DI'+str(step))
+        self.send_text('FP')
+
+    def current_step(self):
+        '''
+        Return current motor position in step
+        '''
+        resp = self.send_text('EP')
+        return int(resp[5:])
 
 #-------------------------------------------------------------------------------------------
     def stop_now(self):
