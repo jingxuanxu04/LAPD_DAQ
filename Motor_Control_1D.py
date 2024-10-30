@@ -50,9 +50,10 @@ class Motor_Control:
     # - - - - - - - - - - - - - - - - -
     # To search IP address:
 
-    def __init__(self, server_ip_addr = None, cm_per_turn = 0.254, msipa_cache_fn = None, verbose = True, name='not named'):
+    def __init__(self, server_ip_addr = None, cm_per_turn = 0.254, stop_switched=True, msipa_cache_fn = None, verbose = False, name='not named'):
 
         self.cm_per_turn = cm_per_turn
+        self.stop_switched = stop_switched
         self.verbose = verbose
         self.name = name
         if msipa_cache_fn == None:
@@ -100,8 +101,8 @@ class Motor_Control:
         # Setup encoder and motor steps
         self.__stepsPerRev = self.steps_per_rev()
         
-        # Setup motor to stop when limit switch is hit
-        self.send_text('DL2') # uncomment this line when stop switch is connected properly
+        if self.stop_switched:# Setup motor to stop when limit switch is hit
+            self.send_text('DL2') # uncomment this line when stop switch is connected properly
         
         # Check and clear alarm present on motor
         alarm = self.check_alarm
@@ -115,10 +116,10 @@ class Motor_Control:
             self.clear_alarm
             print(self.name, ' current status ', cur_stat)
         
-        if self.motor_speed == 10:
-            print('Motor has likely been power cycled and lost zero position')
-            print('Motor disabled until futher action')
-            self.disable   
+#         if self.motor_speed == 10:
+#             print('Motor has likely been power cycled and lost zero position')
+#             print('Motor disabled until futher action')
+#             self.disable
 
 
 

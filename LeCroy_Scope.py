@@ -46,6 +46,7 @@ import sys
 import pylab as plt
 import matplotlib.image as mpimg
 import time
+import os
 
 # the header recorded for each trace
 # 63 entries, 346 bytes
@@ -631,12 +632,166 @@ class LeCroy_Scope:
 				data = numpy.array(cdata) * self.hdr.vertical_gain - self.hdr.vertical_offset
 
 		t1 = time.time()
-
 		if self.verbose and (t1-t0 > 1): print('    .............................%6.3g sec' % (t1-t0))
 		return data
+	
+	def acquire_raw(self, trace):
+		""" Read a trace from the scope, put the raw data into disk
+		"""
+		trace = self.validate_trace(trace)
 
+		#waveform_setup:   SP=NP=0 -> send all points, for first point FP=1, segment# SN=0 - send all segments
+		self.scope.write('WAVEFORM_SETUP SP,0,NP,0,FP,1,SN,0')
+		#no header, WORD length data, binary
+		self.scope.write('COMM_HEADER OFF')
+		self.scope.write('COMM_FORMAT DEF9,WORD,BIN')
 
+		# read raw data from scope
+
+		if self.verbose: print('\n<:> reading',trace,'from scope')
+		t0 = time.time()
+
+		self.scope.write(trace+':WAVEFORM?')
+		self.trace_bytes = self.scope.read_raw()
+
+		t1 = time.time()
+		#print('Test bit time',t1-t0)
+		return self.trace_bytes
+		# if self.verbose and (t1-t0 > 1): print('    .............................%6.3g sec' % (t1-t0))
+
+		# # parse the header:
+		# # Note: The first 15 bytes are not part of the WAVEDESC header, as determined by inspection of the data
+
+		# self.hdr = WAVEDESC._make(struct.unpack(WAVEDESC_FMT, self.trace_bytes[15:15+WAVEDESC_SIZE]))
+
+		# NSamples = int(0)
+		# if self.hdr.comm_type == 0:
+		# 	# data returned as signed chars
+		# 	NSamples = self.hdr.wave_array_1
+		# elif self.hdr.comm_type == 1:
+		# 	# data returned as shorts
+		# 	NSamples = int(self.hdr.wave_array_1/2)
+		# else:
+		# 	# throw an exception if we don't recognize comm_type
+		# 	err = '**** hdr.comm_type = ' + str(self.hdr.comm_type) + '; expected value is either 0 or 1'
+		# 	raise(RuntimeError(err)).with_traceback(sys.exc_info()[2])
+
+		# if self.verbose: print('<:> NSamples =',NSamples)
+		# if NSamples == 0:
+		# 	# throw an exception if there are no samples (i.e. scope not triggered, trace not displayed)
+		# 	err = '**** fail because NSamples = 0 (possible cause: trace has no data? scope not triggered?)\nIF SCOPE IS IN 2-CHANNEL MODE BUT CHANNEL 1 or 4 ARE SELECTED, they have no data'
+		# 	raise(RuntimeError(err)).with_traceback(sys.exc_info()[2])
+
+		# if self.verbose:
+		# 	print('<:> record type:      ', RECORD_TYPES[self.hdr.record_type])
+		# 	print('<:> timebase:         ', TIMEBASE_IDS[self.hdr.timebase], 'per div')
+		# 	print('<:> vertical gain:    ', VERT_GAIN_IDS[self.hdr.fixed_vert_gain], 'per div')
+		# 	print('<:> vertical coupling:', VERT_COUPLINGS[self.hdr.vert_coupling])
+		# 	print('<:> processing:       ', PROCESSING_TYPES[self.hdr.processing_done])
+		# 	print('<:> #sweeps:          ', self.hdr.sweeps_per_acq)
+		# 	print('<:> enob:             ', self.hdr.nominal_bits)
+		# 	vert_units = str(self.hdr.vertunit).split('\\x00')[0][2:]    # for whatever reason this prepends "b'" to string
+		# 	horz_units = str(self.hdr.horunit).split('\\x00')[0][2:]     # so ignore first 2 chars
+		# 	print('<:> data scaling      gain = %6.3g, offset = %8.5g' % (self.hdr.vertical_gain, self.hdr.vertical_offset), vert_units)
+		# 	print('<:> sample timing       dt = %6.3g,   offset = %8.5g' % (self.hdr.horiz_interval, self.hdr.horiz_offset), horz_units)
+
+		# # compute the data values
+
+		# if self.verbose: print('<:> computing data values')
+		# t0 = time.time()   # accurate to about 1 ms on my windows 8.1 system
+
+		# ndx0 = (15+WAVEDESC_SIZE) + self.hdr.user_text + self.hdr.trigtime_array + self.hdr.ris_time_array + self.hdr.res_array1
+
+		# if self.hdr.comm_type == 1:       # data returned in words (short integers)
+		# 	ndx1 = ndx0 + NSamples*2
+		# 	wdata = struct.unpack(str(NSamples)+'h', self.trace_bytes[ndx0:ndx1])              # unpack returns a tuple, so
+		# 	if raw:
+		# 		data = wdata
+		# 	else:
+		# 		data = numpy.array(wdata) * self.hdr.vertical_gain - self.hdr.vertical_offset      # we need to convert tuple to array in order to work with it
+		# if self.hdr.comm_type == 0:       # data returned in bytes (signed char)
+		# 	ndx1 = ndx0 + NSamples
+		# 	cdata = struct.unpack(str(NSamples)+'b', self.trace_bytes[ndx0:ndx1])              # unpack returns a tuple
+		# 	if raw:
+		# 		data = cdata
+		# 	else:
+		# 		data = numpy.array(cdata) * self.hdr.vertical_gain - self.hdr.vertical_offset
+
+		# t1 = time.time()
+		# if self.verbose and (t1-t0 > 1): print('    .............................%6.3g sec' % (t1-t0))
+		# return data
+
+	
 	#-------------------------------------------------------------------------
+	def acquire_from_disk(self, trace, pos_ndx, exp_name, disk_folder):
+		print('\n<:> reading',trace,'from disk')
+		print('\n<:> reading pos',pos_ndx,'from disk')
+		file_name = disk_folder + os.sep + exp_name + str(pos_ndx) + '_' + trace + '.bin'
+		with open(file_name, 'rb') as f:
+			self.trace_bytes = f.read()
+		
+		self.hdr = WAVEDESC._make(struct.unpack(WAVEDESC_FMT, self.trace_bytes[15:15+WAVEDESC_SIZE]))
+
+		NSamples = int(0)
+		if self.hdr.comm_type == 0:
+			# data returned as signed chars
+			NSamples = self.hdr.wave_array_1
+		elif self.hdr.comm_type == 1:
+			# data returned as shorts
+			NSamples = int(self.hdr.wave_array_1/2)
+		else:
+			# throw an exception if we don't recognize comm_type
+			err = '**** hdr.comm_type = ' + str(self.hdr.comm_type) + '; expected value is either 0 or 1'
+			raise(RuntimeError(err)).with_traceback(sys.exc_info()[2])
+
+		if self.verbose: print('<:> NSamples =',NSamples)
+		if NSamples == 0:
+			# throw an exception if there are no samples (i.e. scope not triggered, trace not displayed)
+			err = '**** fail because NSamples = 0 (possible cause: trace has no data? scope not triggered?)\nIF SCOPE IS IN 2-CHANNEL MODE BUT CHANNEL 1 or 4 ARE SELECTED, they have no data'
+			raise(RuntimeError(err)).with_traceback(sys.exc_info()[2])
+
+		if self.verbose:
+			print('<:> record type:      ', RECORD_TYPES[self.hdr.record_type])
+			print('<:> timebase:         ', TIMEBASE_IDS[self.hdr.timebase], 'per div')
+			print('<:> vertical gain:    ', VERT_GAIN_IDS[self.hdr.fixed_vert_gain], 'per div')
+			print('<:> vertical coupling:', VERT_COUPLINGS[self.hdr.vert_coupling])
+			print('<:> processing:       ', PROCESSING_TYPES[self.hdr.processing_done])
+			print('<:> #sweeps:          ', self.hdr.sweeps_per_acq)
+			print('<:> enob:             ', self.hdr.nominal_bits)
+			vert_units = str(self.hdr.vertunit).split('\\x00')[0][2:]    # for whatever reason this prepends "b'" to string
+			horz_units = str(self.hdr.horunit).split('\\x00')[0][2:]     # so ignore first 2 chars
+			print('<:> data scaling      gain = %6.3g, offset = %8.5g' % (self.hdr.vertical_gain, self.hdr.vertical_offset), vert_units)
+			print('<:> sample timing       dt = %6.3g,   offset = %8.5g' % (self.hdr.horiz_interval, self.hdr.horiz_offset), horz_units)
+
+		# compute the data values
+
+		if self.verbose: print('<:> computing data values')
+		t0 = time.time()   # accurate to about 1 ms on my windows 8.1 system
+
+		ndx0 = (15+WAVEDESC_SIZE) + self.hdr.user_text + self.hdr.trigtime_array + self.hdr.ris_time_array + self.hdr.res_array1
+
+		if self.hdr.comm_type == 1:       # data returned in words (short integers)
+			ndx1 = ndx0 + NSamples*2
+			wdata = struct.unpack(str(NSamples)+'h', self.trace_bytes[ndx0:ndx1])              # unpack returns a tuple, so
+			data = numpy.array(wdata) * self.hdr.vertical_gain - self.hdr.vertical_offset      # we need to convert tuple to array in order to work with it
+		if self.hdr.comm_type == 0:       # data returned in bytes (signed char)
+			ndx1 = ndx0 + NSamples
+			cdata = struct.unpack(str(NSamples)+'b', self.trace_bytes[ndx0:ndx1])              # unpack returns a tuple
+			data = numpy.array(cdata) * self.hdr.vertical_gain - self.hdr.vertical_offset
+
+		t1 = time.time()
+		if self.verbose and (t1-t0 > 1): print('    .............................%6.3g sec' % (t1-t0))
+
+
+		NSamples = int(0)
+		if self.hdr.comm_type == 0:
+			NSamples = self.hdr.wave_array_1            # data returned as signed chars
+		elif self.hdr.comm_type == 1:
+			NSamples = int(self.hdr.wave_array_1/2)     # data returned as shorts
+		t0 = self.hdr.horiz_offset
+		time_array = numpy.linspace(t0, t0+NSamples*self.hdr.horiz_interval, NSamples, endpoint=False)
+		return data, time_array
+	#----------------------------------------------------------------------
 
 	def time_array(self) -> numpy.array:
 		""" return a numpy array containing sample times
@@ -785,6 +940,103 @@ class LeCroy_Scope:
 #===============================================================================================================================================
 #<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
 #===============================================================================================================================================
+
+
+class Fake_Scope:
+	"""
+	Created by Donglai Ma,
+	A fake scope for saving process
+	"""
+	def __init__(self, idn_string, max_samples, traces, gaaak_count,displayed_traces):
+		self.idn_string = idn_string
+		self.max_samples = max_samples
+		self.traces = traces
+		self.gaaak_count = gaaak_count
+		self.displayed_traces = displayed_traces
+		self.verbose = True
+		#self.time_array = None
+	def expanded_name(self, tr) -> str:
+		""" Returns a long version of a trace name; e.g. C1 -> Channel1,  F2 -> Math2, etc """
+		if tr in EXPANDED_TRACE_NAMES.keys():
+			return EXPANDED_TRACE_NAMES[tr]
+		return "unknown_trace_name"
+	
+	def acquire_from_disk(self, trace, pos_ndx, exp_name, disk_folder):
+		print('\n<:> reading',trace,'from disk')
+		print('\n<:> reading pos',pos_ndx,'from disk')
+		file_name = disk_folder + os.sep + exp_name + str(pos_ndx) + '_' + trace + '.bin'
+		with open(file_name, 'rb') as f:
+			self.trace_bytes = f.read()
+		
+		self.hdr = WAVEDESC._make(struct.unpack(WAVEDESC_FMT, self.trace_bytes[15:15+WAVEDESC_SIZE]))
+
+		NSamples = int(0)
+		if self.hdr.comm_type == 0:
+			# data returned as signed chars
+			NSamples = self.hdr.wave_array_1
+		elif self.hdr.comm_type == 1:
+			# data returned as shorts
+			NSamples = int(self.hdr.wave_array_1/2)
+		else:
+			# throw an exception if we don't recognize comm_type
+			err = '**** hdr.comm_type = ' + str(self.hdr.comm_type) + '; expected value is either 0 or 1'
+			raise(RuntimeError(err)).with_traceback(sys.exc_info()[2])
+
+		if self.verbose: print('<:> NSamples =',NSamples)
+		if NSamples == 0:
+			# throw an exception if there are no samples (i.e. scope not triggered, trace not displayed)
+			err = '**** fail because NSamples = 0 (possible cause: trace has no data? scope not triggered?)\nIF SCOPE IS IN 2-CHANNEL MODE BUT CHANNEL 1 or 4 ARE SELECTED, they have no data'
+			raise(RuntimeError(err)).with_traceback(sys.exc_info()[2])
+
+		if self.verbose:
+			print('<:> record type:      ', RECORD_TYPES[self.hdr.record_type])
+			print('<:> timebase:         ', TIMEBASE_IDS[self.hdr.timebase], 'per div')
+			print('<:> vertical gain:    ', VERT_GAIN_IDS[self.hdr.fixed_vert_gain], 'per div')
+			print('<:> vertical coupling:', VERT_COUPLINGS[self.hdr.vert_coupling])
+			print('<:> processing:       ', PROCESSING_TYPES[self.hdr.processing_done])
+			print('<:> #sweeps:          ', self.hdr.sweeps_per_acq)
+			print('<:> enob:             ', self.hdr.nominal_bits)
+			vert_units = str(self.hdr.vertunit).split('\\x00')[0][2:]    # for whatever reason this prepends "b'" to string
+			horz_units = str(self.hdr.horunit).split('\\x00')[0][2:]     # so ignore first 2 chars
+			print('<:> data scaling      gain = %6.3g, offset = %8.5g' % (self.hdr.vertical_gain, self.hdr.vertical_offset), vert_units)
+			print('<:> sample timing       dt = %6.3g,   offset = %8.5g' % (self.hdr.horiz_interval, self.hdr.horiz_offset), horz_units)
+
+		# compute the data values
+
+		if self.verbose: print('<:> computing data values')
+		t0 = time.time()   # accurate to about 1 ms on my windows 8.1 system
+
+		ndx0 = (15+WAVEDESC_SIZE) + self.hdr.user_text + self.hdr.trigtime_array + self.hdr.ris_time_array + self.hdr.res_array1
+
+		if self.hdr.comm_type == 1:       # data returned in words (short integers)
+			ndx1 = ndx0 + NSamples*2
+			wdata = struct.unpack(str(NSamples)+'h', self.trace_bytes[ndx0:ndx1])              # unpack returns a tuple, so
+			data = numpy.array(wdata) * self.hdr.vertical_gain - self.hdr.vertical_offset      # we need to convert tuple to array in order to work with it
+		if self.hdr.comm_type == 0:       # data returned in bytes (signed char)
+			ndx1 = ndx0 + NSamples
+			cdata = struct.unpack(str(NSamples)+'b', self.trace_bytes[ndx0:ndx1])              # unpack returns a tuple
+			data = numpy.array(cdata) * self.hdr.vertical_gain - self.hdr.vertical_offset
+
+		t1 = time.time()
+		if self.verbose and (t1-t0 > 1): print('    .............................%6.3g sec' % (t1-t0))
+
+
+		NSamples = int(0)
+		if self.hdr.comm_type == 0:
+			NSamples = self.hdr.wave_array_1            # data returned as signed chars
+		elif self.hdr.comm_type == 1:
+			NSamples = int(self.hdr.wave_array_1/2)     # data returned as shorts
+		t0 = self.hdr.horiz_offset
+		
+		
+		self.time_array = numpy.linspace(t0, t0+NSamples*self.hdr.horiz_interval, NSamples, endpoint=False)
+		print('Here time_aray_updated')
+		return data
+
+	def header_bytes(self) -> numpy.array:
+		""" return a numpy byte array containing the header """
+		#invalid literal for int():  return numpy.array(self.trace_bytes[15:15+WAVEDESC_SIZE], dtype='B')
+		return self.trace_bytes[15:15+WAVEDESC_SIZE]
 
 scope_ip_addr = '192.168.7.146'   # '128.97.13.149'
 

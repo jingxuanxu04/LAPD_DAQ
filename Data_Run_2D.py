@@ -17,29 +17,40 @@ Created on Oct.16.2024
 """
 
 import numpy as np
-from Acquire_Scope_Data_2D import Acquire_Scope_Data
+from Acquire_Scope_Data_2D import Acquire_Scope_Data, Acquire_Scope_Data_raw,Acquire_hdf5_from_disk
 from LeCroy_Scope import EXPANDED_TRACE_NAMES
 
 #from tkinter import filedialog
 import logging
 import sys
+import datetime
 
 logging.basicConfig(filename='motor.log', level=logging.WARNING, format='%(asctime)s %(levelname)s %(message)s')
 ############################################################################################################################
 '''
+user: set output file name, or None for prompt (see function get_hdf5_filename() below)
+'''
+exp_name = 'exp_11_XYline' # experiment name
+
+date = datetime.date.today()
+path = f"E:\Shadow data\Energetic_Electron_Ring\{exp_name}_{date}"
+hdf5_filename = f"{path}\{exp_name}.hdf5"
+#-------------------------------------------------------------------------------------------------------------
+'''
 user: set up simple positions array here (see function get_positions() below)
 '''
-xmin = 0
-xmax = 0
-nx   = 1
+xmin = -14
+xmax = 30
+nx   = 23
 
 ymin = 0
 ymax = 0
 ny   = 1
 
-num_duplicate_shots = 1      # number of duplicate shots recorded at the ith location
+num_duplicate_shots = 20      # number of duplicate shots recorded at the ith location
 num_run_repeats = 1           # number of times to repeat sequentially over all locations
 
+DISK_FIRST = 1				# save raw data to disk first
 #-------------------------------------------------------------------------------------------------------------
 '''
 User: set channel descriptions
@@ -83,14 +94,7 @@ user: set known ip addresses:
    z  - Not Used
    agilent - Not Used
 '''
-ip_addrs = {'scope':'192.168.7.63', 'x':'192.168.7.161', 'y':'192.168.7.162'}
-
-#-------------------------------------------------------------------------------------------------------------
-'''
-user: set output file name, or None for prompt (see function get_hdf5_filename() below)
-'''
-hdf5_filename = r"D:\Data\Energetic_Electron_Ring\test.hdf5"
-
+ip_addrs = {'scope':'192.168.7.63', 'x':'192.168.7.161', 'y':'192.168.7.162','magnetron_scope':'192.168.7.64'}
 #===============================================================================================================================================
 #<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
 #===============================================================================================================================================
@@ -139,15 +143,45 @@ if __name__ == '__main__':
 	import os
 	import time
 	t_start = time.time()
+	print('Data run started at', datetime.datetime.now())
+	# if DISK_FIRST:
+	# 	hdf5_filename = Acquire_Scope_Data_raw(hdf5_filename, get_positions, get_channel_description, ip_addrs, disk_folder= r"D:\Data\Energetic_Electron_Ring\raw_data",
+	#   exp_name  = 'test_exp_')
+	# else:
+	# 	hdf5_filename = Acquire_Scope_Data(hdf5_filename, get_positions, get_channel_description, ip_addrs)
+	
+	# print('\ndone, %.2f minutes'%((time.time()-t_start)/60))
+	# #when done, find size of hdf5 file
+	# if os.path.isfile(hdf5_filename):
+	# 	size = os.stat(hdf5_filename).st_size/(1024*1024)
+	# 	# announce whatever
+	# 	print('wrote file "', hdf5_filename, '",  ', time.ctime(), ', %6.1f'%size, ' MB  ', sep='')
+	# else:
+	# 	print('*********** file "', hdf5_filename, '" is not found - this seems bad', sep='')
 
-	hdf5_filename = Acquire_Scope_Data(hdf5_filename, get_positions, get_channel_description, ip_addrs)
+	# print('\ndone, %.2f minutes'%((time.time()-t_start)/60))
 
-	# when done, find size of hdf5 file
-	if os.path.isfile(hdf5_filename):
-		size = os.stat(hdf5_filename).st_size/(1024*1024)
-		# announce whatever
-		print('wrote file "', hdf5_filename, '",  ', time.ctime(), ', %6.1f'%size, ' MB  ', sep='')
+	if not os.path.exists(path):
+		os.makedirs(path)
+
+	if DISK_FIRST:
+		Acquire_Scope_Data_raw(hdf5_filename, get_positions, get_channel_description, ip_addrs, disk_folder= path,
+	  exp_name  = exp_name)
 	else:
-		print('*********** file "', hdf5_filename, '" is not found - this seems bad', sep='')
+		hdf5_filename = Acquire_Scope_Data(hdf5_filename, get_positions, get_channel_description, ip_addrs)
 
-	print('\ndone, %.2f hours'%((time.time()-t_start)/3600))
+	print('Data run finished at', datetime.datetime.now())
+	print('Time taken, %.2f hours'%((time.time()-t_start)/3600))
+	# if DISK_FIRST:
+	# 	hdf5_filename = Acquire_hdf5_from_disk(hdf5_filename, disk_folder, get_positions, ip_addrs, get_channel_description,exp_name = exp_name)
+
+	# print('\ndone, %.2f minutes'%((time.time()-t_start)/60))
+	# #when done, find size of hdf5 file
+	# if os.path.isfile(hdf5_filename):
+	# 	size = os.stat(hdf5_filename).st_size/(1024*1024)
+	# 	# announce whatever
+	# 	print('wrote file "', hdf5_filename, '",  ', time.ctime(), ', %6.1f'%size, ' MB  ', sep='')
+	# else:
+	# 	print('*********** file "', hdf5_filename, '" is not found - this seems bad', sep='')
+
+	# print('\ntotal done, %.2f minutes'%((time.time()-t_start)/60))
