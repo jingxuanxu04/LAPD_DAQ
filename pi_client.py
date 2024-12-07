@@ -1,5 +1,5 @@
 '''
-Main data acquisition script for tungsten dropper
+Client interface for communicating with the trigger server on Raspberry Pi
 '''
 
 import socket
@@ -15,6 +15,7 @@ class TriggerClient:
     def send_command(self, command, receive=True, retries=3):
         """Send command to Pi with error handling and retries"""
         for attempt in range(retries):
+            s = None
             try:
                 # Create socket
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -32,14 +33,10 @@ class TriggerClient:
                     readable, _, _ = select.select([s], [], [], 5.0)
                     if readable:
                         data = s.recv(self.BUF_SIZE)
-                        return_text = data.decode('ascii').strip()
-                        s.close()
-                        return return_text
+                        return data.decode('ascii').strip()
                     else:
-                        s.close()
                         raise TimeoutError("No response from server")
                         
-                s.close()
                 return None
                 
             except TimeoutError:
@@ -55,7 +52,7 @@ class TriggerClient:
                     raise Exception(f"Failed to communicate with Pi: {str(e)}")
                 time.sleep(0.5)
             finally:
-                if 's' in locals():
+                if s:
                     s.close()
         
         return None
@@ -67,41 +64,23 @@ class TriggerClient:
             raise RuntimeError(f"Unexpected trigger response: {response}")
         return True
     
-    def wait_for_trigger(self, timeout=5, sleep_interval=0.1):
+    def wait_for_trigger(self, timeout=5):
         """
         Wait for trigger from Pi
         
         Args:
             timeout (float): Maximum time to wait in seconds
-            sleep_interval (float): Time between checks in seconds
             
         Returns:
             bool: True if trigger received, False if timeout
         """
-        start_time = time.time()
-        timeout_time = start_time + timeout
-        print_interval = 3  # seconds
-        next_print_time = start_time + print_interval
-        
-        while time.time() < timeout_time:
-            try:
-                response = self.send_command('WAIT_TRIG')
-                if response == 'TRIGGERED':
-                    return True
-                    
-                # Print progress dots
-                if time.time() > next_print_time:
-                    next_print_time += print_interval
-                    print('.', end='', flush=True)
-                    
-                time.sleep(sleep_interval)
-                
-            except Exception as e:
-                print(f"\nError while waiting for trigger: {e}")
-                return False
-                
-        print("\nTimeout while waiting for trigger")
-        return False
+        response = self.send_command(f'WAIT_TRIG {timeout}')
+        if response == 'TRIGGERED':
+            return True
+        elif response == 'NO_TRIGGER':
+            return False
+        else:
+            raise RuntimeError(f"Unexpected response: {response}")
         
     def get_status(self):
         """Get server status"""
@@ -109,17 +88,7 @@ class TriggerClient:
         if response != 'READY':
             raise RuntimeError(f"Server not ready: {response}")
         return True
-        
-    def run_test(self):
-        """Run server self-test"""
-        response = self.send_command('TEST')
-        if response == 'TEST_PASS':
-            return True
-        elif response == 'TEST_FAIL':
-            return False
-        else:
-            raise RuntimeError(f"Unexpected test response: {response}")       
-            
+
     def trigger_loop(self, operation_func=None, iterations=1000, delay=0.1, timeout=120):
         """Run a loop sending triggers and executing operations
         
@@ -128,6 +97,9 @@ class TriggerClient:
             iterations: Number of trigger cycles to run
             delay: Delay between triggers in seconds
             timeout: Maximum time to wait for each trigger in seconds
+            
+        Returns:
+            int: Number of completed iterations
         """
         completed = 0
         
@@ -154,6 +126,42 @@ class TriggerClient:
                 
         return completed
 
+    def test_gpio_input(self, pin, iterations=5, delay=0.1):
+        """
+        Test GPIO input detection on specified pin
+        Args:
+            pin (int): GPIO pin number to test for input
+            iterations (int): Number of detection cycles to run (default: 5)
+            delay (float): Delay between attempts in seconds (default: 0.1)
+        Returns:
+            bool: True if all signals were detected, False otherwise
+        """
+        response = self.send_command(f'TEST_INPUT {pin} {iterations} {delay}')
+        if response == 'TEST_PASS':
+            return True
+        elif response == 'TEST_FAIL':
+            return False
+        else:
+            raise RuntimeError(f"Unexpected test response: {response}")
+
+    def test_gpio_output(self, pin, iterations=5, delay=0.1):
+        """
+        Test GPIO output triggering on specified pin
+        Args:
+            pin (int): GPIO pin number to test for output
+            iterations (int): Number of trigger cycles to run (default: 5)
+            delay (float): Delay between triggers in seconds (default: 0.1)
+        Returns:
+            bool: True if all triggers were sent successfully, False otherwise
+        """
+        response = self.send_command(f'TEST_OUTPUT {pin} {iterations} {delay}')
+        if response == 'TEST_PASS':
+            return True
+        elif response == 'TEST_FAIL':
+            return False
+        else:
+            raise RuntimeError(f"Unexpected test response: {response}")
+
 #===============================================================================================================================================
 #<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
 #===============================================================================================================================================
@@ -161,24 +169,24 @@ if __name__ == '__main__':
     # Example custom operation function
     def custom_operation(iteration):
         """Example operation between triggers"""
-        # Add your custom operations here
         time.sleep(0.05)  # Simulate some work
         
     # Initialize client
-    client = TriggerClient('192.168.1.100')  # Replace with your Pi's IP
+    client = TriggerClient('192.168.7.38')  # Use server's default IP
     
     try:
         # Test connection
-        response = client.send_command('STATUS')
-        print(f"Pi status: {response}")
+        client.get_status()  # Will raise error if not ready
+        print("Server ready")
         
         # Run trigger loop with custom operation
-        client.trigger_loop(
+        completed = client.trigger_loop(
             operation_func=custom_operation,
             iterations=1000,
             delay=0.1,
             timeout=120
         )
+        print(f"\nCompleted {completed} iterations")
         
     except KeyboardInterrupt:
         print("\nOperation interrupted by user")
