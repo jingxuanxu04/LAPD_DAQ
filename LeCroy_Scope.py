@@ -2,10 +2,10 @@
 """
 This file defines the class that implements communication with a LeCroy X-Stream scope.
 To use this need:
-    1. Install National Instruments Visa
-    2. Install pyvisa library
-    3. Install LeCroy "passport"
-    4. If not working, may need to setup in NI-VISA (check NI-VISA documentation)
+	1. Install National Instruments Visa
+	2. Install pyvisa library
+	3. Install LeCroy "passport"
+	4. If not working, may need to setup in NI-VISA (check NI-VISA documentation)
 
 See inline comments for the function of the member functions
 
@@ -20,7 +20,7 @@ PyVisa documentation:                                https://media.readthedocs.o
 LeCroy Automation Command Reference Manual:          http://cdn.teledynelecroy.com/files/manuals/automation_command_ref_manual_ws.pdf
 LeCroy Remote Control Manual for "X-Stream" scopes:  http://cdn.teledynelecroy.com/files/manuals/wm-rcm-e_rev_d.pdf
 National Instruments Visa at                         http://www.ni.com/download/ni-visa-16.0/6184/en/     (Aug 2016) NOTE: PyVisa FAQ Points to an old version
-    setting up the LeCroy scope "Passport":          http://forums.ni.com/ni/attachments/ni/170/579106/1/VICP-NI-MAX.doc
+	setting up the LeCroy scope "Passport":          http://forums.ni.com/ni/attachments/ni/170/579106/1/VICP-NI-MAX.doc
 LeCroy "passport" for NI-Visa:                       http://teledynelecroy.com/support/softwaredownload/home.aspx
 
 Anaconda:
@@ -86,27 +86,27 @@ WAVEDESC_FMT = '=16s16shhllllllllll16sl16shhlllllllllhhffffhhfdd48s48sfdBBBBhhfh
 #    The initial '=' character specifies native byte order, with standard (C) alignment.
 
 RECORD_TYPES = ['single_sweep', 'interleaved', 'histogram', 'graph', 'filter_coefficient',
-                'complex', 'extrema', 'sequence_obsolete', 'centered_RIS', 'peak_detect']
+				'complex', 'extrema', 'sequence_obsolete', 'centered_RIS', 'peak_detect']
 
 PROCESSING_TYPES = ['no_processing', 'fir_filter', 'interpolated', 'sparsed',
-                    'autoscaled', 'no_result', 'rolling', 'cumulative']
+					'autoscaled', 'no_result', 'rolling', 'cumulative']
 
 TIMEBASE_IDS = ['1 ps', '2 ps', '5 ps', '10 ps', '20 ps', '50 ps', '100 ps', '200 ps', '500 ps',
-                '1 ns', '2 ns', '5 ns', '10 ns', '20 ns', '50 ns', '100 ns', '200 ns', '500 ns',
-                '1 us', '2 us', '5 us', '10 us', '20 us', '50 us', '100 us', '200 us', '500 us',
-                '1 ms', '2 ms', '5 ms', '10 ms', '20 ms', '50 ms', '100 ms', '200 ms', '500 ms',
-                '1 s',  '2 s',  '5 s',  '10 s',  '20 s',  '50 s',  '100 s',  '200 s',  '500 s',
-                '1 ks', '2 ks', '5 ks']   # these are per division; ALSO: 100 corresponds to EXTERNAL
+				'1 ns', '2 ns', '5 ns', '10 ns', '20 ns', '50 ns', '100 ns', '200 ns', '500 ns',
+				'1 us', '2 us', '5 us', '10 us', '20 us', '50 us', '100 us', '200 us', '500 us',
+				'1 ms', '2 ms', '5 ms', '10 ms', '20 ms', '50 ms', '100 ms', '200 ms', '500 ms',
+				'1 s',  '2 s',  '5 s',  '10 s',  '20 s',  '50 s',  '100 s',  '200 s',  '500 s',
+				'1 ks', '2 ks', '5 ks']   # these are per division; ALSO: 100 corresponds to EXTERNAL
 
 VERT_GAIN_IDS = ['1 uV', '2 uV', '5 uV', '10 uV', '20 uV', '50 uV', '100 uV', '200 uV', '500 uV',
-                 '1 mV', '2 mV', '5 mV', '10 mV', '20 mV', '50 mV', '100 mV', '200 mV', '500 mV',
-                 '1 V',  '2 V',  '5 V',  '10 V',  '20 V',  '50 V',  '100 V',  '200 V',  '500 V',
-                 '1 kV', '2 kV', '5 kV', '10 kV']   # these are per division; pp added the last 3
+				 '1 mV', '2 mV', '5 mV', '10 mV', '20 mV', '50 mV', '100 mV', '200 mV', '500 mV',
+				 '1 V',  '2 V',  '5 V',  '10 V',  '20 V',  '50 V',  '100 V',  '200 V',  '500 V',
+				 '1 kV', '2 kV', '5 kV', '10 kV']   # these are per division; pp added the last 3
 
 VERT_COUPLINGS = ['DC 50 Ohms', 'ground', 'DC 1 MOhm', 'ground', 'AC 1 MOhm']
 
 EXPANDED_TRACE_NAMES = {'F1': 'Math1'   , 'F2': 'Math2'   , 'F3': 'Math3'   , 'F4': 'Math4'   ,  # documentation indicates these are possible, but some of them result in errors
-                        'F5': 'Math5'   , 'F6': 'Math6'   , 'F7': 'Math7'   , 'F8': 'Math8'   ,
+						'F5': 'Math5'   , 'F6': 'Math6'   , 'F7': 'Math7'   , 'F8': 'Math8'   ,
 					  'TA': 'ChannelA', 'TB': 'ChannelB', 'TC': 'ChannelC', 'TD': 'ChannelD',
 					  'M1': 'Memory1' , 'M2': 'Memory2' , 'M3': 'Memory3' , 'M4': 'Memory4' ,
 					  'C1': 'Channel1', 'C2': 'Channel2', 'C3': 'Channel3', 'C4': 'Channel4',
@@ -327,7 +327,7 @@ class LeCroy_Scope:
 		""" mostly used for determining the number of samples the scope expects to acquire.
 			If the argument N is given, this routine can also be used to attempt to set the number of samples
 			to one of the following:
-		        500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000, etc.
+				500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000, etc.
 			except many scopes won't accept all of these
 			The return value is the actual number of samples that the scope will acquire
 		"""
@@ -467,7 +467,7 @@ class LeCroy_Scope:
 		#   CLEAR_SWEEPS should set have the number to 0. (Aug 2016 - Tested on LeCroy HDO4104)
 		# Eliminating this delay causes intermittent "gaaak" fails as per below
 		time.sleep(0.25)    # 0.1 second still results in a gaaak remediation maybe 0.3% of the time (in verbose mode), and 0.01% (1e-4) in non-verbose mode
-		                    # 2017-07-11 - 0.1 second -> 600 gaaak errors out of 1200 shots; changed to 0.25, much more infrequent (1/1800)
+							# 2017-07-11 - 0.1 second -> 600 gaaak errors out of 1200 shots; changed to 0.25, much more infrequent (1/1800)
 		t = time.time()
 		timeout += t
 		next_print_time = t+print_interval
@@ -634,7 +634,8 @@ class LeCroy_Scope:
 		t1 = time.time()
 		if self.verbose and (t1-t0 > 1): print('    .............................%6.3g sec' % (t1-t0))
 		return data
-	
+	#-------------------------------------------------------------------------
+	'''TODO: The following two functions are added by Donglai and needs to be re-written in an understandable way'''
 	def acquire_raw(self, trace):
 		""" Read a trace from the scope, put the raw data into disk
 		"""
@@ -721,8 +722,6 @@ class LeCroy_Scope:
 		# if self.verbose and (t1-t0 > 1): print('    .............................%6.3g sec' % (t1-t0))
 		# return data
 
-	
-	#-------------------------------------------------------------------------
 	def acquire_from_disk(self, trace, pos_ndx, exp_name, disk_folder):
 		print('\n<:> reading',trace,'from disk')
 		print('\n<:> reading pos',pos_ndx,'from disk')
@@ -941,108 +940,12 @@ class LeCroy_Scope:
 #<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
 #===============================================================================================================================================
 
-
-class Fake_Scope:
-	"""
-	Created by Donglai Ma,
-	A fake scope for saving process
-	"""
-	def __init__(self, idn_string, max_samples, traces, gaaak_count,displayed_traces):
-		self.idn_string = idn_string
-		self.max_samples = max_samples
-		self.traces = traces
-		self.gaaak_count = gaaak_count
-		self.displayed_traces = displayed_traces
-		self.verbose = True
-		#self.time_array = None
-	def expanded_name(self, tr) -> str:
-		""" Returns a long version of a trace name; e.g. C1 -> Channel1,  F2 -> Math2, etc """
-		if tr in EXPANDED_TRACE_NAMES.keys():
-			return EXPANDED_TRACE_NAMES[tr]
-		return "unknown_trace_name"
-	
-	def acquire_from_disk(self, trace, pos_ndx, exp_name, disk_folder):
-		print('\n<:> reading',trace,'from disk')
-		print('\n<:> reading pos',pos_ndx,'from disk')
-		file_name = disk_folder + os.sep + exp_name + str(pos_ndx) + '_' + trace + '.bin'
-		with open(file_name, 'rb') as f:
-			self.trace_bytes = f.read()
-		
-		self.hdr = WAVEDESC._make(struct.unpack(WAVEDESC_FMT, self.trace_bytes[15:15+WAVEDESC_SIZE]))
-
-		NSamples = int(0)
-		if self.hdr.comm_type == 0:
-			# data returned as signed chars
-			NSamples = self.hdr.wave_array_1
-		elif self.hdr.comm_type == 1:
-			# data returned as shorts
-			NSamples = int(self.hdr.wave_array_1/2)
-		else:
-			# throw an exception if we don't recognize comm_type
-			err = '**** hdr.comm_type = ' + str(self.hdr.comm_type) + '; expected value is either 0 or 1'
-			raise(RuntimeError(err)).with_traceback(sys.exc_info()[2])
-
-		if self.verbose: print('<:> NSamples =',NSamples)
-		if NSamples == 0:
-			# throw an exception if there are no samples (i.e. scope not triggered, trace not displayed)
-			err = '**** fail because NSamples = 0 (possible cause: trace has no data? scope not triggered?)\nIF SCOPE IS IN 2-CHANNEL MODE BUT CHANNEL 1 or 4 ARE SELECTED, they have no data'
-			raise(RuntimeError(err)).with_traceback(sys.exc_info()[2])
-
-		if self.verbose:
-			print('<:> record type:      ', RECORD_TYPES[self.hdr.record_type])
-			print('<:> timebase:         ', TIMEBASE_IDS[self.hdr.timebase], 'per div')
-			print('<:> vertical gain:    ', VERT_GAIN_IDS[self.hdr.fixed_vert_gain], 'per div')
-			print('<:> vertical coupling:', VERT_COUPLINGS[self.hdr.vert_coupling])
-			print('<:> processing:       ', PROCESSING_TYPES[self.hdr.processing_done])
-			print('<:> #sweeps:          ', self.hdr.sweeps_per_acq)
-			print('<:> enob:             ', self.hdr.nominal_bits)
-			vert_units = str(self.hdr.vertunit).split('\\x00')[0][2:]    # for whatever reason this prepends "b'" to string
-			horz_units = str(self.hdr.horunit).split('\\x00')[0][2:]     # so ignore first 2 chars
-			print('<:> data scaling      gain = %6.3g, offset = %8.5g' % (self.hdr.vertical_gain, self.hdr.vertical_offset), vert_units)
-			print('<:> sample timing       dt = %6.3g,   offset = %8.5g' % (self.hdr.horiz_interval, self.hdr.horiz_offset), horz_units)
-
-		# compute the data values
-
-		if self.verbose: print('<:> computing data values')
-		t0 = time.time()   # accurate to about 1 ms on my windows 8.1 system
-
-		ndx0 = (15+WAVEDESC_SIZE) + self.hdr.user_text + self.hdr.trigtime_array + self.hdr.ris_time_array + self.hdr.res_array1
-
-		if self.hdr.comm_type == 1:       # data returned in words (short integers)
-			ndx1 = ndx0 + NSamples*2
-			wdata = struct.unpack(str(NSamples)+'h', self.trace_bytes[ndx0:ndx1])              # unpack returns a tuple, so
-			data = numpy.array(wdata) * self.hdr.vertical_gain - self.hdr.vertical_offset      # we need to convert tuple to array in order to work with it
-		if self.hdr.comm_type == 0:       # data returned in bytes (signed char)
-			ndx1 = ndx0 + NSamples
-			cdata = struct.unpack(str(NSamples)+'b', self.trace_bytes[ndx0:ndx1])              # unpack returns a tuple
-			data = numpy.array(cdata) * self.hdr.vertical_gain - self.hdr.vertical_offset
-
-		t1 = time.time()
-		if self.verbose and (t1-t0 > 1): print('    .............................%6.3g sec' % (t1-t0))
-
-
-		NSamples = int(0)
-		if self.hdr.comm_type == 0:
-			NSamples = self.hdr.wave_array_1            # data returned as signed chars
-		elif self.hdr.comm_type == 1:
-			NSamples = int(self.hdr.wave_array_1/2)     # data returned as shorts
-		t0 = self.hdr.horiz_offset
-		
-		
-		self.time_array = numpy.linspace(t0, t0+NSamples*self.hdr.horiz_interval, NSamples, endpoint=False)
-		print('Here time_aray_updated')
-		return data
-
-	def header_bytes(self) -> numpy.array:
-		""" return a numpy byte array containing the header """
-		#invalid literal for int():  return numpy.array(self.trace_bytes[15:15+WAVEDESC_SIZE], dtype='B')
-		return self.trace_bytes[15:15+WAVEDESC_SIZE]
-
 scope_ip_addr = '192.168.7.146'   # '128.97.13.149'
-
 if __name__ == '__main__':
-	#from motor_control_set_position import motor_control_set_position, motor_control_inhibit, motor_control_enable
-    scope = LeCroy_Scope(scope_ip_addr, verbose=True)
+
+	with LeCroy_Scope(scope_ip_addr, verbose=True) as scope:
+		time_array = scope.time_array()
+
 #	def screen_dump():
 #
 #		global scope_ip_addr
