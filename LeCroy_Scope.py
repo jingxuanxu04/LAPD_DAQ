@@ -250,7 +250,7 @@ class LeCroy_Scope:
 
 	#-------------------------------------------------------------------------
 
-	def screen_dump(self, white_background = False, png_fn = 'scope_screen_dump.png', full_screen = True):
+	def screen_dump(self, fig_name, white_background = False, png_fn = 'scope_screen_dump.png', full_screen = True, show_plot=True):
 		""" obtain a screen dump from the scope, in the form of a .png file
 			write the file with filenam png_fn (=argument)
 			read the file and display it on the screen using matplotlib imshow() function
@@ -276,9 +276,10 @@ class LeCroy_Scope:
 		file.close()
 		x = mpimg.imread(png_fn)
 		(h,w,d) = numpy.shape(x)
-		plt.figure(num=None, figsize=(w/100, h/100), dpi=100, facecolor='w', edgecolor='k')
-		plt.subplots_adjust(left=0.0, right=1.0, bottom=0.0, top=1.0)
-		plt.imshow(x)
+		if show_plot:
+			plt.figure(num=fig_name, figsize=(w/100, h/100), dpi=100, facecolor='w', edgecolor='k')
+			plt.subplots_adjust(left=0.0, right=1.0, bottom=0.0, top=1.0)
+			plt.imshow(x)
 
 	#-------------------------------------------------------------------------
 
@@ -940,24 +941,40 @@ class LeCroy_Scope:
 #<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
 #===============================================================================================================================================
 
-scope_ip_addr = '192.168.7.146'   # '128.97.13.149'
+
 if __name__ == '__main__':
 
-	with LeCroy_Scope(scope_ip_addr, verbose=True) as scope:
-		time_array = scope.time_array()
+	import matplotlib.pyplot as plt
 
-#	def screen_dump():
-#
-#		global scope_ip_addr
-#		with LeCroy_Scope(scope_ip_addr, verbose=False) as scope:
-#			#scope.set_vertical_scale('C3',.002)
-#			#scope.autoscale('C3')
-#			#time.sleep(.5)
-#			scope.screen_dump()
-#			plt.show(block=True)
+	with LeCroy_Scope("192.168.7.63", verbose=False) as scope:
+		scope.screen_dump("Bdot", png_fn='Bdot.png', show_plot=False)
+		
+	with LeCroy_Scope("192.168.7.64", verbose=False) as scope:
+		scope.screen_dump("magnetron", png_fn='magnetron.png', show_plot=False)
 
-#	with LeCroy_Scope(scope_ip_addr, verbose=False) as scope:
-#		scope.calibrate()
+	with LeCroy_Scope("192.168.7.66", verbose=False) as scope:
+		scope.screen_dump("x-ray", png_fn='xray.png', show_plot=False)
 
-#	screen_dump()
+	# Load images
+	img1 = mpimg.imread('Bdot.png')
+	img2 = mpimg.imread('magnetron.png')
+	img3 = mpimg.imread('xray.png')
+
+	# Create a figure to stack images vertically
+	fig, axs = plt.subplots(3, 1, figsize=(10, 15))
+
+	axs[0].imshow(img1)
+	axs[0].axis('off')
+	axs[0].set_title('Bdot')
+
+	axs[1].imshow(img2)
+	axs[1].axis('off')
+	axs[1].set_title('Magnetron')
+
+	axs[2].imshow(img3)
+	axs[2].axis('off')
+	axs[2].set_title('X-ray')
+
+	plt.tight_layout()
+	plt.show()
 
