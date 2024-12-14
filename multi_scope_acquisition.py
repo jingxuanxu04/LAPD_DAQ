@@ -24,6 +24,11 @@ def acquire_from_scope(scope_name, scope_ip, NTimes):
                 print(f"Error acquiring {tr} from {scope_name}: {e}")
                 continue
         scope.set_trigger_mode('NORM')
+
+        if scope.time_array is None:
+            time_ds = scope_group.create_dataset('time_array', data=time_array)
+            time_ds.attrs['units'] = 'seconds'
+            time_ds.attrs['description'] = 'Time array for all channels'
     return traces, data, headers
 
 class MultiScopeAcquisition:
@@ -78,16 +83,7 @@ class MultiScopeAcquisition:
                     scope_group.attrs['ip_address'] = self.scope_ips[scope_name]
                     scope_group.attrs['scope_type'] = self.scopes[scope_name].idn_string
                     scope_group.attrs['external_delay(ms)'] = self.external_delays.get(scope_name, '')
-                    
-                # Save time array only once per scope
-                with LeCroy_Scope(self.scope_ips[scope_name], verbose=False) as scope:
-                    traces = scope.displayed_traces()
-                    time_array = scope.time_array()
-                time_ds = scope_group.create_dataset('time_array', data=time_array)
-                time_ds.attrs['units'] = 'seconds'
-                time_ds.attrs['description'] = 'Time array for all channels'
-                time_dic[scope_name] = time_array
-        return time_dic
+
                     
 
     def update_hdf5(self, all_data, shot_num):
