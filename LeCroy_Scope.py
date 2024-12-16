@@ -609,20 +609,13 @@ class LeCroy_Scope:
 		"""
 		trace = self.validate_trace(trace)
 
-		# Optimize scope settings for faster acquisition
-		self.scope.chunk_size = 4*1024*1024  # Increase chunk size to 4MB for faster transfer
-		self.scope.timeout = 30000  # 30 second timeout
-		
-		# Use binary format and word data for faster transfer
 		self.scope.write('WAVEFORM_SETUP SP,0,NP,0,FP,1,SN,0')
 		self.scope.write('COMM_HEADER OFF')
 		self.scope.write('COMM_FORMAT DEF9,WORD,BIN')
 
-		if self.verbose: 
-			print('\n<:> reading', trace, 'from scope')
+		if self.verbose: print('\n<:> reading',trace,'from scope')
 
-		# Send command and read data in one operation
-		self.scope.write(f'{trace}:WAVEFORM?')
+		self.scope.write(trace+':WAVEFORM?')
 		self.trace_bytes = self.scope.read_raw()
 		
 		# Parse header to make it available for other methods
@@ -880,7 +873,6 @@ class LeCroy_Scope:
 		ndx1 = ndx0 + NSamples*2 if self.hdr.comm_type == 1 else ndx0 + NSamples
 		
 		if self.verbose:
-			print('<:> NSamples =', NSamples)
 			print('<:> record type:      ', RECORD_TYPES[self.hdr.record_type])
 			print('<:> timebase:         ', TIMEBASE_IDS[self.hdr.timebase], 'per div')
 			print('<:> vertical gain:    ', VERT_GAIN_IDS[self.hdr.fixed_vert_gain], 'per div')
