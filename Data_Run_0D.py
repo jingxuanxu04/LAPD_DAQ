@@ -129,6 +129,7 @@ def main():
     # Create save directory if it doesn't exist
     if not os.path.exists(path):
         os.makedirs(path)
+        
     # Check if file already exists
     if os.path.exists(save_path):
         while True:
@@ -142,6 +143,7 @@ def main():
             sys.exit()
         else:
             print('Overwriting existing file')
+            os.remove(save_path)  # Delete the existing file
     
     print('Data run started at', datetime.datetime.now())
     t_start = time.time()

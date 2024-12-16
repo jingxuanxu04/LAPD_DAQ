@@ -264,6 +264,10 @@ class MultiScopeAcquisition:
             # Store the time array for this scope
             self.time_arrays[scope_name] = time_array
             
+            # Check if time_array already exists
+            if 'time_array' in scope_group:
+                raise RuntimeError(f"Time array already exists for scope {scope_name}. This should not happen.")
+            
             # Save to HDF5
             time_ds = scope_group.create_dataset('time_array', data=time_array, dtype='float64')
             time_ds.attrs['units'] = 'seconds'
@@ -277,8 +281,13 @@ class MultiScopeAcquisition:
             for scope_name, (traces, data, headers) in all_data.items():
                 scope_group = f[scope_name]
                 
+                # Check if shot group already exists
+                shot_name = f'shot_{shot_num}'
+                if shot_name in scope_group:
+                    raise RuntimeError(f"Shot {shot_num} already exists for scope {scope_name}. This should not happen.")
+                
                 # Create shot group with optimized settings
-                shot_group = scope_group.create_group(f'shot_{shot_num}')
+                shot_group = scope_group.create_group(shot_name)
                 shot_group.attrs['acquisition_time'] = time.ctime()
                 
                 # Save trace data and headers with optimized chunk size and compression
@@ -441,5 +450,3 @@ class MultiScopeAcquisition:
             
         finally:
             plt.close('all')  # Ensure all figures are closed
-
-
