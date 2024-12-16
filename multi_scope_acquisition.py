@@ -199,12 +199,23 @@ class MultiScopeAcquisition:
 
     def update_plots(self, all_data, shot_num):
         """Update plots for all scopes"""
+        MAX_PLOT_POINTS = 10000  # Maximum number of points to plot
+        
         for scope_name, (traces, data, _) in all_data.items():
             if not traces:  # Skip if no valid traces for this scope
                 continue
                 
             fig = self.figures[scope_name]
             time_array = self.time_arrays[scope_name]
+            
+            # Calculate downsample factor if needed
+            n_points = len(time_array)
+            if n_points > MAX_PLOT_POINTS:
+                downsample = n_points // MAX_PLOT_POINTS
+                plot_time = time_array[::downsample]
+            else:
+                downsample = 1
+                plot_time = time_array
             
             # Clear previous shot's subplot if it exists
             for ax in fig.get_axes():
@@ -215,13 +226,14 @@ class MultiScopeAcquisition:
             # Create new subplot for this shot
             ax = fig.add_subplot(self.num_loops, 1, shot_num + 1)
             
-            # Plot each trace
+            # Plot each trace with downsampled data
             for tr in traces:
                 if tr in data:
                     # Convert to milliseconds only for plotting
-                    ax.plot(time_array * 1000, data[tr], label=tr)
+                    plot_data = data[tr][::downsample]
+                    ax.plot(plot_time * 1000, plot_data, label=tr)
             
-            ax.set_title(f'Shot {shot_num+1}')
+            ax.set_title(f'Shot {shot_num+1} ({len(plot_time)} points)')
             ax.set_xlabel('Time (ms)')
             ax.set_ylabel('Voltage (V)')
             ax.grid(True)
@@ -241,10 +253,11 @@ class MultiScopeAcquisition:
             
             active_scopes = []  # Keep track of scopes that have valid data
             for name, scope in self.scopes.items():
-
                 print(f"\nAcquiring data from {name}...")
                 start_time = time.time()
                 traces, data, headers, time_array = acquire_from_scope(scope, name, first_acquisition=True)
+                if time_array is not None:
+                    print(f"Time array length: {len(time_array)} points")
                 acquisition_time = time.time() - start_time
                 print(f"Acquired data from {name} in {acquisition_time:.2f} seconds")
 
@@ -278,8 +291,10 @@ class MultiScopeAcquisition:
                     print(f"Warning: No valid data acquired for shot {shot+1}")
                     continue
                 
-                # Save data and update plots
+                # Save full data to HDF5
                 self.update_hdf5(all_data, shot)
+                
+                # Update plots with downsampled data
                 self.update_plots(all_data, shot)
                 
                 print(f"Shot {shot+1} completed in {time.time() - start_time:.2f} seconds")
