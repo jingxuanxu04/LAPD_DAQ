@@ -19,7 +19,9 @@ def acquire_from_scope(scope, scope_name, first_acquisition=False):
         headers: Dict of trace headers
         time_array: Time array (only if first_acquisition=True)
     """
-    # Check current trigger mode with retry
+    st_time = time.time() # for checking acquisition time
+
+    # Check if scope is in STOP mode before acquiring
     MAX_RETRIES = 100  # Maximum number of retries
     RETRY_DELAY = 0.1  # Delay between retries in seconds
     
@@ -83,10 +85,8 @@ def acquire_from_scope(scope, scope_name, first_acquisition=False):
                 print(f"Error acquiring {tr} from {scope_name}: {e}")
             continue
     
-    # Print acquisition statistics
-    if active_traces:
-        sample_size = len(data[active_traces[0]])
-        print(f"{scope_name}: Acquired {len(active_traces)} traces, {sample_size} samples each")
+    # Print acquisition time
+    print(f"Acquisition from {scope_name} completed in {time.time() - st_time:.2f} seconds")
 
     if first_acquisition:
         return active_traces, data, headers, time_array
@@ -114,7 +114,7 @@ class MultiScopeAcquisition:
         for name, ip in self.scope_ips.items():
             try:
                 self.scopes[name] = LeCroy_Scope(ip, verbose=False)
-                self.scopes[name].set_trigger_mode('NORM')
+                self.scopes[name].set_trigger_mode('SINGLE')
                 self.figures[name] = plt.figure(figsize=(12, 8))
                 self.figures[name].canvas.manager.set_window_title(f'Scope: {name}')
             except Exception as e:
@@ -200,25 +200,16 @@ class MultiScopeAcquisition:
                     scope_group.attrs['ip_address'] = self.scope_ips[scope_name]
                     scope_group.attrs['scope_type'] = self.scopes[scope_name].idn_string
                     scope_group.attrs['external_delay(ms)'] = self.external_delays.get(scope_name, '')
+        return scope_group
 
-    def save_time_arrays(self):
+    def save_time_arrays(self, scope_group, time_array):
         """Save time arrays to HDF5 file"""
         with h5py.File(self.save_path, 'a') as f:
-            for scope_name, time_array in self.time_arrays.items():
-                scope_group = f[scope_name]
-                if 'time_array' not in scope_group:
-
-                    # time_array = np.asarray(time_array, dtype=np.float64)
-                    # print(f"Converted time array dtype for {scope_name}: {time_array.dtype}")
-                    
-                    # Create dataset with explicit dtype
-                    time_ds = scope_group.create_dataset('time_array', 
-                                                       data=time_array,
-                                                       dtype='float64')
-                    
-                    time_ds.attrs['units'] = 'seconds'
-                    time_ds.attrs['description'] = 'Time array for all channels'
-                    time_ds.attrs['dtype'] = str(time_array.dtype)  # Store dtype information
+                time_ds = scope_group.create_dataset('time_array', data=time_array, dtype='float64')
+                
+                time_ds.attrs['units'] = 'seconds'
+                time_ds.attrs['description'] = 'Time array for all channels'
+                time_ds.attrs['dtype'] = str(time_array.dtype)  # Store dtype information
 
     def update_hdf5(self, all_data, shot_num):
         """Update HDF5 file with acquired data using optimized settings"""
@@ -329,15 +320,8 @@ class MultiScopeAcquisition:
         try:
             # Initialize plots and HDF5 file
             plt.ion()  # Interactive mode on
-            self.initialize_hdf5()
-            
-            # Properly handle figures
-            for scope_name in self.scope_ips:
-                if scope_name in self.figures:
-                    plt.close(self.figures[scope_name])
-                self.figures[scope_name] = plt.figure(figsize=(24, 16))
-                self.figures[scope_name].canvas.manager.set_window_title(f'Scope: {scope_name}')
-            
+            scope_group = self.initialize_hdf5()
+
             active_scopes = []  # Keep track of scopes that have valid data
             
             # Main acquisition loop
@@ -354,23 +338,9 @@ class MultiScopeAcquisition:
                     # First shot: get time arrays and validate scopes
                     if shot == 0:
                         traces, data, headers, time_array = acquire_from_scope(scope, name, first_acquisition=True)
-                        if traces and time_array is not None:
-                            self.time_arrays[name] = time_array
-                            active_scopes.append(name)
-                            # Save time array to HDF5 during first shot
-                            try:
-                                with h5py.File(self.save_path, 'a') as f:
-                                    scope_group = f[name]
-                                    if 'time_array' not in scope_group:
-                                        time_ds = scope_group.create_dataset('time_array', 
-                                                                           data=time_array,
-                                                                           dtype='float64')
-                                        time_ds.attrs['units'] = 'seconds'
-                                        time_ds.attrs['description'] = 'Time array for all channels'
-                                        time_ds.attrs['dtype'] = str(time_array.dtype)
-                            except Exception as e:
-                                print(f"Error saving time array for {name}: {e}")
-                                continue
+                        self.save_time_arrays(scope_group, time_array=time_array)
+                        active_scopes.append(name)
+
                     else:
                         # Subsequent shots: only acquire from active scopes
                         if name in active_scopes:
