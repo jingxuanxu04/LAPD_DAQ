@@ -1,9 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from LeCroy_Scope import LeCroy_Scope
+from LeCroy_Scope import LeCroy_Scope, WAVEDESC, WAVEDESC_FMT, WAVEDESC_SIZE
 import h5py
 import time
 import os
+import struct
 
 #===============================================================================================================================================
 
