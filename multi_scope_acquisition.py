@@ -134,9 +134,12 @@ class MultiScopeAcquisition:
             for scope_name, time_array in self.time_arrays.items():
                 scope_group = f[scope_name]
                 if 'time_array' not in scope_group:
+                    # Ensure time array is float64 for HDF5 compatibility
+                    time_array = np.asarray(time_array, dtype=np.float64)
                     time_ds = scope_group.create_dataset('time_array', data=time_array)
                     time_ds.attrs['units'] = 'seconds'
                     time_ds.attrs['description'] = 'Time array for all channels'
+                    time_ds.attrs['dtype'] = str(time_array.dtype)  # Store dtype information
 
     def update_hdf5(self, all_data, shot_num):
         """Update HDF5 file with acquired data"""
