@@ -36,7 +36,7 @@ def acquire_from_scope(scope, scope_name, first_acquisition=False):
             
             # Get time array from first valid trace if needed
             if first_acquisition and time_array is None:
-                time_array = scope.time_array
+                time_array = scope.time_array()
 
         except Exception as e:
             if "NSamples = 0" in str(e):
@@ -47,7 +47,6 @@ def acquire_from_scope(scope, scope_name, first_acquisition=False):
     scope.set_trigger_mode('NORM')
 
     if first_acquisition:
-        print(time_array.dtype)
         return active_traces, data, headers, time_array
     return active_traces, data, headers
 
@@ -74,7 +73,6 @@ class MultiScopeAcquisition:
             try:
                 self.scopes[name] = LeCroy_Scope(ip, verbose=False)
                 self.figures[name] = plt.figure(figsize=(12, 8))
-                self.figures[name].suptitle(f'{name} Traces')
             except Exception as e:
                 print(f"Error initializing scope {name}: {e}")
                 # Clean up any scopes that were successfully initialized
@@ -165,20 +163,14 @@ class MultiScopeAcquisition:
             for scope_name, time_array in self.time_arrays.items():
                 scope_group = f[scope_name]
                 if 'time_array' not in scope_group:
-                    # Print original dtype
-                    print(f"Original time array dtype for {scope_name}: {time_array.dtype}")
-                    
-                    # Ensure time array is float64 for HDF5 compatibility
-                    time_array = np.asarray(time_array, dtype=np.float64)
-                    print(f"Converted time array dtype for {scope_name}: {time_array.dtype}")
+
+                    # time_array = np.asarray(time_array, dtype=np.float64)
+                    # print(f"Converted time array dtype for {scope_name}: {time_array.dtype}")
                     
                     # Create dataset with explicit dtype
                     time_ds = scope_group.create_dataset('time_array', 
                                                        data=time_array,
                                                        dtype='float64')
-                    
-                    # Verify stored dtype
-                    print(f"Stored HDF5 dtype for {scope_name}: {time_ds.dtype}")
                     
                     time_ds.attrs['units'] = 'seconds'
                     time_ds.attrs['description'] = 'Time array for all channels'
@@ -247,19 +239,15 @@ class MultiScopeAcquisition:
             plt.ion()  # Interactive mode on
             self.initialize_hdf5()
             
-            # First acquisition to get time arrays
-            print("\nPerforming initial acquisition to get time arrays...")
             active_scopes = []  # Keep track of scopes that have valid data
             for name, scope in self.scopes.items():
+
                 print(f"\nAcquiring data from {name}...")
                 start_time = time.time()
                 traces, data, headers, time_array = acquire_from_scope(scope, name, first_acquisition=True)
-                if time_array is not None:
-                    print(f"Time array shape for {name}: {time_array.shape}")
-                    print(f"Time array dtype for {name}: {time_array.dtype}")
-                    print(f"Time array range: {time_array[0]:.9f} to {time_array[-1]:.9f} seconds")
                 acquisition_time = time.time() - start_time
                 print(f"Acquired data from {name} in {acquisition_time:.2f} seconds")
+
                 if traces and time_array is not None:  # Check if we got any valid traces and time array
                     self.time_arrays[name] = time_array
                     active_scopes.append(name)
@@ -272,16 +260,6 @@ class MultiScopeAcquisition:
             # Save time arrays to HDF5
             print("\nSaving time arrays to HDF5...")
             self.save_time_arrays()
-            
-            # Verify saved time arrays
-            print("\nVerifying saved time arrays...")
-            with h5py.File(self.save_path, 'r') as f:
-                for name in active_scopes:
-                    time_ds = f[name]['time_array']
-                    print(f"\n{name} time array verification:")
-                    print(f"  Stored dtype: {time_ds.dtype}")
-                    print(f"  Shape: {time_ds.shape}")
-                    print(f"  Range: {time_ds[0]:.9f} to {time_ds[-1]:.9f} seconds")
             
             # Main acquisition loop
             for shot in range(self.num_loops):
