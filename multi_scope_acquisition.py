@@ -182,7 +182,7 @@ class MultiScopeAcquisition:
         return script_contents
     
     def initialize_hdf5(self):
-        """Initialize HDF5 file with scope information and time arrays"""
+        """Initialize HDF5 file with scope information"""
         with h5py.File(self.save_path, 'a') as f:
             # Add experiment description and creation time
             f.attrs['description'] = self.get_experiment_description()
@@ -193,23 +193,82 @@ class MultiScopeAcquisition:
             f.attrs['source_code'] = str(script_contents)
             
             # Create scope groups with their descriptions
-            for scope_name in self.scope_ips:  # Fix: iterate over keys only
+            for scope_name in self.scope_ips:
                 if scope_name not in f:
                     scope_group = f.create_group(scope_name)
                     scope_group.attrs['description'] = self.get_scope_description(scope_name)
                     scope_group.attrs['ip_address'] = self.scope_ips[scope_name]
                     scope_group.attrs['scope_type'] = self.scopes[scope_name].idn_string
                     scope_group.attrs['external_delay(ms)'] = self.external_delays.get(scope_name, '')
-        return scope_group
 
-    def save_time_arrays(self, scope_group, time_array):
-        """Save time arrays to HDF5 file"""
-        with h5py.File(self.save_path, 'a') as f:
-                time_ds = scope_group.create_dataset('time_array', data=time_array, dtype='float64')
+    def initialize_scopes(self):
+        """Initialize scopes and get time arrays on first acquisition"""
+        all_data = {}
+        active_scopes = []
+        
+        for name, scope in self.scopes.items():
+            print(f"\nInitializing {name}...")
+            
+            # Get initial data and time arrays
+            try:
+                traces, data, headers, time_array = acquire_from_scope(scope, name, first_acquisition=True)
                 
-                time_ds.attrs['units'] = 'seconds'
-                time_ds.attrs['description'] = 'Time array for all channels'
-                time_ds.attrs['dtype'] = str(time_array.dtype)  # Store dtype information
+                if traces:  # Only save if we got valid data
+                    self.save_time_arrays(name, time_array)
+                    active_scopes.append(name)
+                    all_data[name] = (traces, data, headers)
+                    print(f"Successfully initialized {name}")
+                else:
+                    print(f"Warning: Could not initialize {name} - no traces returned")
+            except Exception as e:
+                print(f"Error initializing {name}: {str(e)}")
+                continue
+        
+        return all_data, active_scopes
+
+    def acquire_shot(self, active_scopes, shot_num):
+        """Acquire data from all active scopes for one shot"""
+        all_data = {}
+        failed_scopes = []
+        
+        for name in active_scopes:
+            print(f"\nAcquiring data from {name}...")
+            scope = self.scopes[name]
+            
+            try:
+                traces, data, headers = acquire_from_scope(scope, name, first_acquisition=False)
+                if traces:
+                    all_data[name] = (traces, data, headers)
+                else:
+                    print(f"Warning: No valid data from {name} for shot {shot_num+1}")
+                    failed_scopes.append(name)
+            except Exception as e:
+                print(f"Error acquiring from {name}: {str(e)}")
+                failed_scopes.append(name)
+        
+        # Remove failed scopes from active list
+        for name in failed_scopes:
+            active_scopes.remove(name)
+        
+        return all_data
+
+    def save_time_arrays(self, scope_name, time_array):
+        """Save time array for a scope to HDF5 file
+        
+        Args:
+            scope_name: Name of the scope
+            time_array: Time array to save
+        """
+        with h5py.File(self.save_path, 'a') as f:
+            scope_group = f[scope_name]
+            # Store the time array for this scope
+            self.time_arrays[scope_name] = time_array
+            
+            # Save to HDF5
+            time_ds = scope_group.create_dataset('time_array', data=time_array, dtype='float64')
+            time_ds.attrs['units'] = 'seconds'
+            time_ds.attrs['description'] = 'Time array for all channels'
+            time_ds.attrs['dtype'] = str(time_array.dtype)
 
     def update_hdf5(self, all_data, shot_num):
         """Update HDF5 file with acquired data using optimized settings"""
@@ -266,13 +325,21 @@ class MultiScopeAcquisition:
         for scope_name, (traces, data, _) in all_data.items():
             if not traces:  # Skip if no valid traces for this scope
                 continue
-                
+            
+            if scope_name not in self.time_arrays:
+                print(f"Warning: No time array found for {scope_name}")
+                continue
+            
             fig = self.figures[scope_name]
             time_array = self.time_arrays[scope_name]
             
             try:
                 # Calculate optimal downsample factor
                 n_points = len(time_array)
+                if n_points == 0:
+                    print(f"Warning: Empty time array for {scope_name}")
+                    continue
+                
                 downsample = max(1, n_points // MAX_PLOT_POINTS)
                 
                 # Pre-calculate downsampled time array
@@ -284,18 +351,25 @@ class MultiScopeAcquisition:
                 
                 # Plot each trace with optimized downsampling
                 for tr in traces:
-                    if tr in data:
-                        # Convert binary data to voltage values if needed
-                        trace_data = np.asarray(data[tr])
-                        if trace_data.dtype == np.uint16:
-                            # Convert 12-bit data to voltage (-10V to +10V range)
-                            trace_data = (trace_data.astype(float) - 2048) * (20.0/4096)
-                        
-                        # Efficient downsampling using array slicing
-                        plot_data = trace_data[::downsample]
-                        
-                        # Plot in milliseconds
-                        ax.plot(plot_time * 1000, plot_data, label=tr)
+                    if tr not in data:
+                        print(f"Warning: No data for trace {tr}")
+                        continue
+                    
+                    # Convert binary data to voltage values if needed
+                    trace_data = np.asarray(data[tr])
+                    if trace_data.dtype == np.uint16:
+                        # Convert 12-bit data to voltage (-10V to +10V range)
+                        trace_data = (trace_data.astype(float) - 2048) * (20.0/4096)
+                    
+                    # Efficient downsampling using array slicing
+                    plot_data = trace_data[::downsample]
+                    
+                    if len(plot_data) != len(plot_time):
+                        print(f"Warning: Data length mismatch for {tr}")
+                        continue
+                    
+                    # Plot in milliseconds
+                    ax.plot(plot_time * 1000, plot_data, label=tr)
                 
                 ax.set_title(f'Shot {shot_num+1} ({len(plot_time)} points)')
                 ax.set_xlabel('Time (ms)')
@@ -316,62 +390,56 @@ class MultiScopeAcquisition:
         plt.pause(0.01)  # Single pause after all plots are updated
 
     def run_acquisition(self):
-        """Main acquisition loop"""
+        """Main acquisition loop with clear separation between initialization and acquisition"""
         try:
-            # Initialize plots and HDF5 file
-            plt.ion()  # Interactive mode on
-            scope_group = self.initialize_hdf5()
-
-            active_scopes = []  # Keep track of scopes that have valid data
+            # Initialize plots
+            plt.ion()
             
-            # Main acquisition loop
-            for shot in range(self.num_loops):
-                print(f"Starting acquisition shot {shot+1}/{self.num_loops}")
+            # Initialize HDF5 file structure
+            print("Initializing HDF5 file...")
+            self.initialize_hdf5()
+            
+            # First shot: Initialize scopes and get time arrays
+            print("\nStarting initial acquisition (shot 1)...")
+            start_time = time.time()
+            
+            all_data, active_scopes = self.initialize_scopes()
+            
+            if not active_scopes:
+                raise RuntimeError("No valid data found from any scope. Aborting acquisition.")
+            
+            # Save and plot first shot
+            self.update_hdf5(all_data, 0)
+            self.update_plots(all_data, 0)
+            print(f"Initial acquisition completed in {time.time() - start_time:.2f} seconds")
+            
+            # Subsequent shots
+            for shot in range(1, self.num_loops):
+                print(f"\nStarting acquisition shot {shot+1}/{self.num_loops}")
                 start_time = time.time()
                 
-                all_data = {}
-                
-                # Acquire data from each scope sequentially
-                for name, scope in self.scopes.items():
-                    print(f"\nAcquiring data from {name}...")
-                    
-                    # First shot: get time arrays and validate scopes
-                    if shot == 0:
-                        traces, data, headers, time_array = acquire_from_scope(scope, name, first_acquisition=True)
-                        self.save_time_arrays(scope_group, time_array=time_array)
-                        active_scopes.append(name)
-
-                    else:
-                        # Subsequent shots: only acquire from active scopes
-                        if name in active_scopes:
-                            traces, data, headers = acquire_from_scope(scope, name, first_acquisition=False)
-                        else:
-                            continue
-                    
-                    if traces:  # Only add to all_data if we got valid traces
-                        all_data[name] = (traces, data, headers)
+                # Acquire data from all active scopes
+                all_data = self.acquire_shot(active_scopes, shot)
                 
                 if not all_data:
                     print(f"Warning: No valid data acquired for shot {shot+1}")
                     continue
                 
-                # Save data to HDF5
+                # Save and plot
                 self.update_hdf5(all_data, shot)
-                
-                # Update plots with downsampled data
                 self.update_plots(all_data, shot)
                 
                 print(f"Shot {shot+1} completed in {time.time() - start_time:.2f} seconds")
-                
-                if shot == 0 and not active_scopes:
-                    raise RuntimeError("No valid data found from any scope. Aborting acquisition.")
             
             # Keep figures open after acquisition
             plt.show(block=False)
             input("Press Enter to close figures and exit...")
             
+        except Exception as e:
+            print(f"Error during acquisition: {str(e)}")
+            raise
+            
         finally:
             plt.close('all')  # Ensure all figures are closed
-            # Cleanup will be handled by __exit__ when using context manager
 
 
