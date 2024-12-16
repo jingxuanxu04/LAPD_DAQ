@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from LeCroy_Scope import LeCroy_Scope, WAVEDESC, WAVEDESC_FMT, WAVEDESC_SIZE
+from LeCroy_Scope import LeCroy_Scope, WAVEDESC_SIZE
 import h5py
 import time
 import os
@@ -19,13 +19,27 @@ def acquire_from_scope(scope, scope_name, first_acquisition=False):
         headers: Dict of trace headers
         time_array: Time array (only if first_acquisition=True)
     """
+    # Check current trigger mode with retry
+    MAX_RETRIES = 100  # Maximum number of retries
+    RETRY_DELAY = 0.1  # Delay between retries in seconds
+    
+    for retry in range(MAX_RETRIES):
+        current_mode = scope.set_trigger_mode('')  # Get current mode without changing it
+        if current_mode.strip() == 'STOP':
+            break
+        if retry == 0:  # Only print first time
+            print(f"Waiting for {scope_name} trigger mode to become STOP (currently {current_mode})")
+        time.sleep(RETRY_DELAY)
+    else:  # Loop completed without finding STOP mode
+        print(f"Warning: Timeout waiting for {scope_name} trigger mode to become STOP after {MAX_RETRIES * RETRY_DELAY:.1f}s")
+        return [], {}, {} if not first_acquisition else [], {}, {}, None
+
     data = {}
     headers = {}
     time_array = None
     active_traces = []  # List to store only traces that have data
     TIMEOUT = 10  # Timeout in seconds for acquisition
 
-    scope.set_trigger_mode('STOP')
     traces = scope.displayed_traces()
     
     for tr in traces:
@@ -33,40 +47,25 @@ def acquire_from_scope(scope, scope_name, first_acquisition=False):
             # Set timeout for acquisition
             scope.timeout = TIMEOUT * 1000  # Convert to ms
             
-            # Get raw data using acquire_raw
+            # Get raw data using acquire_raw (which now also parses header)
             trace_bytes = scope.acquire_raw(tr)
             
-            # Parse header from raw data
-            header = struct.unpack(WAVEDESC_FMT, trace_bytes[15:15+WAVEDESC_SIZE])
-            header = WAVEDESC._make(header)
+            # Get header bytes for storage
+            headers[tr] = np.void(trace_bytes[15:15+WAVEDESC_SIZE])
             
-            # Calculate number of samples
-            NSamples = int(0)
-            if header.comm_type == 0:  # data returned as signed chars
-                NSamples = header.wave_array_1
-            elif header.comm_type == 1:  # data returned as shorts
-                NSamples = int(header.wave_array_1/2)
-            else:
-                raise RuntimeError(f'Unexpected comm_type: {header.comm_type}')
-                
-            if NSamples == 0:
-                raise RuntimeError('No samples in trace data')
-                
+            # Get data indices from already parsed header
+            NSamples, ndx0, ndx1 = scope.parse_header(trace_bytes)
+            
             # Parse the actual waveform data
-            ndx0 = (15+WAVEDESC_SIZE) + header.user_text + header.trigtime_array + header.ris_time_array + header.res_array1
-            
-            if header.comm_type == 1:  # data returned in words
-                ndx1 = ndx0 + NSamples*2
+            if scope.hdr.comm_type == 1:  # data returned in words
                 wdata = struct.unpack(str(NSamples)+'h', trace_bytes[ndx0:ndx1])
-                trace_data = np.array(wdata) * header.vertical_gain - header.vertical_offset
+                trace_data = np.array(wdata) * scope.hdr.vertical_gain - scope.hdr.vertical_offset
             else:  # data returned in bytes
-                ndx1 = ndx0 + NSamples
                 cdata = struct.unpack(str(NSamples)+'b', trace_bytes[ndx0:ndx1])
-                trace_data = np.array(cdata) * header.vertical_gain - header.vertical_offset
+                trace_data = np.array(cdata) * scope.hdr.vertical_gain - scope.hdr.vertical_offset
             
             # Store the data
             data[tr] = trace_data
-            headers[tr] = np.void(trace_bytes[15:15+WAVEDESC_SIZE])
             active_traces.append(tr)
             
             # Get time array from first valid trace if needed
@@ -81,11 +80,6 @@ def acquire_from_scope(scope, scope_name, first_acquisition=False):
             else:
                 print(f"Error acquiring {tr} from {scope_name}: {e}")
             continue
-        finally:
-            # Reset timeout to default
-            scope.timeout = 2000  # 2 seconds default
-    
-    scope.set_trigger_mode('NORM')
     
     # Print acquisition statistics
     if active_traces:
@@ -118,6 +112,7 @@ class MultiScopeAcquisition:
         for name, ip in self.scope_ips.items():
             try:
                 self.scopes[name] = LeCroy_Scope(ip, verbose=False)
+                self.scopes[name].set_trigger_mode('NORM')
                 self.figures[name] = plt.figure(figsize=(12, 8))
                 self.figures[name].canvas.manager.set_window_title(f'Scope: {name}')
             except Exception as e:
@@ -334,34 +329,14 @@ class MultiScopeAcquisition:
             plt.ion()  # Interactive mode on
             self.initialize_hdf5()
             
-            # Create figures before acquisition
+            # Properly handle figures
             for scope_name in self.scope_ips:
-                if scope_name not in self.figures:
-                    self.figures[scope_name] = plt.figure(figsize=(24, 16))
-                    self.figures[scope_name].canvas.manager.set_window_title(f'Scope: {scope_name}')
+                if scope_name in self.figures:
+                    plt.close(self.figures[scope_name])
+                self.figures[scope_name] = plt.figure(figsize=(24, 16))
+                self.figures[scope_name].canvas.manager.set_window_title(f'Scope: {scope_name}')
             
             active_scopes = []  # Keep track of scopes that have valid data
-            for name, scope in self.scopes.items():
-                print(f"\nAcquiring data from {name}...")
-                start_time = time.time()
-                traces, data, headers, time_array = acquire_from_scope(scope, name, first_acquisition=True)
-                if time_array is not None:
-                    print(f"Time array length: {len(time_array)} points")
-                acquisition_time = time.time() - start_time
-                print(f"Acquired data from {name} in {acquisition_time:.2f} seconds")
-
-                if traces and time_array is not None:  # Check if we got any valid traces and time array
-                    self.time_arrays[name] = time_array
-                    active_scopes.append(name)
-                else:
-                    print(f"Warning: No valid traces found for scope {name}. This scope will be skipped.")
-            
-            if not active_scopes:
-                raise RuntimeError("No valid data found from any scope. Aborting acquisition.")
-            
-            # Save time arrays to HDF5
-            print("\nSaving time arrays to HDF5...")
-            self.save_time_arrays()
             
             # Main acquisition loop
             for shot in range(self.num_loops):
@@ -370,9 +345,37 @@ class MultiScopeAcquisition:
                 
                 all_data = {}
                 
-                # Acquire data from each active scope sequentially
-                for name in active_scopes:
-                    traces, data, headers = acquire_from_scope(self.scopes[name], name)
+                # Acquire data from each scope sequentially
+                for name, scope in self.scopes.items():
+                    print(f"\nAcquiring data from {name}...")
+                    
+                    # First shot: get time arrays and validate scopes
+                    if shot == 0:
+                        traces, data, headers, time_array = acquire_from_scope(scope, name, first_acquisition=True)
+                        if traces and time_array is not None:
+                            self.time_arrays[name] = time_array
+                            active_scopes.append(name)
+                            # Save time array to HDF5 during first shot
+                            try:
+                                with h5py.File(self.save_path, 'a') as f:
+                                    scope_group = f[name]
+                                    if 'time_array' not in scope_group:
+                                        time_ds = scope_group.create_dataset('time_array', 
+                                                                           data=time_array,
+                                                                           dtype='float64')
+                                        time_ds.attrs['units'] = 'seconds'
+                                        time_ds.attrs['description'] = 'Time array for all channels'
+                                        time_ds.attrs['dtype'] = str(time_array.dtype)
+                            except Exception as e:
+                                print(f"Error saving time array for {name}: {e}")
+                                continue
+                    else:
+                        # Subsequent shots: only acquire from active scopes
+                        if name in active_scopes:
+                            traces, data, headers = acquire_from_scope(scope, name, first_acquisition=False)
+                        else:
+                            continue
+                    
                     if traces:  # Only add to all_data if we got valid traces
                         all_data[name] = (traces, data, headers)
                 
@@ -380,13 +383,16 @@ class MultiScopeAcquisition:
                     print(f"Warning: No valid data acquired for shot {shot+1}")
                     continue
                 
-                # Save full data to HDF5
+                # Save data to HDF5
                 self.update_hdf5(all_data, shot)
                 
                 # Update plots with downsampled data
                 self.update_plots(all_data, shot)
                 
                 print(f"Shot {shot+1} completed in {time.time() - start_time:.2f} seconds")
+                
+                if shot == 0 and not active_scopes:
+                    raise RuntimeError("No valid data found from any scope. Aborting acquisition.")
             
             # Keep figures open after acquisition
             plt.show(block=False)
