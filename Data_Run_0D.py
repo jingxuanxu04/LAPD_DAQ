@@ -154,7 +154,6 @@ if __name__ == '__main__':
             scope_ips=scope_ips,
             num_loops=num_shots,
             save_path=save_path,
-            file_description=get_experiment_description(),
             external_delays=external_delays
         )
         
@@ -174,3 +173,57 @@ if __name__ == '__main__':
             print(f'Wrote file "{save_path}", {size:.1f} MB')
         else:
             print(f'File "{save_path}" was not created')
+
+#===============================================================================================================================================
+# Test Data Run
+#===============================================================================================================================================
+
+def run_test():
+    """Run a test data acquisition with minimal settings"""
+    test_scope_ips = {
+        'Bdot': '192.168.7.63',
+        'magnetron': '192.168.7.64',
+        'x-ray_dipole': '192.168.7.66'
+    }
+    
+    test_external_delays = {
+        'Bdot': 0,
+        'magnetron': 0,    
+        'x-ray_dipole': 0      
+    }
+    
+    test_save_path = r"E:\Shadow data\Energetic_Electron_Ring\test.hdf5"
+    test_path = os.path.dirname(test_save_path)
+    
+    # Create test directory if it doesn't exist
+    if not os.path.exists(test_path):
+        os.makedirs(test_path)
+        
+    print('\n=== Running Test Acquisition ===')
+    print('Using test configuration:')
+    print(f'Scopes: {list(test_scope_ips.keys())}')
+    print(f'Save path: {test_save_path}')
+    print('Number of shots: 1')
+    
+    try:
+        # Run test acquisition
+        acquisition = MultiScopeAcquisition(
+            scope_ips=test_scope_ips,
+            num_loops=1,
+            save_path=test_save_path,
+            external_delays=test_external_delays
+        )
+        
+        acquisition.run_acquisition()
+        
+        if os.path.isfile(test_save_path):
+            size = os.stat(test_save_path).st_size/(1024*1024)
+            print(f'\nTest successful! Wrote file "{test_save_path}", {size:.1f} MB')
+        else:
+            print('\nTest failed: File was not created')
+            
+    except Exception as e:
+        print(f'\nTest failed with error: {str(e)}')
+
+if __name__ == '__main__' and len(sys.argv) > 1 and sys.argv[1] == '--test':
+    run_test()
