@@ -73,6 +73,7 @@ class MultiScopeAcquisition:
             try:
                 self.scopes[name] = LeCroy_Scope(ip, verbose=False)
                 self.figures[name] = plt.figure(figsize=(12, 8))
+                self.figures[name].canvas.manager.set_window_title(f'Scope: {name}')
             except Exception as e:
                 print(f"Error initializing scope {name}: {e}")
                 # Clean up any scopes that were successfully initialized
@@ -217,8 +218,6 @@ class MultiScopeAcquisition:
                 downsample = 1
                 plot_time = time_array
             
-            # Clear the entire figure and create new subplot
-            fig.clear()
             ax = fig.add_subplot(self.num_loops, 1, shot_num + 1)
             
             # Plot each trace with downsampled data
@@ -251,7 +250,7 @@ class MultiScopeAcquisition:
             # Create figures before acquisition
             for scope_name in self.scope_ips:
                 if scope_name not in self.figures:
-                    self.figures[scope_name] = plt.figure(figsize=(12, 8))
+                    self.figures[scope_name] = plt.figure(figsize=(24, 16))
                     self.figures[scope_name].canvas.manager.set_window_title(f'Scope: {scope_name}')
             
             active_scopes = []  # Keep track of scopes that have valid data
@@ -310,30 +309,4 @@ class MultiScopeAcquisition:
             plt.close('all')  # Ensure all figures are closed
             # Cleanup will be handled by __exit__ when using context manager
 
-#===============================================================================================================================================
-#<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
-#===============================================================================================================================================
 
-if __name__ == '__main__':
-    scope_ips = {
-        'Bdot': '192.168.7.63',
-        'magnetron': '192.168.7.64',
-        'x-ray_dipole': '192.168.7.66'
-    }
-    
-    external_delays = {
-        'main_scope': 0,
-        'magnetron': 0,    
-        'x-ray': 0      
-    }
-    
-    save_path = r"E:\Shadow data\Energetic_Electron_Ring\test.hdf5"
-
-    # Run acquisition using context manager for proper cleanup
-    with MultiScopeAcquisition(
-        scope_ips=scope_ips,
-        num_loops=1,
-        save_path=save_path,
-        external_delays=external_delays
-    ) as acquisition:
-        acquisition.run_acquisition()

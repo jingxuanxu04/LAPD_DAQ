@@ -25,7 +25,7 @@ import sys
 '''
 User: Set experiment name and path
 '''
-exp_name = 'exp_11_multi_scope'  # experiment name
+exp_name = 'exp_00_test'  # experiment name
 date = datetime.date.today()
 path = f"E:\\Shadow data\\Energetic_Electron_Ring\\{exp_name}_{date}"
 save_path = f"{path}\\{exp_name}.hdf5"
@@ -35,9 +35,9 @@ save_path = f"{path}\\{exp_name}.hdf5"
 User: Set scope IP addresses and parameters
 '''
 scope_ips = {
-    'magnetron': '192.168.7.63',      # RF source measurements
-    'x-ray_dipole': '192.168.7.64',   # X-ray dipole measurements  
-    'Bdot': '192.168.7.65'           # Magnetic field measurements
+    'magnetron': '192.168.7.64',      # RF source measurements
+    'x-ray_dipole': '192.168.7.66',   # X-ray dipole measurements  
+    'Bdot': '192.168.7.63'           # Magnetic field measurements
 }
 
 external_delays = {
@@ -46,7 +46,7 @@ external_delays = {
     'Bdot': 25
 } # unit: milliseconds
 
-num_shots = 20  # Number of acquisitions to make
+num_shots = 2  # Number of acquisitions to make
 #-------------------------------------------------------------------------------------------------------------
 def get_experiment_description(): # USER EDITED
     """Return overall experiment description"""
@@ -175,7 +175,7 @@ def main():
 # Test Data Run
 #===============================================================================================================================================
 
-def run_test():
+def run_test(num_shots=5):
     """Run a test data acquisition with minimal settings"""
     test_scope_ips = {
         'magnetron': '192.168.7.64',
@@ -198,13 +198,13 @@ def run_test():
     print('Using test configuration:')
     print(f'Scopes: {list(test_scope_ips.keys())}')
     print(f'Save path: {test_save_path}')
-    print('Number of shots: 1')
+    print(f"Number of shots: {num_shots}")
     
     
     # Run test acquisition
     with MultiScopeAcquisition(
         scope_ips=test_scope_ips,
-        num_loops=1,
+        num_loops=num_shots,
         save_path=test_save_path,
         external_delays=test_external_delays
     ) as acquisition:
@@ -223,4 +223,4 @@ def run_test():
 #===============================================================================================================================================
 
 if __name__ == '__main__':
-    run_test()
+    main()
