@@ -14,7 +14,7 @@ def acquire_from_scope(scope_name, scope_ip, first_acquisition=False):
         scope_ip: IP address of the scope
         first_acquisition: If True, return time array as well
     Returns:
-        traces: List of trace names
+        traces: List of trace names that have valid data
         data: Dict of trace data
         headers: Dict of trace headers
         time_array: Time array (only if first_acquisition=True)
@@ -22,25 +22,34 @@ def acquire_from_scope(scope_name, scope_ip, first_acquisition=False):
     data = {}
     headers = {}
     time_array = None
+    active_traces = []  # List to store only traces that have data
 
     with LeCroy_Scope(scope_ip, verbose=False) as scope:
         scope.set_trigger_mode('STOP')
         traces = scope.displayed_traces()        
         for tr in traces:
             try:
-                data[tr] = scope.acquire(tr)
+                trace_data = scope.acquire(tr)
+                # If we get here, the trace has valid data
+                data[tr] = trace_data
                 headers[tr] = np.void(scope.header_bytes())
+                active_traces.append(tr)  # Add to list of active traces
+                
+                # Get time array from first valid trace if needed
                 if first_acquisition and time_array is None:
-                    time_array = scope.time_array  # Get time array on first acquisition
+                    time_array = scope.time_array
 
             except Exception as e:
-                print(f"Error acquiring {tr} from {scope_name}: {e}")
+                if "NSamples = 0" in str(e):
+                    print(f"Skipping {tr} from {scope_name}: Channel is displayed but not active")
+                else:
+                    print(f"Error acquiring {tr} from {scope_name}: {e}")
                 continue
         scope.set_trigger_mode('NORM')
 
     if first_acquisition:
-        return traces, data, headers, time_array
-    return traces, data, headers
+        return active_traces, data, headers, time_array
+    return active_traces, data, headers
 
 class MultiScopeAcquisition:
     def __init__(self, scope_ips, num_loops=10, save_path='multi_scope_data.hdf5', 
@@ -111,7 +120,7 @@ class MultiScopeAcquisition:
             f.attrs['source_code'] = str(script_contents)
             
             # Create scope groups with their descriptions
-            for scope_name, ip in self.scope_ips.items():
+            for scope_name in self.scope_ips:  # Fix: iterate over keys only
                 if scope_name not in f:
                     scope_group = f.create_group(scope_name)
                     scope_group.attrs['description'] = self.get_scope_description(scope_name)
@@ -153,18 +162,33 @@ class MultiScopeAcquisition:
     def update_plots(self, all_data, shot_num):
         """Update plots for all scopes"""
         for scope_name, (traces, data, _) in all_data.items():
+            if not traces:  # Skip if no valid traces for this scope
+                continue
+                
             fig = self.figures[scope_name]
             time_array = self.time_arrays[scope_name]
             
-            for i, tr in enumerate(traces):
+            # Clear previous shot's subplot if it exists
+            for ax in fig.get_axes():
+                if ax.get_subplotspec().num == shot_num:
+                    fig.delaxes(ax)
+                    break
+            
+            # Create new subplot for this shot
+            ax = fig.add_subplot(self.num_loops, 1, shot_num + 1)
+            
+            # Plot each trace
+            for tr in traces:
                 if tr in data:
-                    ax = fig.add_subplot(self.num_loops, 1, shot_num + 1)
                     # Convert to milliseconds only for plotting
-                    ax.plot(time_array * 1000, data[tr])
-                    ax.set_title(f'{tr} - Shot {shot_num+1}')
-                    ax.set_xlabel('Time (ms)')
-                    ax.set_ylabel('Voltage (V)')
-                    ax.grid(True)
+                    ax.plot(time_array * 1000, data[tr], label=tr)
+            
+            ax.set_title(f'Shot {shot_num+1}')
+            ax.set_xlabel('Time (ms)')
+            ax.set_ylabel('Voltage (V)')
+            ax.grid(True)
+            if len(traces) > 1:  # Only add legend if there are multiple traces
+                ax.legend()
             
             fig.tight_layout()
             plt.draw()
@@ -179,9 +203,17 @@ class MultiScopeAcquisition:
             
             # First acquisition to get time arrays
             print("Performing initial acquisition to get time arrays...")
+            active_scopes = []  # Keep track of scopes that have valid data
             for name, ip in self.scope_ips.items():
                 traces, data, headers, time_array = acquire_from_scope(name, ip, first_acquisition=True)
-                self.time_arrays[name] = time_array
+                if traces and time_array is not None:  # Check if we got any valid traces and time array
+                    self.time_arrays[name] = time_array
+                    active_scopes.append(name)
+                else:
+                    print(f"Warning: No valid traces found for scope {name}. This scope will be skipped.")
+            
+            if not active_scopes:
+                raise RuntimeError("No valid data found from any scope. Aborting acquisition.")
             
             # Save time arrays to HDF5
             self.save_time_arrays()
@@ -193,10 +225,15 @@ class MultiScopeAcquisition:
                 
                 all_data = {}
                 
-                # Acquire data from each scope sequentially
-                for name, ip in self.scope_ips.items():
-                    traces, data, headers = acquire_from_scope(name, ip)
-                    all_data[name] = (traces, data, headers)
+                # Acquire data from each active scope sequentially
+                for name in active_scopes:
+                    traces, data, headers = acquire_from_scope(name, self.scope_ips[name])
+                    if traces:  # Only add to all_data if we got valid traces
+                        all_data[name] = (traces, data, headers)
+                
+                if not all_data:
+                    print(f"Warning: No valid data acquired for shot {shot+1}")
+                    continue
                 
                 # Save data and update plots
                 self.update_hdf5(all_data, shot)
