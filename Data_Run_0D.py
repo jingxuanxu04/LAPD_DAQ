@@ -225,4 +225,4 @@ def run_test(num_shots=5):
 #===============================================================================================================================================
 
 if __name__ == '__main__':
-    main()
+    run_test(num_shots=5)  # Run a test acquisition with minimal settings

@@ -307,18 +307,13 @@ class MultiScopeAcquisition:
                             data=trace_data,
                             chunks=(chunk_size,),
                             compression='gzip',
-                            compression_opts=1,  # Light compression for speed
+                            compression_opts=9,  # Maximum compression
                             shuffle=True,  # Helps with compression of binary data
                             fletcher32=True  # Add checksum for data integrity
                         )
                         
                         # Store header as binary data
-                        header_ds = shot_group.create_dataset(
-                            f'{tr}_header', 
-                            data=headers[tr],
-                            compression='gzip',
-                            compression_opts=1
-                        )
+                        header_ds = shot_group.create_dataset(f'{tr}_header', data=headers[tr])
                         
                         # Add channel descriptions and metadata
                         data_ds.attrs['description'] = self.get_channel_description(tr)
@@ -354,8 +349,6 @@ class MultiScopeAcquisition:
                 # Pre-calculate downsampled time array
                 plot_time = time_array[::downsample]
                 
-                # Clear the entire figure and create new subplot
-                fig.clear()
                 ax = fig.add_subplot(self.num_loops, 1, shot_num + 1)
                 
                 # Plot each trace with optimized downsampling
@@ -380,7 +373,7 @@ class MultiScopeAcquisition:
                     # Plot in milliseconds
                     ax.plot(plot_time * 1000, plot_data, label=tr)
                 
-                ax.set_title(f'Shot {shot_num+1} ({len(plot_time)} points)')
+                ax.set_title(f'Shot {shot_num+1}')
                 ax.set_xlabel('Time (ms)')
                 ax.set_ylabel('Voltage (V)')
                 ax.grid(True)
