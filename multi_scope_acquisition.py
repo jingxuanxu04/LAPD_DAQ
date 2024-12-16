@@ -23,14 +23,14 @@ def acquire_from_scope(scope, scope_name, first_acquisition=False):
 
     # Check if scope is in STOP mode before acquiring
     MAX_RETRIES = 100  # Maximum number of retries
-    RETRY_DELAY = 0.1  # Delay between retries in seconds
+    RETRY_DELAY = 0.05  # Delay between retries in seconds
     
     for retry in range(MAX_RETRIES):
         current_mode = scope.set_trigger_mode('')  # Get current mode without changing it
         if current_mode.strip() == 'STOP':
             break
-        if retry == 0:  # Only print first time
-            print(f"Waiting for {scope_name} trigger mode to become STOP (currently {current_mode})")
+        # if retry == 0:  # Only print first time
+        #     print(f"Waiting for {scope_name} trigger mode to become STOP (currently {current_mode})")
         time.sleep(RETRY_DELAY)
     else:  # Loop completed without finding STOP mode
         print(f"Warning: Timeout waiting for {scope_name} trigger mode to become STOP after {MAX_RETRIES * RETRY_DELAY:.1f}s")
@@ -193,10 +193,7 @@ class MultiScopeAcquisition:
             for scope_name in self.scope_ips:
                 if scope_name not in f:
                     scope_group = f.create_group(scope_name)
-                    scope_group.attrs['description'] = self.get_scope_description(scope_name)
-                    scope_group.attrs['ip_address'] = self.scope_ips[scope_name]
-                    scope_group.attrs['scope_type'] = self.scopes[scope_name].idn_string
-                    scope_group.attrs['external_delay(ms)'] = self.external_delays.get(scope_name, '')
+
 
     def initialize_scopes(self):
         """Initialize scopes and get time arrays on first acquisition"""
@@ -464,4 +461,11 @@ class MultiScopeAcquisition:
             raise
             
         finally:
+            with h5py.File(self.save_path, 'a') as f:
+                for scope_name in self.scope_ips:
+                    scope_group = f[scope_name]
+                    scope_group.attrs['description'] = self.get_scope_description(scope_name)
+                    scope_group.attrs['ip_address'] = self.scope_ips[scope_name]
+                    scope_group.attrs['scope_type'] = self.scopes[scope_name].idn_string
+                    scope_group.attrs['external_delay(ms)'] = self.external_delays.get(scope_name, '')
             plt.close('all')  # Ensure all figures are closed

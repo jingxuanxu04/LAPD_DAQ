@@ -177,7 +177,7 @@ def main():
 # Test Data Run
 #===============================================================================================================================================
 
-def run_test(num_shots=5):
+def run_test(test_save_path, num_shots=5):
     """Run a test data acquisition with minimal settings"""
     test_scope_ips = {
         'magnetron': '192.168.7.64',
@@ -188,14 +188,11 @@ def run_test(num_shots=5):
         'magnetron': 0,    
         'x-ray_dipole': 0      
     }
-    
-    test_save_path = r"E:\Shadow data\Energetic_Electron_Ring\test.hdf5"
-    test_path = os.path.dirname(test_save_path)
-    
-    # Create test directory if it doesn't exist
-    if not os.path.exists(test_path):
-        os.makedirs(test_path)
-        
+
+    if os.path.exists(test_save_path):
+        print(f'File "{test_save_path}" already exists. Overwriting')
+        os.remove(test_save_path)
+
     print('\n=== Running Test Acquisition ===')
     print('Using test configuration:')
     print(f'Scopes: {list(test_scope_ips.keys())}')
@@ -225,4 +222,4 @@ def run_test(num_shots=5):
 #===============================================================================================================================================
 
 if __name__ == '__main__':
-    run_test(num_shots=5)  # Run a test acquisition with minimal settings
+    run_test(test_save_path = r"E:\Shadow data\Energetic_Electron_Ring\test.hdf5", num_shots=5)  # Run a test acquisition with minimal settings
