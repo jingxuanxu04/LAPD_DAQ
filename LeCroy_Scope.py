@@ -793,7 +793,7 @@ class LeCroy_Scope:
 		return data, time_array
 	#----------------------------------------------------------------------
 
-	def time_array(self) -> numpy.array:
+	def time_array(self):
 		""" return a numpy array containing sample times
 			note: only valid after a call to acquire
 		"""
@@ -802,8 +802,9 @@ class LeCroy_Scope:
 			NSamples = self.hdr.wave_array_1            # data returned as signed chars
 		elif self.hdr.comm_type == 1:
 			NSamples = int(self.hdr.wave_array_1/2)     # data returned as shorts
-		t0 = self.hdr.horiz_offset
-		return numpy.linspace(t0, t0+NSamples*self.hdr.horiz_interval, NSamples, endpoint=False)
+		t0 = float(self.hdr.horiz_offset)
+		horiz_interval = float(self.hdr.horiz_interval)
+		return numpy.linspace(t0, t0 + NSamples * horiz_interval, NSamples, endpoint=False)
 		#note on linspace construction here: suppose we have 2 samples and the trace is 10ms, the samples should be at 0 and 5 ms,
 		#                                    rather than 0 and 10ms as linspace(0,N*dt,N) would return
 		# Assume this is the case, because when requesting 10000 samples the scope actually returns 10001.  todo: test this, e.g. sample 1 kHz with 1000 pts, look at aliasing. Need the 1 kHz to be referenced to same frequency as scope

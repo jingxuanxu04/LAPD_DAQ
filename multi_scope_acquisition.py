@@ -48,6 +48,7 @@ def acquire_from_scope(scope_name, scope_ip, first_acquisition=False):
         scope.set_trigger_mode('NORM')
 
     if first_acquisition:
+        print(time_array.dtype)
         return active_traces, data, headers, time_array
     return active_traces, data, headers
 
@@ -208,7 +209,11 @@ class MultiScopeAcquisition:
             print("Performing initial acquisition to get time arrays...")
             active_scopes = []  # Keep track of scopes that have valid data
             for name, ip in self.scope_ips.items():
+                print(f"Acquiring data from {name}...")
+                start_time = time.time()
                 traces, data, headers, time_array = acquire_from_scope(name, ip, first_acquisition=True)
+                acquisition_time = time.time() - start_time
+                print(f"Acquired data from {name} in {acquisition_time:.2f} seconds")
                 if traces and time_array is not None:  # Check if we got any valid traces and time array
                     self.time_arrays[name] = time_array
                     active_scopes.append(name)
