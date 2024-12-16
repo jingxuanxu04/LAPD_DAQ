@@ -217,13 +217,8 @@ class MultiScopeAcquisition:
                 downsample = 1
                 plot_time = time_array
             
-            # Clear previous shot's subplot if it exists
-            for ax in fig.get_axes():
-                if ax.get_subplotspec().num == shot_num:
-                    fig.delaxes(ax)
-                    break
-            
-            # Create new subplot for this shot
+            # Clear the entire figure and create new subplot
+            fig.clear()
             ax = fig.add_subplot(self.num_loops, 1, shot_num + 1)
             
             # Plot each trace with downsampled data
@@ -240,9 +235,11 @@ class MultiScopeAcquisition:
             if len(traces) > 1:  # Only add legend if there are multiple traces
                 ax.legend()
             
+            # Update the figure
             fig.tight_layout()
-            plt.draw()
-            plt.pause(0.01)
+            fig.canvas.draw()
+            fig.canvas.flush_events()
+            plt.pause(0.1)  # Increased pause time for better stability
 
     def run_acquisition(self):
         """Main acquisition loop"""
@@ -250,6 +247,12 @@ class MultiScopeAcquisition:
             # Initialize plots and HDF5 file
             plt.ion()  # Interactive mode on
             self.initialize_hdf5()
+            
+            # Create figures before acquisition
+            for scope_name in self.scope_ips:
+                if scope_name not in self.figures:
+                    self.figures[scope_name] = plt.figure(figsize=(12, 8))
+                    self.figures[scope_name].canvas.manager.set_window_title(f'Scope: {scope_name}')
             
             active_scopes = []  # Keep track of scopes that have valid data
             for name, scope in self.scopes.items():
@@ -298,13 +301,14 @@ class MultiScopeAcquisition:
                 self.update_plots(all_data, shot)
                 
                 print(f"Shot {shot+1} completed in {time.time() - start_time:.2f} seconds")
-                
-            plt.ioff()  # Interactive mode off
-            plt.show()  # Keep figures open
+            
+            # Keep figures open after acquisition
+            plt.show(block=False)
+            input("Press Enter to close figures and exit...")
             
         finally:
+            plt.close('all')  # Ensure all figures are closed
             # Cleanup will be handled by __exit__ when using context manager
-            pass
 
 #===============================================================================================================================================
 #<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
