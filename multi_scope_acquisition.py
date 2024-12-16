@@ -32,7 +32,9 @@ def acquire_from_scope(scope, scope_name, first_acquisition=False):
         time.sleep(RETRY_DELAY)
     else:  # Loop completed without finding STOP mode
         print(f"Warning: Timeout waiting for {scope_name} trigger mode to become STOP after {MAX_RETRIES * RETRY_DELAY:.1f}s")
-        return [], {}, {} if not first_acquisition else [], {}, {}, None
+        if first_acquisition:
+            return [], {}, {}, None
+        return [], {}, {}
 
     data = {}
     headers = {}
