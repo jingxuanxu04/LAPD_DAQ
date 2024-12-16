@@ -7,7 +7,6 @@ import os
 import struct
 
 #===============================================================================================================================================
-
 def acquire_from_scope(scope, scope_name, first_acquisition=False):
     """Acquire data from a single scope with optimized speed
     Args:
@@ -29,22 +28,46 @@ def acquire_from_scope(scope, scope_name, first_acquisition=False):
     scope.set_trigger_mode('STOP')
     traces = scope.displayed_traces()
     
-    # Configure scope for binary transfer (faster than ASCII)
-    scope.write('COMM_FORMAT DEF9,WORD,BIN')
-    scope.write('COMM_ORDER HI')
-    
     for tr in traces:
         try:
             # Set timeout for acquisition
             scope.timeout = TIMEOUT * 1000  # Convert to ms
             
-            # Start acquisition with optimized settings
-            trace_data = scope.acquire(tr)
+            # Get raw data using acquire_raw
+            trace_bytes = scope.acquire_raw(tr)
             
-            # If we get here, the trace has valid data
+            # Parse header from raw data
+            header = struct.unpack(WAVEDESC_FMT, trace_bytes[15:15+WAVEDESC_SIZE])
+            header = WAVEDESC._make(header)
+            
+            # Calculate number of samples
+            NSamples = int(0)
+            if header.comm_type == 0:  # data returned as signed chars
+                NSamples = header.wave_array_1
+            elif header.comm_type == 1:  # data returned as shorts
+                NSamples = int(header.wave_array_1/2)
+            else:
+                raise RuntimeError(f'Unexpected comm_type: {header.comm_type}')
+                
+            if NSamples == 0:
+                raise RuntimeError('No samples in trace data')
+                
+            # Parse the actual waveform data
+            ndx0 = (15+WAVEDESC_SIZE) + header.user_text + header.trigtime_array + header.ris_time_array + header.res_array1
+            
+            if header.comm_type == 1:  # data returned in words
+                ndx1 = ndx0 + NSamples*2
+                wdata = struct.unpack(str(NSamples)+'h', trace_bytes[ndx0:ndx1])
+                trace_data = np.array(wdata) * header.vertical_gain - header.vertical_offset
+            else:  # data returned in bytes
+                ndx1 = ndx0 + NSamples
+                cdata = struct.unpack(str(NSamples)+'b', trace_bytes[ndx0:ndx1])
+                trace_data = np.array(cdata) * header.vertical_gain - header.vertical_offset
+            
+            # Store the data
             data[tr] = trace_data
-            headers[tr] = np.void(scope.header_bytes())
-            active_traces.append(tr)  # Add to list of active traces
+            headers[tr] = np.void(trace_bytes[15:15+WAVEDESC_SIZE])
+            active_traces.append(tr)
             
             # Get time array from first valid trace if needed
             if first_acquisition and time_array is None:
