@@ -8,7 +8,7 @@ import os
 #===============================================================================================================================================
 
 def acquire_from_scope(scope, scope_name, first_acquisition=False):
-    """Acquire data from a single scope
+    """Acquire data from a single scope with optimized speed
     Args:
         scope: LeCroy_Scope instance
         scope_name: Name of the scope
@@ -23,12 +23,23 @@ def acquire_from_scope(scope, scope_name, first_acquisition=False):
     headers = {}
     time_array = None
     active_traces = []  # List to store only traces that have data
+    TIMEOUT = 10  # Timeout in seconds for acquisition
 
     scope.set_trigger_mode('STOP')
-    traces = scope.displayed_traces()        
+    traces = scope.displayed_traces()
+    
+    # Configure scope for binary transfer (faster than ASCII)
+    scope.write('COMM_FORMAT DEF9,WORD,BIN')
+    scope.write('COMM_ORDER HI')
+    
     for tr in traces:
         try:
+            # Set timeout for acquisition
+            scope.timeout = TIMEOUT * 1000  # Convert to ms
+            
+            # Start acquisition with optimized settings
             trace_data = scope.acquire(tr)
+            
             # If we get here, the trace has valid data
             data[tr] = trace_data
             headers[tr] = np.void(scope.header_bytes())
@@ -39,12 +50,23 @@ def acquire_from_scope(scope, scope_name, first_acquisition=False):
                 time_array = scope.time_array()
 
         except Exception as e:
-            if "NSamples = 0" in str(e):
+            if "timeout" in str(e).lower():
+                print(f"Timeout acquiring {tr} from {scope_name} after {TIMEOUT}s")
+            elif "NSamples = 0" in str(e):
                 print(f"Skipping {tr} from {scope_name}: Channel is displayed but not active")
             else:
                 print(f"Error acquiring {tr} from {scope_name}: {e}")
             continue
+        finally:
+            # Reset timeout to default
+            scope.timeout = 2000  # 2 seconds default
+    
     scope.set_trigger_mode('NORM')
+    
+    # Print acquisition statistics
+    if active_traces:
+        sample_size = len(data[active_traces[0]])
+        print(f"{scope_name}: Acquired {len(active_traces)} traces, {sample_size} samples each")
 
     if first_acquisition:
         return active_traces, data, headers, time_array
@@ -178,28 +200,55 @@ class MultiScopeAcquisition:
                     time_ds.attrs['dtype'] = str(time_array.dtype)  # Store dtype information
 
     def update_hdf5(self, all_data, shot_num):
-        """Update HDF5 file with acquired data"""
+        """Update HDF5 file with acquired data using optimized settings"""
         with h5py.File(self.save_path, 'a') as f:
             # Save data for each scope
             for scope_name, (traces, data, headers) in all_data.items():
                 scope_group = f[scope_name]
                 
-                # Create shot group within scope
+                # Create shot group with optimized settings
                 shot_group = scope_group.create_group(f'shot_{shot_num}')
                 shot_group.attrs['acquisition_time'] = time.ctime()
                 
-                # Save trace data and headers with descriptions
+                # Save trace data and headers with optimized chunk size and compression
                 for tr in traces:
                     if tr in data:
-                        data_ds = shot_group.create_dataset(f'{tr}_data', data=data[tr])
-                        header_ds = shot_group.create_dataset(f'{tr}_header', data=headers[tr])
+                        # Convert data to appropriate dtype if needed (e.g., uint16 for 12-bit data)
+                        trace_data = np.asarray(data[tr])
+                        if trace_data.dtype != np.uint16:
+                            trace_data = trace_data.astype(np.uint16)
+                        
+                        # Calculate optimal chunk size (aim for ~1MB chunks)
+                        chunk_size = min(len(trace_data), 512*1024)  # 512K samples per chunk
+                        
+                        # Create dataset with optimized settings
+                        data_ds = shot_group.create_dataset(
+                            f'{tr}_data', 
+                            data=trace_data,
+                            chunks=(chunk_size,),
+                            compression='gzip',
+                            compression_opts=1,  # Light compression for speed
+                            shuffle=True,  # Helps with compression of binary data
+                            fletcher32=True  # Add checksum for data integrity
+                        )
+                        
+                        # Store header as binary data
+                        header_ds = shot_group.create_dataset(
+                            f'{tr}_header', 
+                            data=headers[tr],
+                            compression='gzip',
+                            compression_opts=1
+                        )
                         
                         # Add channel descriptions and metadata
                         data_ds.attrs['description'] = self.get_channel_description(tr)
+                        data_ds.attrs['dtype'] = str(trace_data.dtype)
+                        data_ds.attrs['original_size'] = len(trace_data)
+                        data_ds.attrs['voltage_scale'] = '12-bit centered at 0V, ±10V range'
                         header_ds.attrs['description'] = f'Binary header data for {tr}'
 
     def update_plots(self, all_data, shot_num):
-        """Update plots for all scopes"""
+        """Update plots for all scopes with optimized data handling"""
         MAX_PLOT_POINTS = 10000  # Maximum number of points to plot
         
         for scope_name, (traces, data, _) in all_data.items():
@@ -209,36 +258,50 @@ class MultiScopeAcquisition:
             fig = self.figures[scope_name]
             time_array = self.time_arrays[scope_name]
             
-            # Calculate downsample factor if needed
-            n_points = len(time_array)
-            if n_points > MAX_PLOT_POINTS:
-                downsample = n_points // MAX_PLOT_POINTS
+            try:
+                # Calculate optimal downsample factor
+                n_points = len(time_array)
+                downsample = max(1, n_points // MAX_PLOT_POINTS)
+                
+                # Pre-calculate downsampled time array
                 plot_time = time_array[::downsample]
-            else:
-                downsample = 1
-                plot_time = time_array
+                
+                # Clear the entire figure and create new subplot
+                fig.clear()
+                ax = fig.add_subplot(self.num_loops, 1, shot_num + 1)
+                
+                # Plot each trace with optimized downsampling
+                for tr in traces:
+                    if tr in data:
+                        # Convert binary data to voltage values if needed
+                        trace_data = np.asarray(data[tr])
+                        if trace_data.dtype == np.uint16:
+                            # Convert 12-bit data to voltage (-10V to +10V range)
+                            trace_data = (trace_data.astype(float) - 2048) * (20.0/4096)
+                        
+                        # Efficient downsampling using array slicing
+                        plot_data = trace_data[::downsample]
+                        
+                        # Plot in milliseconds
+                        ax.plot(plot_time * 1000, plot_data, label=tr)
+                
+                ax.set_title(f'Shot {shot_num+1} ({len(plot_time)} points)')
+                ax.set_xlabel('Time (ms)')
+                ax.set_ylabel('Voltage (V)')
+                ax.grid(True)
+                if len(traces) > 1:
+                    ax.legend()
+                
+                # Optimize figure updates
+                fig.tight_layout()
+                fig.canvas.draw()
+                fig.canvas.flush_events()
+                
+            except Exception as e:
+                print(f"Error updating plot for {scope_name}: {e}")
+                continue
             
-            ax = fig.add_subplot(self.num_loops, 1, shot_num + 1)
-            
-            # Plot each trace with downsampled data
-            for tr in traces:
-                if tr in data:
-                    # Convert to milliseconds only for plotting
-                    plot_data = data[tr][::downsample]
-                    ax.plot(plot_time * 1000, plot_data, label=tr)
-            
-            ax.set_title(f'Shot {shot_num+1} ({len(plot_time)} points)')
-            ax.set_xlabel('Time (ms)')
-            ax.set_ylabel('Voltage (V)')
-            ax.grid(True)
-            if len(traces) > 1:  # Only add legend if there are multiple traces
-                ax.legend()
-            
-            # Update the figure
-            fig.tight_layout()
-            fig.canvas.draw()
-            fig.canvas.flush_events()
-            plt.pause(0.1)  # Increased pause time for better stability
+        plt.pause(0.01)  # Single pause after all plots are updated
 
     def run_acquisition(self):
         """Main acquisition loop"""
