@@ -7,11 +7,11 @@ import os
 
 #===============================================================================================================================================
 
-def acquire_from_scope(scope_name, scope_ip, first_acquisition=False):
+def acquire_from_scope(scope, scope_name, first_acquisition=False):
     """Acquire data from a single scope
     Args:
+        scope: LeCroy_Scope instance
         scope_name: Name of the scope
-        scope_ip: IP address of the scope
         first_acquisition: If True, return time array as well
     Returns:
         traces: List of trace names that have valid data
@@ -24,28 +24,27 @@ def acquire_from_scope(scope_name, scope_ip, first_acquisition=False):
     time_array = None
     active_traces = []  # List to store only traces that have data
 
-    with LeCroy_Scope(scope_ip, verbose=False) as scope:
-        scope.set_trigger_mode('STOP')
-        traces = scope.displayed_traces()        
-        for tr in traces:
-            try:
-                trace_data = scope.acquire(tr)
-                # If we get here, the trace has valid data
-                data[tr] = trace_data
-                headers[tr] = np.void(scope.header_bytes())
-                active_traces.append(tr)  # Add to list of active traces
-                
-                # Get time array from first valid trace if needed
-                if first_acquisition and time_array is None:
-                    time_array = scope.time_array
+    scope.set_trigger_mode('STOP')
+    traces = scope.displayed_traces()        
+    for tr in traces:
+        try:
+            trace_data = scope.acquire(tr)
+            # If we get here, the trace has valid data
+            data[tr] = trace_data
+            headers[tr] = np.void(scope.header_bytes())
+            active_traces.append(tr)  # Add to list of active traces
+            
+            # Get time array from first valid trace if needed
+            if first_acquisition and time_array is None:
+                time_array = scope.time_array
 
-            except Exception as e:
-                if "NSamples = 0" in str(e):
-                    print(f"Skipping {tr} from {scope_name}: Channel is displayed but not active")
-                else:
-                    print(f"Error acquiring {tr} from {scope_name}: {e}")
-                continue
-        scope.set_trigger_mode('NORM')
+        except Exception as e:
+            if "NSamples = 0" in str(e):
+                print(f"Skipping {tr} from {scope_name}: Channel is displayed but not active")
+            else:
+                print(f"Error acquiring {tr} from {scope_name}: {e}")
+            continue
+    scope.set_trigger_mode('NORM')
 
     if first_acquisition:
         print(time_array.dtype)
@@ -72,9 +71,40 @@ class MultiScopeAcquisition:
         
         # Initialize scopes and figures
         for name, ip in self.scope_ips.items():
-            self.scopes[name] = LeCroy_Scope(ip, verbose=False)
-            self.figures[name] = plt.figure(figsize=(12, 8))
-            self.figures[name].suptitle(f'{name} Traces')
+            try:
+                self.scopes[name] = LeCroy_Scope(ip, verbose=False)
+                self.figures[name] = plt.figure(figsize=(12, 8))
+                self.figures[name].suptitle(f'{name} Traces')
+            except Exception as e:
+                print(f"Error initializing scope {name}: {e}")
+                # Clean up any scopes that were successfully initialized
+                self.cleanup()
+                raise
+
+    def cleanup(self):
+        """Clean up resources"""
+        # Close all scope connections
+        for scope in self.scopes.values():
+            try:
+                scope.__exit__(None, None, None)
+            except Exception as e:
+                print(f"Error closing scope: {e}")
+        
+        # Close all figures
+        for fig in self.figures.values():
+            try:
+                plt.close(fig)
+            except Exception as e:
+                print(f"Error closing figure: {e}")
+        
+        self.scopes.clear()
+        self.figures.clear()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.cleanup()
 
     def get_scope_description(self, scope_name):
         from Data_Run_0D import get_scope_description
@@ -135,9 +165,21 @@ class MultiScopeAcquisition:
             for scope_name, time_array in self.time_arrays.items():
                 scope_group = f[scope_name]
                 if 'time_array' not in scope_group:
+                    # Print original dtype
+                    print(f"Original time array dtype for {scope_name}: {time_array.dtype}")
+                    
                     # Ensure time array is float64 for HDF5 compatibility
                     time_array = np.asarray(time_array, dtype=np.float64)
-                    time_ds = scope_group.create_dataset('time_array', data=time_array)
+                    print(f"Converted time array dtype for {scope_name}: {time_array.dtype}")
+                    
+                    # Create dataset with explicit dtype
+                    time_ds = scope_group.create_dataset('time_array', 
+                                                       data=time_array,
+                                                       dtype='float64')
+                    
+                    # Verify stored dtype
+                    print(f"Stored HDF5 dtype for {scope_name}: {time_ds.dtype}")
+                    
                     time_ds.attrs['units'] = 'seconds'
                     time_ds.attrs['description'] = 'Time array for all channels'
                     time_ds.attrs['dtype'] = str(time_array.dtype)  # Store dtype information
@@ -206,12 +248,16 @@ class MultiScopeAcquisition:
             self.initialize_hdf5()
             
             # First acquisition to get time arrays
-            print("Performing initial acquisition to get time arrays...")
+            print("\nPerforming initial acquisition to get time arrays...")
             active_scopes = []  # Keep track of scopes that have valid data
-            for name, ip in self.scope_ips.items():
-                print(f"Acquiring data from {name}...")
+            for name, scope in self.scopes.items():
+                print(f"\nAcquiring data from {name}...")
                 start_time = time.time()
-                traces, data, headers, time_array = acquire_from_scope(name, ip, first_acquisition=True)
+                traces, data, headers, time_array = acquire_from_scope(scope, name, first_acquisition=True)
+                if time_array is not None:
+                    print(f"Time array shape for {name}: {time_array.shape}")
+                    print(f"Time array dtype for {name}: {time_array.dtype}")
+                    print(f"Time array range: {time_array[0]:.9f} to {time_array[-1]:.9f} seconds")
                 acquisition_time = time.time() - start_time
                 print(f"Acquired data from {name} in {acquisition_time:.2f} seconds")
                 if traces and time_array is not None:  # Check if we got any valid traces and time array
@@ -224,7 +270,18 @@ class MultiScopeAcquisition:
                 raise RuntimeError("No valid data found from any scope. Aborting acquisition.")
             
             # Save time arrays to HDF5
+            print("\nSaving time arrays to HDF5...")
             self.save_time_arrays()
+            
+            # Verify saved time arrays
+            print("\nVerifying saved time arrays...")
+            with h5py.File(self.save_path, 'r') as f:
+                for name in active_scopes:
+                    time_ds = f[name]['time_array']
+                    print(f"\n{name} time array verification:")
+                    print(f"  Stored dtype: {time_ds.dtype}")
+                    print(f"  Shape: {time_ds.shape}")
+                    print(f"  Range: {time_ds[0]:.9f} to {time_ds[-1]:.9f} seconds")
             
             # Main acquisition loop
             for shot in range(self.num_loops):
@@ -235,7 +292,7 @@ class MultiScopeAcquisition:
                 
                 # Acquire data from each active scope sequentially
                 for name in active_scopes:
-                    traces, data, headers = acquire_from_scope(name, self.scope_ips[name])
+                    traces, data, headers = acquire_from_scope(self.scopes[name], name)
                     if traces:  # Only add to all_data if we got valid traces
                         all_data[name] = (traces, data, headers)
                 
@@ -253,9 +310,8 @@ class MultiScopeAcquisition:
             plt.show()  # Keep figures open
             
         finally:
-            # Cleanup
-            for fig in self.figures.values():
-                plt.close(fig)
+            # Cleanup will be handled by __exit__ when using context manager
+            pass
 
 #===============================================================================================================================================
 #<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
@@ -276,12 +332,11 @@ if __name__ == '__main__':
     
     save_path = r"E:\Shadow data\Energetic_Electron_Ring\test.hdf5"
 
-    # Run acquisition
-    acquisition = MultiScopeAcquisition(
+    # Run acquisition using context manager for proper cleanup
+    with MultiScopeAcquisition(
         scope_ips=scope_ips,
         num_loops=1,
         save_path=save_path,
         external_delays=external_delays
-    )
-    
-    acquisition.run_acquisition()
+    ) as acquisition:
+        acquisition.run_acquisition()

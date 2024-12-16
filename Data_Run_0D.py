@@ -148,14 +148,13 @@ def main():
     
     try:
         # Initialize and run acquisition
-        acquisition = MultiScopeAcquisition(
+        with MultiScopeAcquisition(
             scope_ips=scope_ips,
             num_loops=num_shots,
             save_path=save_path,
             external_delays=external_delays
-        )
-        
-        acquisition.run_acquisition()
+        ) as acquisition:
+            acquisition.run_acquisition()
         
     except KeyboardInterrupt:
         print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
@@ -201,25 +200,24 @@ def run_test():
     print(f'Save path: {test_save_path}')
     print('Number of shots: 1')
     
-
-    # Run test acquisition
-    acquisition = MultiScopeAcquisition(
-        scope_ips=test_scope_ips,
-        num_loops=1,
-        save_path=test_save_path,
-        external_delays=test_external_delays
-    )
-    
-    acquisition.run_acquisition()
-    
-    if os.path.isfile(test_save_path):
-        size = os.stat(test_save_path).st_size/(1024*1024)
-        print(f'\nTest successful! Wrote file "{test_save_path}", {size:.1f} MB')
-    else:
-        print('\nTest failed: File was not created')
+    try:
+        # Run test acquisition
+        with MultiScopeAcquisition(
+            scope_ips=test_scope_ips,
+            num_loops=1,
+            save_path=test_save_path,
+            external_delays=test_external_delays
+        ) as acquisition:
+            acquisition.run_acquisition()
+        
+        if os.path.isfile(test_save_path):
+            size = os.stat(test_save_path).st_size/(1024*1024)
+            print(f'\nTest successful! Wrote file "{test_save_path}", {size:.1f} MB')
+        else:
+            print('\nTest failed: File was not created')
             
-
-
+    except Exception as e:
+        print(f'\nTest failed with error: {str(e)}')
 
 #===============================================================================================================================================
 #<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
