@@ -110,16 +110,13 @@ class MultiScopeAcquisition:
         self.figures = {}
         self.time_arrays = {}  # Store time arrays for each scope
         
-        # Initialize scopes and figures
-        for name, ip in self.scope_ips.items():
+        # Just create figures
+        for name in self.scope_ips:
             try:
-                self.scopes[name] = LeCroy_Scope(ip, verbose=False)
-                self.scopes[name].set_trigger_mode('SINGLE')
                 self.figures[name] = plt.figure(figsize=(12, 8))
                 self.figures[name].canvas.manager.set_window_title(f'Scope: {name}')
             except Exception as e:
-                print(f"Error initializing scope {name}: {e}")
-                # Clean up any scopes that were successfully initialized
+                print(f"Error creating figure for {name}: {e}")
                 self.cleanup()
                 raise
 
@@ -206,11 +203,22 @@ class MultiScopeAcquisition:
         all_data = {}
         active_scopes = []
         
-        for name, scope in self.scopes.items():
+        for name, ip in self.scope_ips.items():
             print(f"\nInitializing {name}...")
             
-            # Get initial data and time arrays
             try:
+                # Create scope instance
+                self.scopes[name] = LeCroy_Scope(ip, verbose=False)
+                scope = self.scopes[name]
+                
+                # Optimize scope settings for faster acquisition
+                scope.scope.chunk_size = 4*1024*1024  # Increase chunk size to 4MB for faster transfer
+                scope.scope.timeout = 30000  # 30 second timeout
+                
+                # Set trigger mode
+                scope.set_trigger_mode('SINGLE')
+                
+                # Get initial data and time arrays
                 traces, data, headers, time_array = acquire_from_scope(scope, name, first_acquisition=True)
                 
                 if traces:  # Only save if we got valid data
@@ -220,11 +228,22 @@ class MultiScopeAcquisition:
                     print(f"Successfully initialized {name}")
                 else:
                     print(f"Warning: Could not initialize {name} - no traces returned")
+                    self.cleanup_scope(name)
             except Exception as e:
                 print(f"Error initializing {name}: {str(e)}")
+                self.cleanup_scope(name)
                 continue
         
         return all_data, active_scopes
+
+    def cleanup_scope(self, name):
+        """Clean up resources for a specific scope"""
+        if name in self.scopes:
+            try:
+                self.scopes[name].__exit__(None, None, None)
+                del self.scopes[name]
+            except Exception as e:
+                print(f"Error closing scope {name}: {e}")
 
     def acquire_shot(self, active_scopes, shot_num):
         """Acquire data from all active scopes for one shot"""
@@ -245,6 +264,9 @@ class MultiScopeAcquisition:
             except Exception as e:
                 print(f"Error acquiring from {name}: {str(e)}")
                 failed_scopes.append(name)
+
+            # start triggering again as soon as all traces are acquired
+            scope.set_trigger_mode('SINGLE')
         
         # Remove failed scopes from active list
         for name in failed_scopes:
