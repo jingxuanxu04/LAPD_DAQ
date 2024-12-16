@@ -122,12 +122,10 @@ def get_scope_description(scope_name): # USER EDITED
     return descriptions.get(scope_name, f'Scope {scope_name} - No description available')
 
 
-
 #===============================================================================================================================================
-#<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
+# Main Data Run sequence
 #===============================================================================================================================================
-
-if __name__ == '__main__':
+def main():
     # Create save directory if it doesn't exist
     if not os.path.exists(path):
         os.makedirs(path)
@@ -225,5 +223,10 @@ def run_test():
     except Exception as e:
         print(f'\nTest failed with error: {str(e)}')
 
-if __name__ == '__main__' and len(sys.argv) > 1 and sys.argv[1] == '--test':
+
+#===============================================================================================================================================
+#<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
+#===============================================================================================================================================
+
+if __name__ == '__main__':
     run_test()
