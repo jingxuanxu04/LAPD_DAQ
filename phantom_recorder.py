@@ -34,8 +34,6 @@ class PhantomRecorder:
         self.cam.resolution = self.config['resolution']
         self.cam.exposure = self.config['exposure_us']
         self.cam.frame_rate = self.config['fps']
-        self.cam.pre_trigger = self.config['pre_trigger_frames']
-        self.cam.post_trigger_frames = self.config['post_trigger_frames']
         
         # Ensure save directory exists
         Path(self.config['save_path']).mkdir(parents=True, exist_ok=True)
@@ -51,27 +49,22 @@ class PhantomRecorder:
         while not self.cam.partition_recorded(1):
             time.sleep(0.1)
         print("Recording complete")
+        return time.time()
         
-    def save_cine(self, shot_number):
+    def save_cine(self, shot_number, timestamp):
         """Save the recorded cine file with frame range and trigger timestamp.
         
         Args:
             shot_number (int): Current shot number for filename
         """
-        # Create Cine object and get trigger time
+        # Create Cine object
         rec_cine = cine.Cine.from_camera(self.cam, 1)
-        trigger_time = rec_cine.trigger_time  # Returns datetime object
-        
-        # Generate filename using trigger timestamp
-        timestamp = trigger_time.strftime("%Y%m%d_%H%M%S")
+
         filename = f"shot_{shot_number:03d}_{timestamp}.cine"
         full_path = os.path.join(self.config['save_path'], filename)
         
         # Set frame range and save
-        frame_range = utils.FrameRange(
-            -self.config['pre_trigger_frames'],
-            self.config['post_trigger_frames']
-        )
+        frame_range = utils.FrameRange(self.config['pre_trigger_frames'], self.config['post_trigger_frames'])
         rec_cine.save_range = frame_range
         
         # Save and monitor progress
@@ -90,8 +83,8 @@ class PhantomRecorder:
         try:
             for shot in range(self.config['num_shots']):
                 print(f"\nRecording shot {shot + 1}/{self.config['num_shots']}")
-                self.record_cine()
-                self.save_cine(shot + 1)
+                timestamp = self.record_cine()
+                self.save_cine(shot, timestamp)
                 
         finally:
             self.cleanup()
@@ -104,13 +97,13 @@ class PhantomRecorder:
 def main():
     # Example configuration
     config = {
-        'save_path': 'D:/phantom_recordings',
-        'exposure_us': 20,
-        'fps': 10000,
-        'pre_trigger_frames': 100,
-        'post_trigger_frames': 400,
-        'resolution': (512, 512),
-        'num_shots': 5
+        'save_path': r"E:\Shadow data\Energetic_Electron_Ring\fast cam\caltech_cam_test",
+        'exposure_us': 30,
+        'fps': 20000,
+        'pre_trigger_frames': -1000,
+        'post_trigger_frames': 1000,
+        'resolution': (256, 256),
+        'num_shots': 1
     }
     
     try:
