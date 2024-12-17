@@ -60,7 +60,7 @@ class PhantomRecorder:
         # Create Cine object
         rec_cine = cine.Cine.from_camera(self.cam, 1)
 
-        filename = f"shot_{shot_number:03d}_{timestamp}.cine"
+        filename = f"{self.config['name']}_shot{shot_number:03d}_{timestamp}.cine"
         full_path = os.path.join(self.config['save_path'], filename)
         
         # Set frame range and save
@@ -98,6 +98,7 @@ def main():
     # Example configuration
     config = {
         'save_path': r"E:\Shadow data\Energetic_Electron_Ring\fast cam\caltech_cam_test",
+        "name": "00_He5kA_B310G650G_pl0t20_uw15t45",
         'exposure_us': 30,
         'fps': 20000,
         'pre_trigger_frames': -1000,
