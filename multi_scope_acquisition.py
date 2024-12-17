@@ -22,7 +22,7 @@ def acquire_from_scope(scope, scope_name, first_acquisition=False):
     st_time = time.time() # for checking acquisition time
 
     # Check if scope is in STOP mode before acquiring
-    MAX_RETRIES = 100  # Maximum number of retries
+    MAX_RETRIES = 1000  # Maximum number of retries
     RETRY_DELAY = 0.05  # Delay between retries in seconds
     
     for retry in range(MAX_RETRIES):
