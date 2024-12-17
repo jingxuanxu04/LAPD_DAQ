@@ -368,47 +368,32 @@ class MultiScopeAcquisition:
                 # Pre-calculate downsampled time array
                 plot_time = time_array[::downsample]
                 
-                ax = fig.add_subplot(self.num_loops, 1, shot_num + 1)
-                
-                # Plot each trace with optimized downsampling
-                for tr in traces:
+                # Create subplots for each trace
+                for i, tr in enumerate(traces):
                     if tr not in data:
                         print(f"Warning: No data for trace {tr}")
                         continue
                     
-                    # Convert binary data to voltage values if needed
-                    trace_data = np.asarray(data[tr])
-                    if trace_data.dtype == np.uint16:
-                        # Convert 12-bit data to voltage (-10V to +10V range)
-                        trace_data = (trace_data.astype(float) - 2048) * (20.0/4096)
+                    ax = fig.add_subplot(len(traces), 1, i + 1)
                     
-                    # Efficient downsampling using array slicing
-                    plot_data = trace_data[::downsample]
+                    # Check if the line already exists, if not, create it
+                    if not hasattr(ax, 'lines'):
+                        ax.lines = []
                     
-                    if len(plot_data) != len(plot_time):
-                        print(f"Warning: Data length mismatch for {tr}")
-                        continue
-                    
-                    # Plot in milliseconds
-                    ax.plot(plot_time * 1000, plot_data, label=tr)
-                
-                ax.set_title(f'Shot {shot_num+1}')
-                ax.set_xlabel('Time (ms)')
-                ax.set_ylabel('Voltage (V)')
-                ax.grid(True)
-                if len(traces) > 1:
+                    # Append new data to the existing plot
+                    line, = ax.plot(plot_time, data[tr][::downsample], label=f'Shot {shot_num + 1}')
+                    ax.lines.append(line)
                     ax.legend()
-                
-                # Optimize figure updates
-                fig.tight_layout()
-                fig.canvas.draw()
-                fig.canvas.flush_events()
-                
+                    ax.set_title(f'Trace {tr}')
+                    ax.set_xlabel('Time (s)')
+                    ax.set_ylabel('Voltage (V)')
+            
             except Exception as e:
                 print(f"Error updating plot for {scope_name}: {e}")
                 continue
             
         plt.pause(0.01)  # Single pause after all plots are updated
+        
 
     def run_acquisition(self):
         """Main acquisition loop with clear separation between initialization and acquisition"""
