@@ -34,6 +34,7 @@ class PhantomRecorder:
         self.cam.resolution = self.config['resolution']
         self.cam.exposure = self.config['exposure_us']
         self.cam.frame_rate = self.config['fps']
+        self.cam.pre_trigger = self.config['pre_trigger_frames']
         self.cam.post_trigger_frames = self.config['post_trigger_frames']
         
         # Ensure save directory exists
