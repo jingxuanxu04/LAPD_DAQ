@@ -109,12 +109,14 @@ class MultiScopeAcquisition:
         self.scopes = {}
         self.figures = {}
         self.time_arrays = {}  # Store time arrays for each scope
+        self.plot_data = {}    # Store plot data for each scope/trace/shot
         
         # Just create figures
         for name in self.scope_ips:
             try:
                 self.figures[name] = plt.figure(figsize=(12, 8))
                 self.figures[name].canvas.manager.set_window_title(f'Scope: {name}')
+                self.plot_data[name] = {}  # Initialize plot data storage for this scope
             except Exception as e:
                 print(f"Error creating figure for {name}: {e}")
                 self.cleanup()
@@ -346,17 +348,16 @@ class MultiScopeAcquisition:
         MAX_PLOT_POINTS = 10000  # Maximum number of points to plot
         
         for scope_name, (traces, data, _) in all_data.items():
-            if not traces:  # Skip if no valid traces for this scope
-                continue
-            
-            if scope_name not in self.time_arrays:
-                print(f"Warning: No time array found for {scope_name}")
+            if not traces or scope_name not in self.time_arrays:
                 continue
             
             fig = self.figures[scope_name]
             time_array = self.time_arrays[scope_name]
             
             try:
+                # Clear the figure but maintain subplot structure
+                fig.clear()
+                
                 # Calculate optimal downsample factor
                 n_points = len(time_array)
                 if n_points == 0:
@@ -364,9 +365,19 @@ class MultiScopeAcquisition:
                     continue
                 
                 downsample = max(1, n_points // MAX_PLOT_POINTS)
-                
-                # Pre-calculate downsampled time array
                 plot_time = time_array[::downsample]
+                
+                # Store the current shot's data
+                for tr in traces:
+                    if tr not in data:
+                        continue
+                    if tr not in self.plot_data[scope_name]:
+                        self.plot_data[scope_name][tr] = []
+                    self.plot_data[scope_name][tr].append({
+                        'time': plot_time,
+                        'data': data[tr][::downsample],
+                        'shot': shot_num
+                    })
                 
                 # Create subplots for each trace
                 for i, tr in enumerate(traces):
@@ -376,18 +387,21 @@ class MultiScopeAcquisition:
                     
                     ax = fig.add_subplot(len(traces), 1, i + 1)
                     
-                    # Check if the line already exists, if not, create it
-                    if not hasattr(ax, 'lines'):
-                        ax.lines = []
+                    # Plot all stored shots for this trace
+                    for shot_data in self.plot_data[scope_name][tr]:
+                        ax.plot(shot_data['time'], shot_data['data'],
+                               label=f'Shot {shot_data["shot"] + 1}',
+                               alpha=0.7)
                     
-                    # Append new data to the existing plot
-                    line, = ax.plot(plot_time, data[tr][::downsample], label=f'Shot {shot_num + 1}')
-                    ax.lines.append(line)
                     ax.legend()
                     ax.set_title(f'Trace {tr}')
                     ax.set_xlabel('Time (s)')
                     ax.set_ylabel('Voltage (V)')
-            
+                    ax.grid(True, alpha=0.3)
+                
+                # Adjust layout to prevent overlapping
+                fig.tight_layout()
+                
             except Exception as e:
                 print(f"Error updating plot for {scope_name}: {e}")
                 continue
