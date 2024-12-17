@@ -53,18 +53,21 @@ class PhantomRecorder:
         print("Recording complete")
         
     def save_cine(self, shot_number):
-        """Save the recorded cine file with frame range and timestamp.
+        """Save the recorded cine file with frame range and trigger timestamp.
         
         Args:
             shot_number (int): Current shot number for filename
         """
-        # Generate timestamp and filename
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Create Cine object and get trigger time
+        rec_cine = cine.Cine.from_camera(self.cam, 1)
+        trigger_time = rec_cine.trigger_time  # Returns datetime object
+        
+        # Generate filename using trigger timestamp
+        timestamp = trigger_time.strftime("%Y%m%d_%H%M%S")
         filename = f"shot_{shot_number:03d}_{timestamp}.cine"
         full_path = os.path.join(self.config['save_path'], filename)
         
-        # Create Cine object and save specified frame range
-        rec_cine = cine.Cine.from_camera(self.cam, 1)
+        # Set frame range and save
         frame_range = utils.FrameRange(
             -self.config['pre_trigger_frames'],
             self.config['post_trigger_frames']
