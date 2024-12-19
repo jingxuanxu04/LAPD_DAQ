@@ -98,13 +98,13 @@ def main():
     # Example configuration
     config = {
         'save_path': r"E:\Shadow data\Energetic_Electron_Ring\fast cam\caltech_cam_test",
-        "name": "00_He5kA_B310G650G_pl0t20_uw15t45",
+        "name": "38_He5kA_B310G650G_pl0t20_uw15t45",
         'exposure_us': 30,
-        'fps': 20000,
+        'fps': 10000,
         'pre_trigger_frames': -1000,
         'post_trigger_frames': 1000,
         'resolution': (256, 256),
-        'num_shots': 1
+        'num_shots': 3
     }
     
     try:

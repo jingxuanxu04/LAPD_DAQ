@@ -40,11 +40,11 @@ scope_ips = {
     'Bdot': '192.168.7.63'           # Magnetic field measurements
 }
 
-external_delays = {
-    'magnetron': 15,      
+external_delays = { # unit: milliseconds
+    'magnetron': 15,
     'x-ray_dipole': 15,  
     'Bdot': 25
-} # unit: milliseconds
+}
 
 num_shots = 2  # Number of acquisitions to make
 #-------------------------------------------------------------------------------------------------------------
@@ -222,4 +222,5 @@ def run_test(test_save_path, num_shots=5):
 #===============================================================================================================================================
 
 if __name__ == '__main__':
-    run_test(test_save_path = r"E:\Shadow data\Energetic_Electron_Ring\test.hdf5", num_shots=5)  # Run a test acquisition with minimal settings
+    # run_test(test_save_path = r"E:\Shadow data\Energetic_Electron_Ring\test.hdf5", num_shots=5)  # Run a test acquisition with minimal settings
+    main()
