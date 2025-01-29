@@ -645,6 +645,30 @@ class LeCroy_Scope:
 				
 		return times, segment_data
 
+	def get_sequence_trigger_times(self):
+		"""
+		Get trigger times for each segment in sequence mode.
+		Must be called after acquire_sequence_data.
+		
+		Returns:
+			numpy.array: Array of trigger times in seconds relative to first trigger
+		"""
+		if not hasattr(self, 'hdr'):
+			raise RuntimeError("No trace data available. Call acquire_sequence_data first.")
+			
+		if self.hdr.subarray_count < 2:
+			raise RuntimeError("Not in sequence mode.")
+			
+		# Calculate offset to trigger time array
+		trig_offset = 15 + WAVEDESC_SIZE + self.hdr.user_text
+		
+		# Each trigger time is stored as a double (8 bytes)
+		trigger_times = []
+		for i in range(self.hdr.subarray_count):
+			trig_time = struct.unpack('d', self.trace_bytes[trig_offset + i*8:trig_offset + (i+1)*8])[0]
+			trigger_times.append(trig_time)
+			
+		return numpy.array(trigger_times)
 
 	#-------------------------------------------------------------------------
 
