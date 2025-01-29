@@ -598,85 +598,53 @@ class LeCroy_Scope:
 
 	def acquire_sequence_data(self, trace):
 		"""
-		Acquire all sequence mode segments from the oscilloscope.
-		
-		The scope must be configured in sequence mode before calling this function.
-		To set up sequence mode:
-		1. Set trigger mode to 'SEQUENCE'
-		2. Set desired number of segments
-		3. Set trigger conditions
-		4. Arm the trigger
-		
-		Args:
-			trace (str): The channel name (e.g., 'C1', 'C2', etc.)
-			
-		Returns:
-			tuple: (times, segment_data)
-				- times (numpy.array): Time array for the waveform
-				- segment_data (list of numpy.array): List of waveform data arrays, one per segment
-				
-		Raises:
-			RuntimeError: If scope is not in sequence mode or acquisition fails
+		Acquire scope data in sequence mode.
 		"""
 		trace = self.validate_trace(trace)
 		
-		# Verify sequence mode is active
-		sequence_status = self.scope.query('VBS? "return=app.Acquisition.Sequence"')
-		if sequence_status.strip().upper() != 'TRUE':
-			raise RuntimeError("Scope is not in sequence mode. Enable sequence mode first.")
-		
+		self.scope.write('WAVEFORM_SETUP SP,0,NP,0,FP,1,SN,0')  # SN,0 means get all segments in sequence mode
+		self.scope.write('COMM_HEADER OFF')
+		self.scope.write('COMM_FORMAT DEF9,WORD,BIN')
+		self.scope.write(trace+':WAVEFORM?')
+		self.trace_bytes = self.scope.read_raw()
+		self.hdr = self.get_header_bytes()
+		times = self.time_array()  # Get time array from first segment
+
 		# Get number of segments
-		subarray_count = int(self.scope.query('VBS? "return=app.Acquisition.Horizontal.SubarrayCount"'))
-		if subarray_count < 2:
+		if self.hdr.subarray_count < 2:
 			raise RuntimeError("Sequence mode requires at least 2 segments.")
 			
 		if self.verbose:
-			print(f'<:> Acquiring {subarray_count} segments from {trace}')
+			print(f'<:> Acquiring {self.hdr.subarray_count} segments from {trace}')
 			
 		segment_data = []
-		
-		# Set up waveform transfer format
-		self.scope.write('COMM_HEADER OFF')
-		self.scope.write('COMM_FORMAT DEF9,WORD,BIN')
-		
-		try:
-			# Get first segment to extract time axis
-			self.scope.write('WAVEFORM_SETUP SP,0,NP,0,FP,1,SN,1')  # Get first segment
+		for segment in range(1, self.hdr.subarray_count + 1):  # LeCroy uses 1-based segment indexing
+			if self.verbose:
+				print(f'    Reading segment {segment}/{self.hdr.subarray_count}', end='\r')
+				
+			self.scope.write(f'WAVEFORM_SETUP SP,0,NP,0,FP,1,SN,{segment}')
 			self.scope.write(trace + ':WAVEFORM?')
 			self.trace_bytes = self.scope.read_raw()
-			self.hdr = self.get_header_bytes()
-			times = self.time_array()  # Get time array from first segment
+			self.hdr = self.get_header_bytes()  # Update header for each segment
 			
-			# Loop through segments and extract waveform data
-			for segment in range(1, subarray_count + 1):  # LeCroy uses 1-based segment indexing
-				if self.verbose:
-					print(f'    Reading segment {segment}/{subarray_count}', end='\r')
-					
-				self.scope.write(f'WAVEFORM_SETUP SP,0,NP,0,FP,1,SN,{segment}')
-				self.scope.write(trace + ':WAVEFORM?')
-				self.trace_bytes = self.scope.read_raw()
-				self.hdr = self.get_header_bytes()  # Update header for each segment
-				
-				NSamples, ndx0 = self.parse_header()
-				
-				if self.hdr.comm_type == 1:  # WORD data
-					ndx1 = ndx0 + NSamples * 2
-					wdata = struct.unpack(str(NSamples) + 'h', self.trace_bytes[ndx0:ndx1])
-					data = numpy.array(wdata) * self.hdr.vertical_gain - self.hdr.vertical_offset
-				else:  # BYTE data
-					ndx1 = ndx0 + NSamples
-					cdata = struct.unpack(str(NSamples) + 'b', self.trace_bytes[ndx0:ndx1])
-					data = numpy.array(cdata) * self.hdr.vertical_gain - self.hdr.vertical_offset
-					
-				segment_data.append(data)
-				
-			if self.verbose:
-				print('\n<:> Sequence acquisition complete')
-				
-			return times, segment_data
+			NSamples, ndx0 = self.parse_header()
 			
-		except Exception as e:
-			raise RuntimeError(f"Failed to acquire sequence data: {str(e)}")
+			if self.hdr.comm_type == 1:  # WORD data
+				ndx1 = ndx0 + NSamples * 2
+				wdata = struct.unpack(str(NSamples) + 'h', self.trace_bytes[ndx0:ndx1])
+				data = numpy.array(wdata) * self.hdr.vertical_gain - self.hdr.vertical_offset
+			else:  # BYTE data
+				ndx1 = ndx0 + NSamples
+				cdata = struct.unpack(str(NSamples) + 'b', self.trace_bytes[ndx0:ndx1])
+				data = numpy.array(cdata) * self.hdr.vertical_gain - self.hdr.vertical_offset
+				
+			segment_data.append(data)
+			
+		if self.verbose:
+			print('\n<:> Sequence acquisition complete')
+				
+		return times, segment_data
+
 
 	#-------------------------------------------------------------------------
 
