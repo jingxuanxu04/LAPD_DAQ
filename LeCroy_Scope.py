@@ -549,20 +549,14 @@ class LeCroy_Scope:
 		""" Read a trace from the scope, and return a numpy array of floats corresponding to the data displayed.
 			Saves the header.
 			if raw==True returns the raw word or byte data, otherwise floating point values
-			Uses the current header information to compute the floats from the returned raw data, which can
-			   be either short integers (16 bits signed), or signed chars (8 bits signed). However the latter
-			   should not happen because we specify the 2-byte version in the COM_FORMAT command about 5 lines
-			   down from here.
+			Uses the current header information to compute the floats from the returned raw data.
 		"""
 		trace = self.validate_trace(trace)
 
-		#waveform_setup:   SP=NP=0 -> send all points, for first point FP=1, segment# SN=0 - send all segments
-		self.scope.write('WAVEFORM_SETUP SP,0,NP,0,FP,1,SN,0')
-		#no header, WORD length data, binary
+		# Set up waveform transfer format
+		self.scope.write('WAVEFORM_SETUP SP,0,NP,0,FP,1,SN,0')  # SN,0 means get all segments in sequence mode
 		self.scope.write('COMM_HEADER OFF')
 		self.scope.write('COMM_FORMAT DEF9,WORD,BIN')
-
-		# read raw data from scope
 
 		if self.verbose: print('\n<:> reading',trace,'from scope')
 		t0 = time.time()
@@ -585,14 +579,14 @@ class LeCroy_Scope:
 
 		if self.hdr.comm_type == 1:       # data returned in words (short integers)
 			ndx1 = ndx0 + NSamples*2
-			wdata = struct.unpack(str(NSamples)+'h', self.trace_bytes[ndx0:ndx1])              # unpack returns a tuple, so
+			wdata = struct.unpack(str(NSamples)+'h', self.trace_bytes[ndx0:ndx1])
 			if raw:
 				data = wdata
 			else:
-				data = numpy.array(wdata) * self.hdr.vertical_gain - self.hdr.vertical_offset      # we need to convert tuple to array in order to work with it
-		if self.hdr.comm_type == 0:       # data returned in bytes (signed char)
+				data = numpy.array(wdata) * self.hdr.vertical_gain - self.hdr.vertical_offset
+		else:  # comm_type == 0, data returned in bytes (signed char)
 			ndx1 = ndx0 + NSamples
-			cdata = struct.unpack(str(NSamples)+'b', self.trace_bytes[ndx0:ndx1])              # unpack returns a tuple
+			cdata = struct.unpack(str(NSamples)+'b', self.trace_bytes[ndx0:ndx1])
 			if raw:
 				data = cdata
 			else:
@@ -602,25 +596,109 @@ class LeCroy_Scope:
 		if self.verbose: print('    .............................%.1f sec' % (t1-t0))
 		return data
 
-	#----------------------------------------------------------------------
+	def acquire_sequence_data(self, trace):
+		"""
+		Acquire all sequence mode segments from the oscilloscope.
+		
+		The scope must be configured in sequence mode before calling this function.
+		To set up sequence mode:
+		1. Set trigger mode to 'SEQUENCE'
+		2. Set desired number of segments
+		3. Set trigger conditions
+		4. Arm the trigger
+		
+		Args:
+			trace (str): The channel name (e.g., 'C1', 'C2', etc.)
+			
+		Returns:
+			tuple: (times, segment_data)
+				- times (numpy.array): Time array for the waveform
+				- segment_data (list of numpy.array): List of waveform data arrays, one per segment
+				
+		Raises:
+			RuntimeError: If scope is not in sequence mode or acquisition fails
+		"""
+		trace = self.validate_trace(trace)
+		
+		# Verify sequence mode is active
+		sequence_status = self.scope.query('VBS? "return=app.Acquisition.Sequence"')
+		if sequence_status.strip().upper() != 'TRUE':
+			raise RuntimeError("Scope is not in sequence mode. Enable sequence mode first.")
+		
+		# Get number of segments
+		subarray_count = int(self.scope.query('VBS? "return=app.Acquisition.Horizontal.SubarrayCount"'))
+		if subarray_count < 2:
+			raise RuntimeError("Sequence mode requires at least 2 segments.")
+			
+		if self.verbose:
+			print(f'<:> Acquiring {subarray_count} segments from {trace}')
+			
+		segment_data = []
+		
+		# Set up waveform transfer format
+		self.scope.write('COMM_HEADER OFF')
+		self.scope.write('COMM_FORMAT DEF9,WORD,BIN')
+		
+		try:
+			# Get first segment to extract time axis
+			self.scope.write('WAVEFORM_SETUP SP,0,NP,0,FP,1,SN,1')  # Get first segment
+			self.scope.write(trace + ':WAVEFORM?')
+			self.trace_bytes = self.scope.read_raw()
+			self.hdr = self.get_header_bytes()
+			times = self.time_array()  # Get time array from first segment
+			
+			# Loop through segments and extract waveform data
+			for segment in range(1, subarray_count + 1):  # LeCroy uses 1-based segment indexing
+				if self.verbose:
+					print(f'    Reading segment {segment}/{subarray_count}', end='\r')
+					
+				self.scope.write(f'WAVEFORM_SETUP SP,0,NP,0,FP,1,SN,{segment}')
+				self.scope.write(trace + ':WAVEFORM?')
+				self.trace_bytes = self.scope.read_raw()
+				self.hdr = self.get_header_bytes()  # Update header for each segment
+				
+				NSamples, ndx0 = self.parse_header()
+				
+				if self.hdr.comm_type == 1:  # WORD data
+					ndx1 = ndx0 + NSamples * 2
+					wdata = struct.unpack(str(NSamples) + 'h', self.trace_bytes[ndx0:ndx1])
+					data = numpy.array(wdata) * self.hdr.vertical_gain - self.hdr.vertical_offset
+				else:  # BYTE data
+					ndx1 = ndx0 + NSamples
+					cdata = struct.unpack(str(NSamples) + 'b', self.trace_bytes[ndx0:ndx1])
+					data = numpy.array(cdata) * self.hdr.vertical_gain - self.hdr.vertical_offset
+					
+				segment_data.append(data)
+				
+			if self.verbose:
+				print('\n<:> Sequence acquisition complete')
+				
+			return times, segment_data
+			
+		except Exception as e:
+			raise RuntimeError(f"Failed to acquire sequence data: {str(e)}")
+
+	#-------------------------------------------------------------------------
 
 	def time_array(self):
-		""" return a numpy array containing sample times
-			note: only valid after a call to acquire
+		""" Return a numpy array containing sample times.
+			In sequence mode, returns time array for a single segment.
+			Note: only valid after a call to acquire or acquire_sequence_data
 		"""
 		if not hasattr(self, 'hdr'):
-			# If header not parsed yet, parse it from trace_bytes
-			if not hasattr(self, 'trace_bytes'):
-				raise RuntimeError("No trace data available. Call acquire() first.")
-			self.parse_header(self.trace_bytes)
+			raise RuntimeError("No trace data available. Call acquire() first.")
 			
-		NSamples = self.hdr.wave_array_1 if self.hdr.comm_type == 0 else int(self.hdr.wave_array_1/2)
+		# In sequence mode, wave_array_1 is total points across all segments
+		if self.hdr.subarray_count > 1:
+			NSamples = int(self.hdr.wave_array_1 / self.hdr.subarray_count)
+			if self.hdr.comm_type == 1:
+				NSamples = int(NSamples / 2)
+		else:
+			NSamples = self.hdr.wave_array_1 if self.hdr.comm_type == 0 else int(self.hdr.wave_array_1/2)
+			
 		t0 = float(self.hdr.horiz_offset)
 		horiz_interval = float(self.hdr.horiz_interval)
 		return numpy.linspace(t0, t0 + NSamples * horiz_interval, NSamples, endpoint=False)
-		#note on linspace construction here: suppose we have 2 samples and the trace is 10ms, the samples should be at 0 and 5 ms,
-		#                                    rather than 0 and 10ms as linspace(0,N*dt,N) would return
-		# Assume this is the case, because when requesting 10000 samples the scope actually returns 10001.  todo: test this, e.g. sample 1 kHz with 1000 pts, look at aliasing. Need the 1 kHz to be referenced to same frequency as scope
 
 	#-------------------------------------------------------------------------
 
@@ -669,28 +747,37 @@ class LeCroy_Scope:
 	def parse_header(self):
 		"""Parse the header from raw trace data and store it in self.hdr
 		
-		Args:
-			trace_bytes: Raw bytes from scope including header
-			
 		Returns:
-			tuple: (NSamples, ndx0, ndx1) for data parsing
+			tuple: (NSamples, ndx0) for data parsing
+			- NSamples: Number of samples in current segment
+			- ndx0: Starting index of data in trace_bytes
 		"""
-
-		NSamples = int(0)
-		if self.hdr.comm_type == 0:
-			# data returned as signed chars
-			NSamples = self.hdr.wave_array_1
-		elif self.hdr.comm_type == 1:
-			# data returned as shorts
-			NSamples = int(self.hdr.wave_array_1/2)
-		else:
-			# throw an exception if we don't recognize comm_type
+		if self.hdr.comm_type not in [0, 1]:
 			err = '**** hdr.comm_type = ' + str(self.hdr.comm_type) + '; expected value is either 0 or 1'
 			raise(RuntimeError(err)).with_traceback(sys.exc_info()[2])
 
-		if self.verbose: print('<:> NSamples =',NSamples)
+		# Check if in sequence mode
+		is_sequence = self.hdr.subarray_count > 1
+
+		if is_sequence:
+			# In sequence mode, wave_array_1 is total points across all segments
+			NSamples = int(self.hdr.wave_array_1 / self.hdr.subarray_count)
+			if self.hdr.comm_type == 1:  # If WORD data, divide by 2
+				NSamples = int(NSamples / 2)
+		else:
+			# Normal mode - same as before
+			if self.hdr.comm_type == 0:
+				NSamples = self.hdr.wave_array_1
+			else:
+				NSamples = int(self.hdr.wave_array_1/2)
+
+		if self.verbose: 
+			print('<:> NSamples =', NSamples)
+			if is_sequence:
+				print('<:> Sequence mode: segment', self.hdr.segment_index, 'of', self.hdr.subarray_count)
+
 		if NSamples == 0:
-			# throw an exception if there are no samples (i.e. scope not triggered, trace not displayed)
+			err = '**** fail because NSamples = 0 (possible cause: trace has no data? scope not triggered?)'
 			err = '**** fail because NSamples = 0 (possible cause: trace has no data? scope not triggered?)\nIF SCOPE IS IN 2-CHANNEL MODE BUT CHANNEL 1 or 4 ARE SELECTED, they have no data'
 			raise(RuntimeError(err)).with_traceback(sys.exc_info()[2])
 
@@ -707,6 +794,7 @@ class LeCroy_Scope:
 			print('<:> data scaling      gain = %6.3g, offset = %8.5g' % (self.hdr.vertical_gain, self.hdr.vertical_offset), vert_units)
 			print('<:> sample timing       dt = %6.3g,   offset = %8.5g' % (self.hdr.horiz_interval, self.hdr.horiz_offset), horz_units)
 
+		# Calculate data offset
 		ndx0 = (15+WAVEDESC_SIZE) + self.hdr.user_text + self.hdr.trigtime_array + self.hdr.ris_time_array + self.hdr.res_array1
 		
 		return NSamples, ndx0
