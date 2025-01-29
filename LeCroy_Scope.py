@@ -171,7 +171,7 @@ class LeCroy_Scope:
 		""" no special processing after __init__() """
 		return self
 
-	def __exit__(self, exc_type, exc_value, traceback):
+	def __exit__(self):
 		""" checks for how many times the peculiar error described below was detected (see wait_for_sweeps()),
 			then calls __del__() """
 		print('LeCroy_Scope:__exit__() called', end='')
@@ -569,6 +569,7 @@ class LeCroy_Scope:
 
 		self.scope.write(trace+':WAVEFORM?')
 		self.trace_bytes = self.scope.read_raw()
+		self.hdr = self.get_header_bytes()
 
 		t1 = time.time()
 		if self.verbose: print('    .............................%.1f sec' % (t1-t0))
@@ -660,10 +661,10 @@ class LeCroy_Scope:
 
 	#-------------------------------------------------------------------------
 
-	def header_bytes(self) -> numpy.array:
+	def get_header_bytes(self) -> numpy.array:
 		""" return a numpy byte array containing the header """
-		#invalid literal for int():  return numpy.array(self.trace_bytes[15:15+WAVEDESC_SIZE], dtype='B')
-		return self.trace_bytes[15:15+WAVEDESC_SIZE]
+		return WAVEDESC._make(struct.unpack(WAVEDESC_FMT, self.trace_bytes[15:15+WAVEDESC_SIZE]))
+
 	
 	def parse_header(self):
 		"""Parse the header from raw trace data and store it in self.hdr
@@ -674,8 +675,6 @@ class LeCroy_Scope:
 		Returns:
 			tuple: (NSamples, ndx0, ndx1) for data parsing
 		"""
-
-		self.hdr = WAVEDESC._make(struct.unpack(WAVEDESC_FMT, self.trace_bytes[15:15+WAVEDESC_SIZE]))
 
 		NSamples = int(0)
 		if self.hdr.comm_type == 0:
