@@ -1,5 +1,6 @@
-# -*- coding: utf-8 -*-
 """
+# -*- coding: utf-8 -*-
+
 This file defines the class that implements communication with a LeCroy X-Stream scope.
 To use this need:
 	1. Install National Instruments Visa
@@ -50,6 +51,7 @@ TODO: Need to modify other functions in class to reflect changes in hdr and trac
 
 import numpy
 import pyvisa as visa
+from typing import Tuple
 from pyvisa.resources import MessageBasedResource
 from pyvisa.errors import VisaIOError
 import collections
@@ -353,7 +355,7 @@ class LeCroy_Scope:
 	#-------------------------------------------------------------------------
 
 
-	def displayed_channels(self)  -> ():    # returns a tuple of channel names, e.g. ('C1', 'C4')
+	def displayed_channels(self)  -> Tuple[str, ...]:    # returns a tuple of channel names, e.g. ('C1', 'C4')
 		""" return displayed CHANNELS only, ignoring math, memory, etc """
 		channels = ()
 		self.scope.write('COMM_HEADER OFF')
@@ -370,7 +372,7 @@ class LeCroy_Scope:
 		return channels
 
 
-	def displayed_traces(self)  -> ():    # returns a tuple of trace names, e.g. ('C1', 'C4', 'F1')
+	def displayed_traces(self):    # returns a tuple of trace names, e.g. ('C1', 'C4', 'F1')
 		""" return displayed TRACES, including math, memory, etc. """
 		traces = ()
 		self.scope.write('COMM_HEADER OFF')
@@ -420,7 +422,7 @@ class LeCroy_Scope:
 		self.scope.write('VBS "app.Acquisition.'+Cn+'.AverageSweeps='+str(NSweeps)+'"')
 
 
-	def max_averaging_count(self) -> (int,int):
+	def max_averaging_count(self) -> Tuple[int, int]:
 		""" get maximum averaging count across all displayed channels
 			returns #sweeps and corresponding channel. To display progress, use
 			self.averaging_count(cc) where cc is the returned channel
@@ -677,9 +679,9 @@ class LeCroy_Scope:
 			print(f'<:> Acquiring {hdr.subarray_count} segments from {trace}')
 			
 		segment_data = []
-		for segment in range(1, self.hdr.subarray_count + 1):  # LeCroy uses 1-based segment indexing
+		for segment in range(1, hdr.subarray_count + 1):  # LeCroy uses 1-based segment indexing
 			if self.verbose:
-				print(f'    Reading segment {segment}/{self.hdr.subarray_count}', end='\r')
+				print(f'    Reading segment {segment}/{hdr.subarray_count}', end='\r')
 			
 			data = self.acquire(trace, segment)
 			segment_data.append(data)
@@ -689,19 +691,21 @@ class LeCroy_Scope:
 				
 		return segment_data
 
-	def time_array(self, hdr):
+	def time_array(self, trace):
 		""" Return a numpy array containing sample times.
 			In sequence mode, returns time array for a single segment.
 			Note: only valid after a call to acquire or acquire_sequence_data
 		"""
-			
+
+		trace_bytes, hdr = self.acquire_bytes(trace)
+
 		# In sequence mode, wave_array_1 is total points across all segments
 		if hdr.subarray_count > 1:
 			NSamples = int(hdr.wave_array_1 / hdr.subarray_count)
 			if hdr.comm_type == 1:
 				NSamples = int(NSamples / 2)
 		else:
-			NSamples = self.hdr.wave_array_1 if hdr.comm_type == 0 else int(hdr.wave_array_1/2)
+			NSamples = hdr.wave_array_1 if hdr.comm_type == 0 else int(hdr.wave_array_1/2)
 			
 		t0 = float(hdr.horiz_offset)
 		horiz_interval = float(hdr.horiz_interval)
@@ -768,11 +772,6 @@ class LeCroy_Scope:
 		if tr in EXPANDED_TRACE_NAMES.keys():
 			return EXPANDED_TRACE_NAMES[tr]
 		return "unknown_trace_name"
-
-	#-------------------------------------------------------------------------
-
-
-	
 
 	#-------------------------------------------------------------------------
 
