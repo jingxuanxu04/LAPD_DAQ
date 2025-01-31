@@ -23,20 +23,28 @@ def acquire_from_scope(scope, scope_name, first_acquisition=False):
 
     # Check if scope is in STOP mode before acquiring
     MAX_RETRIES = 1000  # Maximum number of retries
-    RETRY_DELAY = 0.05  # Delay between retries in seconds
-    
-    for retry in range(MAX_RETRIES):
-        current_mode = scope.set_trigger_mode('')  # Get current mode without changing it
-        if current_mode.strip() == 'STOP':
+    RETRY_DELAY = 0.01  # Check every 10ms
+    retry = 0
+
+    current_mode = scope.set_trigger_mode('')
+    while current_mode[0:4] != 'STOP':
+        try:
+            current_mode = scope.set_trigger_mode("")
+            if current_mode[0:4] == 'STOP':
+                break
+            time.sleep(RETRY_DELAY)
+            retry += 1
+
+        except KeyboardInterrupt:
+            print('Keyboard interuppted')
             break
-        # if retry == 0:  # Only print first time
-        #     print(f"Waiting for {scope_name} trigger mode to become STOP (currently {current_mode})")
-        time.sleep(RETRY_DELAY)
-    else:  # Loop completed without finding STOP mode
-        print(f"Warning: Timeout waiting for {scope_name} trigger mode to become STOP after {MAX_RETRIES * RETRY_DELAY:.1f}s")
-        if first_acquisition:
-            return [], {}, {}, None
-        return [], {}, {}
+
+        except retry == MAX_RETRIES:
+            error_msg = f"Error: Timeout waiting for {scope_name} trigger mode to become STOP after {MAX_RETRIES * RETRY_DELAY:.1f}s"
+            print(error_msg)
+            if first_acquisition:
+                return [], {}, {}, None
+            return [], {}, {}
 
     data = {}
     headers = {}
@@ -51,25 +59,8 @@ def acquire_from_scope(scope, scope_name, first_acquisition=False):
             # Set timeout for acquisition
             scope.timeout = TIMEOUT * 1000  # Convert to ms
             
-            # Get raw data using acquire_raw (which now also parses header)
-            trace_bytes = scope.acquire_raw(tr)
-            
-            # Get header bytes for storage
-            headers[tr] = np.void(trace_bytes[15:15+WAVEDESC_SIZE])
-            
-            # Get data indices from already parsed header
-            NSamples, ndx0, ndx1 = scope.parse_header(trace_bytes)
-            
-            # Parse the actual waveform data
-            if scope.hdr.comm_type == 1:  # data returned in words
-                wdata = struct.unpack(str(NSamples)+'h', trace_bytes[ndx0:ndx1])
-                trace_data = np.array(wdata) * scope.hdr.vertical_gain - scope.hdr.vertical_offset
-            else:  # data returned in bytes
-                cdata = struct.unpack(str(NSamples)+'b', trace_bytes[ndx0:ndx1])
-                trace_data = np.array(cdata) * scope.hdr.vertical_gain - scope.hdr.vertical_offset
-            
             # Store the data
-            data[tr] = trace_data
+            data[tr] = scope.acquire(tr)
             active_traces.append(tr)
             
             # Get time array from first valid trace if needed
@@ -109,18 +100,18 @@ class MultiScopeAcquisition:
         self.scopes = {}
         self.figures = {}
         self.time_arrays = {}  # Store time arrays for each scope
-        self.plot_data = {}    # Store plot data for each scope/trace/shot
+        # self.plot_data = {}    # Store plot data for each scope/trace/shot
         
-        # Just create figures
-        for name in self.scope_ips:
-            try:
-                self.figures[name] = plt.figure(figsize=(12, 8))
-                self.figures[name].canvas.manager.set_window_title(f'Scope: {name}')
-                self.plot_data[name] = {}  # Initialize plot data storage for this scope
-            except Exception as e:
-                print(f"Error creating figure for {name}: {e}")
-                self.cleanup()
-                raise
+        # # Just create figures
+        # for name in self.scope_ips:
+        #     try:
+        #         self.figures[name] = plt.figure(figsize=(12, 8))
+        #         self.figures[name].canvas.manager.set_window_title(f'Scope: {name}')
+        #         self.plot_data[name] = {}  # Initialize plot data storage for this scope
+        #     except Exception as e:
+        #         print(f"Error creating figure for {name}: {e}")
+        #         self.cleanup()
+        #         raise
 
     def cleanup(self):
         """Clean up resources"""
@@ -131,15 +122,15 @@ class MultiScopeAcquisition:
             except Exception as e:
                 print(f"Error closing scope: {e}")
         
-        # Close all figures
-        for fig in self.figures.values():
-            try:
-                plt.close(fig)
-            except Exception as e:
-                print(f"Error closing figure: {e}")
+        # # Close all figures
+        # for fig in self.figures.values():
+        #     try:
+        #         plt.close(fig)
+        #     except Exception as e:
+        #         print(f"Error closing figure: {e}")
         
         self.scopes.clear()
-        self.figures.clear()
+        # self.figures.clear()
 
     def __enter__(self):
         return self
@@ -167,7 +158,7 @@ class MultiScopeAcquisition:
         current_dir = os.path.dirname(os.path.abspath(__file__))
         
         # List of scripts to include
-        scripts = ['Data_Run_0D.py', 'multi_scope_acquisition.py']
+        scripts = ['Data_Run_0D.py', 'multi_scope_acquisition.py', 'LeCroy_Scope.py']
         
         for script in scripts:
             script_path = os.path.join(current_dir, script)
@@ -412,8 +403,8 @@ class MultiScopeAcquisition:
     def run_acquisition(self):
         """Main acquisition loop with clear separation between initialization and acquisition"""
         try:
-            # Initialize plots
-            plt.ion()
+            # # Initialize plots
+            # plt.ion()
             
             # Initialize HDF5 file structure
             print("Initializing HDF5 file...")
@@ -430,7 +421,7 @@ class MultiScopeAcquisition:
             
             # Save and plot first shot
             self.update_hdf5(all_data, 0)
-            self.update_plots(all_data, 0)
+            # self.update_plots(all_data, 0)
             print(f"Initial acquisition completed in {time.time() - start_time:.2f} seconds")
             
             # Subsequent shots
@@ -447,7 +438,7 @@ class MultiScopeAcquisition:
                 
                 # Save and plot
                 self.update_hdf5(all_data, shot)
-                self.update_plots(all_data, shot)
+                # self.update_plots(all_data, shot)
                 
                 print(f"Shot {shot+1} completed in {time.time() - start_time:.2f} seconds")
             
