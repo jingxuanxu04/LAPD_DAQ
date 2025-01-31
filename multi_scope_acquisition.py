@@ -4,7 +4,7 @@ from LeCroy_Scope import LeCroy_Scope, WAVEDESC_SIZE
 import h5py
 import time
 import os
-import struct
+from Motor_Control_2D import Motor_Control_2D
 
 #===============================================================================================================================================
 def init_acquire_from_scope(scope, scope_name):
@@ -183,19 +183,24 @@ class MultiScopeAcquisition:
         self.cleanup()
 
     def get_scope_description(self, scope_name):
-        from Data_Run_0D import get_scope_description
+        from Data_Run import get_scope_description
         return get_scope_description(scope_name)
     
     def get_channel_description(self, channel_name):
-        from Data_Run_0D import get_channel_description
+        from Data_Run import get_channel_description
         return get_channel_description(channel_name)
     
     def get_experiment_description(self):
-        from Data_Run_0D import get_experiment_description
+        from Data_Run import get_experiment_description
         return get_experiment_description()
+    
+    def get_positions(self):
+        from Data_Run import get_positions
+        return get_positions()
     
     def get_script_contents(self):
         """Read the contents of the Python scripts used to create the HDF5 file"""
+
         script_contents = {}
         
         # Get the directory of the current script
@@ -216,7 +221,9 @@ class MultiScopeAcquisition:
         return script_contents
     
     def initialize_hdf5(self):
-        """Initialize HDF5 file with scope information"""
+        """Initialize HDF5 file with scope and position information"""
+        positions, xpos, ypos = self.get_positions()
+
         with h5py.File(self.save_path, 'a') as f:
             # Add experiment description and creation time
             f.attrs['description'] = self.get_experiment_description()
@@ -229,8 +236,23 @@ class MultiScopeAcquisition:
             # Create scope groups with their descriptions
             for scope_name in self.scope_ips:
                 if scope_name not in f:
-                    scope_group = f.create_group(scope_name)
+                    f.create_group(scope_name)
+            
+            # Create Control/Positions group and datasets
+            if '/Control' not in f:
+                ctl_grp = f.create_group('/Control')
+                pos_grp = ctl_grp.create_group('Positions')
+                
+                # Create positions setup array with metadata
+                pos_ds = pos_grp.create_dataset('positions_setup_array', data=positions)
+                pos_ds.attrs['xpos'] = xpos
+                pos_ds.attrs['ypos'] = ypos
+                
+                # Create positions array for actual positions
+                pos_grp.create_dataset('positions_array', shape=len(positions), 
+                                     dtype=[('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4')])
 
+        return positions
 
     def initialize_scopes(self):
         """Initialize scopes and get time arrays on first acquisition"""
@@ -297,7 +319,7 @@ class MultiScopeAcquisition:
                 if traces:
                     all_data[name] = (traces, data, headers)
                 else:
-                    print(f"Warning: No valid data from {name} for shot {shot_num+1}")
+                    print(f"Warning: No valid data from {name} for shot {shot_num}")
                     failed_scopes.append(name)
 
             except Exception as e:
@@ -375,15 +397,7 @@ class MultiScopeAcquisition:
                         chunk_size = (min(len(trace_data), 512*1024),)
                     
                     # Create dataset
-                    data_ds = shot_group.create_dataset(
-                        f'{tr}_data', 
-                        data=trace_data,
-                        chunks=chunk_size,
-                        compression='gzip',
-                        compression_opts=9,
-                        shuffle=True,
-                        fletcher32=True
-                    )
+                    data_ds = shot_group.create_dataset(f'{tr}_data', data=trace_data,chunks=chunk_size,compression='gzip',compression_opts=9,shuffle=True,fletcher32=True)
                     
                     # Store header
                     header_ds = shot_group.create_dataset(f'{tr}_header', data=np.void(headers[tr]))
@@ -425,8 +439,8 @@ class MultiScopeAcquisition:
                         self.plot_data[scope_name][tr] = []
                         self.plot_data[scope_name][tr].append({
                                 'time': plot_time,
-                        'data': data[tr][::downsample],
-                            'shot': shot_num
+                                'data': data[tr][::downsample],
+                                'shot': shot_num
                         })
                 
                 # Create subplots for each trace
@@ -440,7 +454,7 @@ class MultiScopeAcquisition:
                     # Plot all stored shots for this trace
                     for shot_data in self.plot_data[scope_name][tr]:
                         ax.plot(shot_data['time'], shot_data['data'],
-                               label=f'Shot {shot_data["shot"] + 1}',
+                               label=f'Shot {shot_data["shot"]}',
                                alpha=0.7)
                     
                     ax.legend()
@@ -457,61 +471,95 @@ class MultiScopeAcquisition:
                 continue
             
         plt.pause(0.01)  # Single pause after all plots are updated
-        
 
-    def run_acquisition(self):
-        """Main acquisition loop with clear separation between initialization and acquisition"""
+#===============================================================================================================================================
+# Main Acquisition Function
+#===============================================================================================================================================
+def run_acquisition(save_path, scope_ips, motor_ips, external_delays):
+    """Main acquisition function that handles probe movement and data acquisition.
+    
+    Args:
+        save_path (str): Path to save the HDF5 file
+        scope_ips (dict): Dictionary of scope names and IP addresses
+        motor_ips (dict): Dictionary of motor axis names and IP addresses
+        external_delays (dict): Dictionary of external delays for each scope
+    """
+    print('Starting acquisition loop at', time.ctime())
+    
+    # Initialize MultiScopeAcquisition for scope operations
+    with MultiScopeAcquisition(scope_ips=scope_ips, save_path=save_path) as acquisition:
         try:
-            # # Initialize plots
-            # plt.ion()
-            
             # Initialize HDF5 file structure
             print("Initializing HDF5 file...")
-            self.initialize_hdf5()
+            positions = acquisition.initialize_hdf5()
             
+            try:
+                print("Initializing motor...")
+                mc = Motor_Control_2D(x_ip_addr=motor_ips['x'], y_ip_addr=motor_ips['y'])
+            except Exception as e:
+                print(f"Motor error: {str(e)}")
+                if len(positions) > 1 and positions[0]['x'] == positions[-1]['x'] and positions[0]['y'] == positions[-1]['y']:
+                    mc = None
+                    print("No motor movement required")
+                else:
+                    raise RuntimeError("Motor error: cannot move to first position")
+
             # First shot: Initialize scopes and save time arrays
-            print("\nStarting initial acquisition (shot 1)...")
-            start_time = time.time()
+            print("\nStarting initial acquisition...")
             
-            active_scopes = self.initialize_scopes()
-            
+            active_scopes = acquisition.initialize_scopes()
             if not active_scopes:
                 raise RuntimeError("No valid data found from any scope. Aborting acquisition.")
             
-            print(f"Initial acquisition completed in {time.time() - start_time:.2f} seconds")
-            
-            # Start data acquisition loop
-            for shot in range(0, self.num_loops):
-                print(f"\nStarting acquisition shot {shot+1}/{self.num_loops}")
-                start_time = time.time()
-                
-                # Acquire data from all active scopes
-                all_data = self.acquire_shot(active_scopes, shot)
-                
-                if not all_data:
-                    print(f"Warning: No valid data acquired for shot {shot+1}")
+            # Main acquisition loop
+            for pos in positions:
+                acquisition_loop_start_time = time.time()
+                shot_num = pos['shot_num']  # shot_num is 1-based
+
+                # Move to next position
+                print(f'Shot = {shot_num}, x = {pos["x"]}, y = {pos["y"]}', end='')
+                try:
+                    if mc is not None:
+                        mc.enable
+                        mc.probe_positions = (pos['x'], pos['y'])
+                        mc.disable
+                except KeyboardInterrupt:
+                    raise KeyboardInterrupt
+                except Exception as e:
+                    print(f'\nMotor failed to move with {str(e)}')
                     continue
                 
-                # Save and plot
-                self.update_hdf5(all_data, shot)
-                # self.update_plots(all_data, shot)
+                print(f'------------------{acquisition.scopes[list(scope_ips.keys())[0]].gaaak_count}--------------------{shot_num}', sep='')
                 
-                print(f"Shot {shot+1} completed in {time.time() - start_time:.2f} seconds")
-            
-            # Keep figures open after acquisition
-            plt.show(block=False)
-            input("Press Enter to close figures and exit...")
-            
-        except Exception as e:
-            print(f"Error during acquisition: {str(e)}")
+                # Acquire data from all scopes at this position
+                all_data = acquisition.acquire_shot(active_scopes, shot_num)
+                
+                if all_data:
+                    x, y = mc.probe_positions
+                    acquisition.update_hdf5(all_data, shot_num)
+                else:
+                    print(f"Warning: No valid data acquired at shot {shot_num}")
+                
+                # Calculate and display remaining time
+                time_per_pos = (time.time() - acquisition_loop_start_time)
+                remaining_positions = len(positions) - shot_num
+                remaining_time = remaining_positions * time_per_pos
+                print(f'Remaining time: {remaining_time/3600:.2f}h')
+                
+        except KeyboardInterrupt:
+            print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
             raise
-            
+        except Exception as e:
+            print('\n______Halted due to some error______', '  at', time.ctime())
+            print(f'Error: {str(e)}')
+            raise
         finally:
-            with h5py.File(self.save_path, 'a') as f:
-                for scope_name in self.scope_ips:
+            # Save final metadata
+            with h5py.File(save_path, 'a') as f:
+                for scope_name in scope_ips:
                     scope_group = f[scope_name]
-                    scope_group.attrs['description'] = self.get_scope_description(scope_name)
-                    scope_group.attrs['ip_address'] = self.scope_ips[scope_name]
-                    scope_group.attrs['scope_type'] = self.scopes[scope_name].idn_string
-                    scope_group.attrs['external_delay(ms)'] = self.external_delays.get(scope_name, '')
+                    scope_group.attrs['description'] = acquisition.get_scope_description(scope_name)
+                    scope_group.attrs['ip_address'] = scope_ips[scope_name]
+                    scope_group.attrs['scope_type'] = acquisition.scopes[scope_name].idn_string
+                    scope_group.attrs['external_delay(ms)'] = external_delays.get(scope_name, '')
             plt.close('all')  # Ensure all figures are closed
