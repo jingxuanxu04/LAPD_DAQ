@@ -7,49 +7,20 @@ import os
 import struct
 
 #===============================================================================================================================================
-def acquire_from_scope(scope, scope_name, first_acquisition=False):
-    """Acquire data from a single scope with optimized speed
+def init_acquire_from_scope(scope, scope_name):
+    """Initialize acquisition from a single scope and get initial data and time arrays
     Args:
         scope: LeCroy_Scope instance
         scope_name: Name of the scope
-        first_acquisition: If True, return time array as well
     Returns:
-        traces: List of trace names that have valid data
-        data: Dict of trace data
-        headers: Dict of trace headers
-        time_array: Time array (only if first_acquisition=True)
+        tuple: (traces, data, headers, time_array)
+            - traces: List of trace names that have valid data
+            - data: Dict of trace data
+            - headers: Dict of trace headers
+            - time_array: Time array for the scope
     """
-    st_time = time.time() # for checking acquisition time
-
-    # Check if scope is in STOP mode before acquiring
-    MAX_RETRIES = 1000  # Maximum number of retries
-    RETRY_DELAY = 0.01  # Check every 10ms
-    retry = 0
-
-    current_mode = scope.set_trigger_mode('')
-    while current_mode[0:4] != 'STOP':
-        try:
-            current_mode = scope.set_trigger_mode("")
-            if current_mode[0:4] == 'STOP':
-                break
-            time.sleep(RETRY_DELAY)
-            retry += 1
-
-        except KeyboardInterrupt:
-            print('Keyboard interuppted')
-            break
-
-        except retry == MAX_RETRIES:
-            error_msg = f"Error: Timeout waiting for {scope_name} trigger mode to become STOP after {MAX_RETRIES * RETRY_DELAY:.1f}s"
-            print(error_msg)
-            if first_acquisition:
-                return [], {}, {}, None
-            return [], {}, {}
-
-    data = {}
-    headers = {}
     time_array = None
-    active_traces = []  # List to store only traces that have data
+    is_sequence = 999
     TIMEOUT = 10  # Timeout in seconds for acquisition
 
     traces = scope.displayed_traces()
@@ -58,14 +29,16 @@ def acquire_from_scope(scope, scope_name, first_acquisition=False):
         try:
             # Set timeout for acquisition
             scope.timeout = TIMEOUT * 1000  # Convert to ms
-            
-            # Store the data
-            data[tr] = scope.acquire(tr)
-            active_traces.append(tr)
-            
-            # Get time array from first valid trace if needed
-            if first_acquisition and time_array is None:
-                time_array = scope.time_array()
+            trace_bytes, hdr = scope.acquire_bytes(tr)
+            if hdr.subarray_count >= 2: # Get number of segments
+                is_sequence = 1 # in sequence mode
+            else:
+                is_sequence = 0 # not in sequence mode
+
+
+            # Get time array from first valid trace
+            if time_array is None:
+                time_array = scope.time_array(tr)
 
         except Exception as e:
             if "timeout" in str(e).lower():
@@ -76,11 +49,82 @@ def acquire_from_scope(scope, scope_name, first_acquisition=False):
                 print(f"Error acquiring {tr} from {scope_name}: {e}")
             continue
     
-    # Print acquisition time
-    print(f"Acquisition from {scope_name} completed in {time.time() - st_time:.2f} seconds")
+    return is_sequence, time_array
 
-    if first_acquisition:
-        return active_traces, data, headers, time_array
+def acquire_from_scope(scope, scope_name):
+    """Acquire data from a single scope with optimized speed
+    Args:
+        scope: LeCroy_Scope instance
+        scope_name: Name of the scope
+    Returns:
+        tuple: (traces, data, headers)
+            - traces: List of trace names that have valid data
+            - data: Dict of trace data
+            - headers: Dict of trace headers
+    """
+    data = {}
+    headers = {}
+    active_traces = []
+    TIMEOUT = 10  # Timeout in seconds for acquisition
+
+    traces = scope.displayed_traces()
+    
+    for tr in traces:
+        try:
+            # Set timeout for acquisition
+            scope.timeout = TIMEOUT * 1000  # Convert to ms
+            
+            # Store the data
+            data[tr], headers[tr] = scope.acquire(tr)
+            active_traces.append(tr)
+
+        except Exception as e:
+            if "timeout" in str(e).lower():
+                print(f"Timeout acquiring {tr} from {scope_name} after {TIMEOUT}s")
+            elif "NSamples = 0" in str(e):
+                print(f"Skipping {tr} from {scope_name}: Channel is displayed but not active")
+            else:
+                print(f"Error acquiring {tr} from {scope_name}: {e}")
+            continue
+    
+    return active_traces, data, headers
+
+def acquire_from_scope_sequence(scope, scope_name):
+    """Acquire sequence mode data from a single scope
+    Args:
+        scope: LeCroy_Scope instance
+        scope_name: Name of the scope
+    Returns:
+        tuple: (traces, data, headers)
+            - traces: List of trace names that have valid data
+            - data: Dict of trace data arrays for each segment
+            - headers: Dict of trace headers with sequence info
+    """
+    data = {}
+    headers = {}
+    active_traces = []
+    TIMEOUT = 10  # Timeout in seconds for acquisition
+
+    traces = scope.displayed_traces()
+    
+    for tr in traces:
+        try:
+            # Set timeout for acquisition
+            scope.timeout = TIMEOUT * 1000  # Convert to ms
+            
+            # Store sequence data
+            data[tr], headers[tr] = scope.acquire_sequence_data(tr)
+            active_traces.append(tr)
+
+        except Exception as e:
+            if "timeout" in str(e).lower():
+                print(f"Timeout acquiring {tr} from {scope_name} after {TIMEOUT}s")
+            elif "NSamples = 0" in str(e):
+                print(f"Skipping {tr} from {scope_name}: Channel is displayed but not active")
+            else:
+                print(f"Error acquiring {tr} from {scope_name}: {e}")
+            continue
+    
     return active_traces, data, headers
 
 class MultiScopeAcquisition:
@@ -190,9 +234,7 @@ class MultiScopeAcquisition:
 
     def initialize_scopes(self):
         """Initialize scopes and get time arrays on first acquisition"""
-        all_data = {}
-        active_scopes = []
-        
+        active_scopes = {}
         for name, ip in self.scope_ips.items():
             print(f"\nInitializing {name}...")
             
@@ -209,22 +251,22 @@ class MultiScopeAcquisition:
                 scope.set_trigger_mode('SINGLE')
                 
                 # Get initial data and time arrays
-                traces, data, headers, time_array = acquire_from_scope(scope, name, first_acquisition=True)
-                
-                if traces:  # Only save if we got valid data
-                    self.save_time_arrays(name, time_array)
-                    active_scopes.append(name)
-                    all_data[name] = (traces, data, headers)
+                is_sequence, time_array = init_acquire_from_scope(scope, name)
+
+                if is_sequence != 999:  # Only save if we got valid data
+                    self.save_time_arrays(name, time_array, is_sequence)
+                    active_scopes[name] = is_sequence
                     print(f"Successfully initialized {name}")
                 else:
                     print(f"Warning: Could not initialize {name} - no traces returned")
                     self.cleanup_scope(name)
+                    
             except Exception as e:
                 print(f"Error initializing {name}: {str(e)}")
                 self.cleanup_scope(name)
                 continue
         
-        return all_data, active_scopes
+        return active_scopes
 
     def cleanup_scope(self, name):
         """Clean up resources for a specific scope"""
@@ -245,12 +287,19 @@ class MultiScopeAcquisition:
             scope = self.scopes[name]
             
             try:
-                traces, data, headers = acquire_from_scope(scope, name, first_acquisition=False)
+                if active_scopes[name] == 0:
+                    traces, data, headers = acquire_from_scope(scope, name)
+                elif active_scopes[name] == 1:
+                    traces, data, headers = acquire_from_scope_sequence(scope, name)
+                else:
+                    raise ValueError(f"Invalid active_scopes value for {name}: {active_scopes[name]}")
+
                 if traces:
                     all_data[name] = (traces, data, headers)
                 else:
                     print(f"Warning: No valid data from {name} for shot {shot_num+1}")
                     failed_scopes.append(name)
+
             except Exception as e:
                 print(f"Error acquiring from {name}: {str(e)}")
                 failed_scopes.append(name)
@@ -264,7 +313,7 @@ class MultiScopeAcquisition:
         
         return all_data
 
-    def save_time_arrays(self, scope_name, time_array):
+    def save_time_arrays(self, scope_name, time_array, is_sequence):
         """Save time array for a scope to HDF5 file
         
         Args:
@@ -283,8 +332,12 @@ class MultiScopeAcquisition:
             # Save to HDF5
             time_ds = scope_group.create_dataset('time_array', data=time_array, dtype='float64')
             time_ds.attrs['units'] = 'seconds'
-            time_ds.attrs['description'] = 'Time array for all channels'
+            if is_sequence == 1:
+                time_ds.attrs['description'] = 'Time array for all channels; data saved in sequence mode'
+            else:
+                time_ds.attrs['description'] = 'Time array for all channels'
             time_ds.attrs['dtype'] = str(time_array.dtype)
+
 
     def update_hdf5(self, all_data, shot_num):
         """Update HDF5 file with acquired data using optimized settings"""
@@ -304,35 +357,41 @@ class MultiScopeAcquisition:
                 
                 # Save trace data and headers with optimized chunk size and compression
                 for tr in traces:
-                    if tr in data:
-                        # Convert data to appropriate dtype if needed (e.g., uint16 for 12-bit data)
-                        trace_data = np.asarray(data[tr])
-                        if trace_data.dtype != np.uint16:
-                            trace_data = trace_data.astype(np.uint16)
+                    if tr not in data:
+                        continue
                         
-                        # Calculate optimal chunk size (aim for ~1MB chunks)
-                        chunk_size = min(len(trace_data), 512*1024)  # 512K samples per chunk
-                        
-                        # Create dataset with optimized settings
-                        data_ds = shot_group.create_dataset(
-                            f'{tr}_data', 
-                            data=trace_data,
-                            chunks=(chunk_size,),
-                            compression='gzip',
-                            compression_opts=9,  # Maximum compression
-                            shuffle=True,  # Helps with compression of binary data
-                            fletcher32=True  # Add checksum for data integrity
-                        )
-                        
-                        # Store header as binary data
-                        header_ds = shot_group.create_dataset(f'{tr}_header', data=headers[tr])
-                        
-                        # Add channel descriptions and metadata
-                        data_ds.attrs['description'] = self.get_channel_description(tr)
-                        data_ds.attrs['dtype'] = str(trace_data.dtype)
-                        data_ds.attrs['original_size'] = len(trace_data)
-                        data_ds.attrs['voltage_scale'] = '12-bit centered at 0V, ±10V range'
-                        header_ds.attrs['description'] = f'Binary header data for {tr}'
+                    # Convert data to appropriate dtype
+                    trace_data = np.asarray(data[tr])
+                    if trace_data.dtype != np.float64:
+                        trace_data = trace_data.astype(np.float64)
+                    
+                    # Check if this is sequence data (will be 2D array)
+                    is_sequence = len(trace_data.shape) > 1
+                    
+                    # Calculate optimal chunk size
+                    if is_sequence:
+                        chunk_size = (1, min(trace_data.shape[1], 512*1024))  # One segment at a time
+                    else:
+                        chunk_size = (min(len(trace_data), 512*1024),)
+                    
+                    # Create dataset
+                    data_ds = shot_group.create_dataset(
+                        f'{tr}_data', 
+                        data=trace_data,
+                        chunks=chunk_size,
+                        compression='gzip',
+                        compression_opts=9,
+                        shuffle=True,
+                        fletcher32=True
+                    )
+                    
+                    # Store header
+                    header_ds = shot_group.create_dataset(f'{tr}_header', data=np.void(headers[tr]))
+                    
+                    # Add metadata
+                    data_ds.attrs['description'] = self.get_channel_description(tr)
+                    data_ds.attrs['dtype'] = str(trace_data.dtype)
+                    header_ds.attrs['description'] = f'Binary header data for {tr}'
 
     def update_plots(self, all_data, shot_num):
         """Update plots for all scopes with optimized data handling"""
@@ -364,11 +423,11 @@ class MultiScopeAcquisition:
                         continue
                     if tr not in self.plot_data[scope_name]:
                         self.plot_data[scope_name][tr] = []
-                    self.plot_data[scope_name][tr].append({
-                        'time': plot_time,
+                        self.plot_data[scope_name][tr].append({
+                                'time': plot_time,
                         'data': data[tr][::downsample],
-                        'shot': shot_num
-                    })
+                            'shot': shot_num
+                        })
                 
                 # Create subplots for each trace
                 for i, tr in enumerate(traces):
@@ -410,22 +469,19 @@ class MultiScopeAcquisition:
             print("Initializing HDF5 file...")
             self.initialize_hdf5()
             
-            # First shot: Initialize scopes and get time arrays
+            # First shot: Initialize scopes and save time arrays
             print("\nStarting initial acquisition (shot 1)...")
             start_time = time.time()
             
-            all_data, active_scopes = self.initialize_scopes()
+            active_scopes = self.initialize_scopes()
             
             if not active_scopes:
                 raise RuntimeError("No valid data found from any scope. Aborting acquisition.")
             
-            # Save and plot first shot
-            self.update_hdf5(all_data, 0)
-            # self.update_plots(all_data, 0)
             print(f"Initial acquisition completed in {time.time() - start_time:.2f} seconds")
             
-            # Subsequent shots
-            for shot in range(1, self.num_loops):
+            # Start data acquisition loop
+            for shot in range(0, self.num_loops):
                 print(f"\nStarting acquisition shot {shot+1}/{self.num_loops}")
                 start_time = time.time()
                 

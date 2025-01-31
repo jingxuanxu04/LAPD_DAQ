@@ -3,7 +3,7 @@
 Modified from Scope_DAQ used on process plasma chamber
 
 ## HDF5 Data Structure
-The data acquisition script (`Data_Run_0D.py`) creates HDF5 files with the following structure:
+The data acquisition script creates HDF5 files with the following structure:
 
 ```
 experiment_name.hdf5/
@@ -12,7 +12,8 @@ experiment_name.hdf5/
 │   ├── creation_time        # Time when file was created
 │   └── source_code          # Python scripts used to create the file
 │       ├── Data_Run_0D.py
-│       └── multi_scope_acquisition.py
+│       ├── multi_scope_acquisition.py
+│       └── LeCroy_Scope.py
 │
 ├── magnetron/              # First scope group
 │   ├── attrs/
@@ -21,18 +22,20 @@ experiment_name.hdf5/
 │   │   ├── scope_type      # Scope identification string
 │   │   └── external_delay(ms)  # External delay in milliseconds
 │   │
-│   ├── time_array          # Time array for all channels (in seconds)
+│   ├── time_array          # Time array for all channels
 │   │   ├── attrs/
-│   │   │   ├── units      # "seconds"
-│   │   │   └── description # "Time array for all channels"
+│   │   │   ├── units       # "seconds"
+│   │   │   ├── description # "Time array for all channels" or "Time array for all channels; data saved in sequence mode"
+│   │   │   └── dtype       # Data type of time array
 │   │
 │   ├── shot_0/            # First shot data
 │   │   ├── attrs/
 │   │   │   └── acquisition_time
 │   │   │
-│   │   ├── C1_data        # Channel 1 voltage data
+│   │   ├── C1_data        # Channel 1 voltage data (1D array for normal mode, 2D array for sequence mode)
 │   │   │   └── attrs/
-│   │   │       └── description  # Channel description
+│   │   │       ├── description  # Channel description
+│   │   │       └── dtype       # Data type of voltage data
 │   │   ├── C1_header      # Channel 1 binary header
 │   │   │   └── attrs/
 │   │   │       └── description
@@ -60,13 +63,14 @@ experiment_name.hdf5/
    - Each scope has its own group with metadata
    - Time array stored once per scope (in seconds)
    - External delay and scope configuration information
+   - Supports both normal and sequence mode acquisition
 
 3. **Shot Data**
    - Numbered shots under each scope group
    - Each shot contains:
-     - Voltage data for each channel
+     - Voltage data for each channel (1D array for normal mode, 2D array for sequence mode)
      - Binary header data for each channel
-     - Channel descriptions
+     - Channel descriptions and data types
      - Acquisition timestamp
 
 4. **Time Arrays**
@@ -74,11 +78,19 @@ experiment_name.hdf5/
    - Used in milliseconds for plotting
    - Saved once after first acquisition
    - Reused for all subsequent shots
+   - Includes sequence mode information in attributes
+
+5. **Sequence Mode Support**
+   - Automatically detects and handles sequence mode acquisition
+   - Stores sequence data as 2D arrays (segments × samples)
+   - Optimized chunking for efficient data access
+   - Maintains backward compatibility with normal mode
 
 ### Reading the Data
 Example Python code to read the data:
 ```python
 import h5py
+import numpy as np
 
 # Open the HDF5 file
 with h5py.File('experiment_name.hdf5', 'r') as f:
@@ -94,6 +106,7 @@ with h5py.File('experiment_name.hdf5', 'r') as f:
         
         # Get time array (in seconds)
         time_array = scope_group['time_array'][:]
+        is_sequence = 'sequence mode' in scope_group['time_array'].attrs['description']
         
         # Read shots
         for shot_name in [k for k in scope_group.keys() if k.startswith('shot_')]:
@@ -103,6 +116,11 @@ with h5py.File('experiment_name.hdf5', 'r') as f:
             for channel in [k for k in shot_group.keys() if k.endswith('_data')]:
                 data = shot_group[channel][:]
                 description = shot_group[channel].attrs['description']
+                
+                if is_sequence:
+                    num_segments = data.shape[0]
+                    samples_per_segment = data.shape[1]
+                    print(f"Sequence data: {num_segments} segments, {samples_per_segment} samples each")
 ```
 
 ### Notes
@@ -110,3 +128,5 @@ with h5py.File('experiment_name.hdf5', 'r') as f:
 - Binary headers contain scope-specific metadata for each channel
 - Source code is preserved with data for reproducibility
 - Each scope can have different time arrays based on its settings
+- Sequence mode data is stored as 2D arrays with optimized chunking
+- Data compression and chunking are automatically optimized based on acquisition mode
