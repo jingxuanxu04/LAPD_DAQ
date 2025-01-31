@@ -662,7 +662,7 @@ class LeCroy_Scope:
 				
 		t1 = time.time()
 		if self.verbose: print('    .............................%.1f sec' % (t1-t0))
-		return data
+		return data, hdr
 
 	def acquire_sequence_data(self, trace):
 		"""
@@ -689,7 +689,7 @@ class LeCroy_Scope:
 		if self.verbose:
 			print('\n<:> Sequence acquisition complete')
 				
-		return segment_data
+		return segment_data, hdr
 
 	def time_array(self, trace):
 		""" Return a numpy array containing sample times.
