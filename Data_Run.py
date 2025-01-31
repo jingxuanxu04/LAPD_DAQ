@@ -34,29 +34,30 @@ User: Set experiment name and path
 '''
 exp_name = 'exp_00_test'  # experiment name
 date = datetime.date.today()
-path = f"E:\\Shadow data\\Energetic_Electron_Ring\\{exp_name}_{date}"
-save_path = f"{path}\\{exp_name}.hdf5"
+path = f"C:\\data"
+save_path = f"{path}\\{exp_name}_{date}.hdf5"
 
 #-------------------------------------------------------------------------------------------------------------
 '''
 User: Set probe position array
 '''
 # Probe position parameters
-xmin = -14
-xmax = 30
-nx = 23
+xmin = 0
+xmax = 0
+nx = 1
 
 ymin = 0
 ymax = 0
 ny = 1
 
-num_duplicate_shots = 20      # number of duplicate shots recorded at each location
+num_duplicate_shots = 2      # number of duplicate shots recorded at each location
 num_run_repeats = 1          # number of times to repeat sequentially over all locations
 
 #-------------------------------------------------------------------------------------------------------------
 def get_experiment_description():
     """Return overall experiment description"""
-    return f'''Energetic electron ring experiment with probe movement.
+    return f'''
+    Test data acquisition program
     
     Experiment: {exp_name}
     Date: {date}
@@ -71,17 +72,9 @@ def get_experiment_description():
     Setup:
     - Plasma condition
         - Helium backside pressure 42 Psi
-        - Puff with top valve only 105V for 20ms; plasma starts at ~11ms
-        - Discharge 20ms; bank 140V; current 4.2kA
-        - Pressure 0.025-0.05mTorr
-        - Density 5e12⇒1.8e12 from 20⇒25ms
-    - Magnetron condition:
-        - Filament current 52A
-        - Magnetic field 4.A 25.7V
-        - Magnetron duration 40ms
-        - Charging voltage and power see scope
-
-    - X-ray camera:
+        - Puff 
+        - Discharge XX ms; bank XX V; current XX kA
+        - Pressure XX mTorr
 
     - Scope descriptions: See scope_group.attrs['description']
     - Channel descriptions: See channel_group.attrs['description']
@@ -89,59 +82,9 @@ def get_experiment_description():
     Notes:
     All delays are set with respect to plasma 1kA as T=0
     '''
-
 #-------------------------------------------------------------------------------------------------------------
-def get_channel_description(tr):
-    """Return description for each channel"""
-    descriptions = {
-        # Magnetron scope channels
-        'magnetron_C1': 'Forward power',
-        'magnetron_C2': 'Reflected power', 
-        'magnetron_C3': 'RF envelope',
-        'magnetron_C4': 'RF phase',
-        
-        # X-ray dipole scope channels
-        'x-ray_dipole_C1': 'X-ray signal 1',
-        'x-ray_dipole_C2': 'X-ray signal 2',
-        'x-ray_dipole_C3': 'X-ray signal 3',
-        'x-ray_dipole_C4': 'X-ray signal 4',
-        
-        # Bdot scope channels
-        'Bdot_C1': 'Bdot probe 1',
-        'Bdot_C2': 'Bdot probe 2',
-        'Bdot_C3': 'Bdot probe 3',
-        'Bdot_C4': 'Bdot probe 4'
-    }
-    return descriptions.get(tr, f'Channel {tr} - No description available')
-
-def get_scope_description(scope_name):
-    """Return description for each scope"""
-    descriptions = {
-        'magnetron': '''RF source measurements scope
-        Channels: Forward/reflected power, RF envelope and phase
-        Timebase: 500 ns/div
-        Vertical scales: See channel settings''',
-        
-        'x-ray_dipole': '''X-ray dipole measurements scope
-        Channels: X-ray signals from dipole detectors
-        Timebase: 1 µs/div
-        Vertical scales: See channel settings''',
-        
-        'Bdot': '''Magnetic field measurements scope
-        Channels: Bdot probe signals
-        Timebase: 100 ns/div
-        Vertical scales: 5V/div'''
-    }
-    return descriptions.get(scope_name, f'Scope {scope_name} - No description available')
-
-#-------------------------------------------------------------------------------------------------------------
-'''
-User: Set scope and motor IP addresses and parameters
-'''
 scope_ips = {
-    'magnetron': '192.168.7.64',      # RF source measurements
-    'x-ray_dipole': '192.168.7.66',   # X-ray dipole measurements  
-    'Bdot': '192.168.7.63'           # Magnetic field measurements
+    'FastScope': '192.168.7.63' # LeCroy WavePro 404HD 4GHz 20GS/s
 }
 
 motor_ips = {
@@ -150,11 +93,25 @@ motor_ips = {
     'z': '192.168.7.163'   # Z-axis motor
 }
 
+def get_channel_description(tr):
+    """Channel description"""
+    descriptions = {
+        'FastScope_C1': 'N/A',
+        'FastScope_C2': 'pulse',
+        'FastScope_C3': 'flat',
+        'FastScope_C4': 'N/A'
+    }
+    return descriptions.get(tr, f'Channel {tr} - No description available')
+
+def get_scope_description(scope_name):
+    """Return description for each scope"""
+    descriptions = {
+        'FastScope': '''LeCroy WavePro 404HD 4GHz 20GS/s'''
+    }
+    return descriptions.get(scope_name, f'Scope {scope_name} - No description available')
 
 external_delays = { # unit: milliseconds
-    'magnetron': 15,
-    'x-ray_dipole': 15,  
-    'Bdot': 25
+    'FastScope': 0
 }
 
 #-------------------------------------------------------------------------------------------------------------
@@ -243,4 +200,4 @@ def main():
 if __name__ == '__main__':
     # Run a test acquisition with minimal settings
     # run_test(test_save_path = r"E:\Shadow data\Energetic_Electron_Ring\test.hdf5")
-    main() 
+    main()

@@ -7,6 +7,22 @@ import os
 from Motor_Control_2D import Motor_Control_2D
 
 #===============================================================================================================================================
+def stop_triggering(scope, retry=500):
+    retry_count = 0
+    while retry_count < retry:
+        try:
+            current_mode = scope.set_trigger_mode("")
+            if current_mode[0:4] == 'STOP':
+                return True
+            time.sleep(0.01)
+        except KeyboardInterrupt:
+            print('Keyboard interrupted')
+            break
+        retry_count += 1
+
+    print('Scope did not enter STOP state')
+    return False
+
 def init_acquire_from_scope(scope, scope_name):
     """Initialize acquisition from a single scope and get initial data and time arrays
     Args:
@@ -21,33 +37,34 @@ def init_acquire_from_scope(scope, scope_name):
     """
     time_array = None
     is_sequence = 999
-    TIMEOUT = 10  # Timeout in seconds for acquisition
 
     traces = scope.displayed_traces()
     
     for tr in traces:
-        try:
-            # Set timeout for acquisition
-            scope.timeout = TIMEOUT * 1000  # Convert to ms
-            trace_bytes, hdr = scope.acquire_bytes(tr)
-            if hdr.subarray_count >= 2: # Get number of segments
-                is_sequence = 1 # in sequence mode
-            else:
-                is_sequence = 0 # not in sequence mode
+        if stop_triggering(scope) == True:
+            trace_bytes, header_bytes = scope.acquire_bytes(tr)
+            hdr = scope.translate_header_bytes(header_bytes)
+        else:
+            raise Exception('Scope did not enter STOP state')
+
+        if hdr.subarray_count < 2: # Get number of segments
+            is_sequence = 0 # in RealTime mode
+        else:
+            is_sequence = 1 # in sequence mode
 
 
-            # Get time array from first valid trace
-            if time_array is None:
-                time_array = scope.time_array(tr)
+        # Get time array from first valid trace
+        if time_array is None:
+            time_array = scope.time_array(tr)
 
-        except Exception as e:
-            if "timeout" in str(e).lower():
-                print(f"Timeout acquiring {tr} from {scope_name} after {TIMEOUT}s")
-            elif "NSamples = 0" in str(e):
-                print(f"Skipping {tr} from {scope_name}: Channel is displayed but not active")
-            else:
-                print(f"Error acquiring {tr} from {scope_name}: {e}")
-            continue
+        # except Exception as e:
+        #     if "timeout" in str(e).lower():
+        #         print(f"Timeout acquiring {tr} from {scope_name} after {TIMEOUT}s")
+        #     elif "NSamples = 0" in str(e):
+        #         print(f"Skipping {tr} from {scope_name}: Channel is displayed but not active")
+        #     else:
+        #         print(f"Error acquiring {tr} from {scope_name}: {e}")
+        #     continue
     
     return is_sequence, time_array
 
@@ -70,22 +87,11 @@ def acquire_from_scope(scope, scope_name):
     traces = scope.displayed_traces()
     
     for tr in traces:
-        try:
-            # Set timeout for acquisition
-            scope.timeout = TIMEOUT * 1000  # Convert to ms
-            
-            # Store the data
+        if stop_triggering(scope) == True:
             data[tr], headers[tr] = scope.acquire(tr)
             active_traces.append(tr)
-
-        except Exception as e:
-            if "timeout" in str(e).lower():
-                print(f"Timeout acquiring {tr} from {scope_name} after {TIMEOUT}s")
-            elif "NSamples = 0" in str(e):
-                print(f"Skipping {tr} from {scope_name}: Channel is displayed but not active")
-            else:
-                print(f"Error acquiring {tr} from {scope_name}: {e}")
-            continue
+        else:
+            raise Exception('Scope did not enter STOP state')
     
     return active_traces, data, headers
 
@@ -103,27 +109,16 @@ def acquire_from_scope_sequence(scope, scope_name):
     data = {}
     headers = {}
     active_traces = []
-    TIMEOUT = 10  # Timeout in seconds for acquisition
 
     traces = scope.displayed_traces()
     
     for tr in traces:
-        try:
-            # Set timeout for acquisition
-            scope.timeout = TIMEOUT * 1000  # Convert to ms
-            
-            # Store sequence data
+
+        if stop_triggering(scope) == True:
             data[tr], headers[tr] = scope.acquire_sequence_data(tr)
             active_traces.append(tr)
-
-        except Exception as e:
-            if "timeout" in str(e).lower():
-                print(f"Timeout acquiring {tr} from {scope_name} after {TIMEOUT}s")
-            elif "NSamples = 0" in str(e):
-                print(f"Skipping {tr} from {scope_name}: Channel is displayed but not active")
-            else:
-                print(f"Error acquiring {tr} from {scope_name}: {e}")
-            continue
+        else:
+            raise Exception('Scope did not enter STOP state')
     
     return active_traces, data, headers
 
@@ -269,8 +264,7 @@ class MultiScopeAcquisition:
                 scope.scope.chunk_size = 4*1024*1024  # Increase chunk size to 4MB for faster transfer
                 scope.scope.timeout = 30000  # 30 second timeout
                 
-                # Set trigger mode
-                scope.set_trigger_mode('SINGLE')
+                scope.set_trigger_mode('SINGLE') # Set trigger mode
                 
                 # Get initial data and time arrays
                 is_sequence, time_array = init_acquire_from_scope(scope, name)
@@ -287,7 +281,7 @@ class MultiScopeAcquisition:
                 print(f"Error initializing {name}: {str(e)}")
                 self.cleanup_scope(name)
                 continue
-        
+        print(active_scopes)
         return active_scopes
 
     def cleanup_scope(self, name):
@@ -308,23 +302,19 @@ class MultiScopeAcquisition:
             print(f"\nAcquiring data from {name}...")
             scope = self.scopes[name]
             
-            try:
-                if active_scopes[name] == 0:
-                    traces, data, headers = acquire_from_scope(scope, name)
-                elif active_scopes[name] == 1:
-                    traces, data, headers = acquire_from_scope_sequence(scope, name)
-                else:
-                    raise ValueError(f"Invalid active_scopes value for {name}: {active_scopes[name]}")
+            if active_scopes[name] == 0:
+                traces, data, headers = acquire_from_scope(scope, name)
+            elif active_scopes[name] == 1:
+                traces, data, headers = acquire_from_scope_sequence(scope, name)
+            else:
+                raise ValueError(f"Invalid active_scopes value for {name}: {active_scopes[name]}")
 
-                if traces:
-                    all_data[name] = (traces, data, headers)
-                else:
-                    print(f"Warning: No valid data from {name} for shot {shot_num}")
-                    failed_scopes.append(name)
-
-            except Exception as e:
-                print(f"Error acquiring from {name}: {str(e)}")
+            if traces:
+                all_data[name] = (traces, data, headers)
+            else:
+                print(f"Warning: No valid data from {name} for shot {shot_num}")
                 failed_scopes.append(name)
+
 
             # start triggering again as soon as all traces are acquired
             scope.set_trigger_mode('SINGLE')
@@ -493,16 +483,13 @@ def run_acquisition(save_path, scope_ips, motor_ips, external_delays):
             print("Initializing HDF5 file...")
             positions = acquisition.initialize_hdf5()
             
-            try:
+            if len(positions) > 1 and positions[0]['x'] == positions[-1]['x'] and positions[0]['y'] == positions[-1]['y']:
+                    mc = None
+                    print("No motor movement required")                
+            else:
                 print("Initializing motor...")
                 mc = Motor_Control_2D(x_ip_addr=motor_ips['x'], y_ip_addr=motor_ips['y'])
-            except Exception as e:
-                print(f"Motor error: {str(e)}")
-                if len(positions) > 1 and positions[0]['x'] == positions[-1]['x'] and positions[0]['y'] == positions[-1]['y']:
-                    mc = None
-                    print("No motor movement required")
-                else:
-                    raise RuntimeError("Motor error: cannot move to first position")
+
 
             # First shot: Initialize scopes and save time arrays
             print("\nStarting initial acquisition...")
@@ -535,7 +522,7 @@ def run_acquisition(save_path, scope_ips, motor_ips, external_delays):
                 all_data = acquisition.acquire_shot(active_scopes, shot_num)
                 
                 if all_data:
-                    x, y = mc.probe_positions
+                    # x, y = mc.probe_positions
                     acquisition.update_hdf5(all_data, shot_num)
                 else:
                     print(f"Warning: No valid data acquired at shot {shot_num}")
@@ -549,10 +536,10 @@ def run_acquisition(save_path, scope_ips, motor_ips, external_delays):
         except KeyboardInterrupt:
             print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
             raise
-        except Exception as e:
-            print('\n______Halted due to some error______', '  at', time.ctime())
-            print(f'Error: {str(e)}')
-            raise
+        # except Exception as e:
+        #     print('\n______Halted due to some error______', '  at', time.ctime())
+        #     print(f'Error: {str(e)}')
+        #     raise
         finally:
             # Save final metadata
             with h5py.File(save_path, 'a') as f:

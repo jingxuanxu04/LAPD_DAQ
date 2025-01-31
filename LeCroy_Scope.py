@@ -186,7 +186,7 @@ class LeCroy_Scope:
 		""" no special processing after __init__() """
 		return self
 
-	def __exit__(self):
+	def __exit__(self, exc_type, exc_val, exc_tb):
 		""" checks for how many times the peculiar error described below was detected (see wait_for_sweeps()),
 			then calls __del__() """
 		print('LeCroy_Scope:__exit__() called', end='')
@@ -560,9 +560,9 @@ class LeCroy_Scope:
 
 	#-------------------------------------------------------------------------
 
-	def get_header_bytes(self, trace_bytes) -> numpy.array:
+	def translate_header_bytes(self, header_bytes) -> numpy.array:
 		""" return a numpy byte array containing the header """
-		return WAVEDESC._make(struct.unpack(WAVEDESC_FMT, trace_bytes[15:15+WAVEDESC_SIZE]))
+		return WAVEDESC._make(struct.unpack(WAVEDESC_FMT, header_bytes))
 	
 	def parse_header(self, hdr):
 		"""Parse the header from raw trace data and store it in hdr
@@ -629,17 +629,17 @@ class LeCroy_Scope:
 
 		self.scope.write(trace+':WAVEFORM?')
 		trace_bytes = self.scope.read_raw()
-		hdr = self.get_header_bytes(trace_bytes)
+		header_bytes = trace_bytes[15:15+WAVEDESC_SIZE]
 
 		t1 = time.time()
 		if self.verbose: print('    .............................%.1f sec' % (t1-t0))
-		return trace_bytes, hdr
+		return trace_bytes, header_bytes
 
 	def acquire(self, trace, seg=0, raw=False):
+		"""Acquire scope data for a single trace."""
 
-		trace_bytes, hdr = self.acquire_bytes(trace, seg)
-
-		# Parse header and get data indices
+		trace_bytes, header_bytes = self.acquire_bytes(trace, seg)
+		hdr = self.translate_header_bytes(header_bytes)
 		NSamples, ndx0 = self.parse_header(hdr)
 		
 		if self.verbose: print('<:> computing data values')
@@ -662,14 +662,15 @@ class LeCroy_Scope:
 				
 		t1 = time.time()
 		if self.verbose: print('    .............................%.1f sec' % (t1-t0))
-		return data, hdr
+		return data, header_bytes
 
 	def acquire_sequence_data(self, trace):
 		"""
 		Acquire scope data in sequence mode.
 		"""
 
-		trace_bytes, hdr = self.acquire_bytes(trace)
+		trace_bytes, header_bytes = self.acquire_bytes(trace)
+		hdr = self.translate_header_bytes(header_bytes)
 
 		# Get number of segments
 		if hdr.subarray_count < 2:
@@ -683,13 +684,13 @@ class LeCroy_Scope:
 			if self.verbose:
 				print(f'    Reading segment {segment}/{hdr.subarray_count}', end='\r')
 			
-			data = self.acquire(trace, segment)
+			data, _ = self.acquire(trace, segment)
 			segment_data.append(data)
 			
 		if self.verbose:
 			print('\n<:> Sequence acquisition complete')
 				
-		return segment_data, hdr
+		return segment_data, header_bytes
 
 	def time_array(self, trace):
 		""" Return a numpy array containing sample times.
@@ -697,8 +698,9 @@ class LeCroy_Scope:
 			Note: only valid after a call to acquire or acquire_sequence_data
 		"""
 
-		trace_bytes, hdr = self.acquire_bytes(trace)
-
+		trace_bytes, header_bytes = self.acquire_bytes(trace)
+		hdr = self.translate_header_bytes(header_bytes)
+		
 		# In sequence mode, wave_array_1 is total points across all segments
 		if hdr.subarray_count > 1:
 			NSamples = int(hdr.wave_array_1 / hdr.subarray_count)
