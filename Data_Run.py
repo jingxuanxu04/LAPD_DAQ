@@ -50,11 +50,17 @@ ymin = 0
 ymax = 0
 ny = 1
 
+# Set z parameters to None if not using XYZ drive
+zmin = 0
+zmax = 0
+nz = 1
+
 num_duplicate_shots = 10      # number of duplicate shots recorded at each location
 num_run_repeats = 1          # number of times to repeat sequentially over all locations
 
 #-------------------------------------------------------------------------------------------------------------
 def get_experiment_description():
+
     """Return overall experiment description"""
     return f'''
     Test data acquisition program
@@ -115,7 +121,7 @@ external_delays = { # unit: milliseconds
 }
 
 #-------------------------------------------------------------------------------------------------------------
-def get_positions():
+def get_positions_xy():
     """Generate the positions array for probe movement.
     Returns:
         tuple: (positions, xpos, ypos)
@@ -148,6 +154,41 @@ def get_positions():
                     
     return positions, xpos, ypos
 
+def get_positions_xyz():
+    """Generate the positions array for probe movement in 3D.
+    Returns:
+        tuple: (positions, xpos, ypos, zpos)
+            - positions: Array of tuples (shot_num, x, y, z)
+            - xpos: Array of x positions
+            - ypos: Array of y positions
+            - zpos: Array of z positions
+    """
+    if nx == 0 or ny == 0 or nz == 0:
+        sys.exit('Position array is empty.')
+        
+    xpos = np.linspace(xmin, xmax, nx)
+    ypos = np.linspace(ymin, ymax, ny) 
+    zpos = np.linspace(zmin, zmax, nz)
+
+    # Calculate total number of positions including duplicates and repeats
+    total_positions = nx * ny * nz * num_duplicate_shots * num_run_repeats
+
+    # Allocate the positions array
+    positions = np.zeros(total_positions,
+                        dtype=[('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4'), ('z', '>f4')])
+
+    # Create 3D rectangular shape position array
+    index = 0
+    for repeat_cnt in range(num_run_repeats):
+        for z in zpos:
+            for y in ypos:
+                for x in xpos:
+                    for dup_cnt in range(num_duplicate_shots):
+                        positions[index] = (index + 1, x, y, z)
+                        index += 1
+                    
+    return positions, xpos, ypos, zpos
+
 #===============================================================================================================================================
 # Main Data Run sequence
 #===============================================================================================================================================
@@ -175,7 +216,7 @@ def main():
     t_start = time.time()
     
     try:
-        run_acquisition(save_path, scope_ips, motor_ips, external_delays)
+            run_acquisition(save_path, scope_ips, motor_ips, external_delays, nz)
         
     except KeyboardInterrupt:
         print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
