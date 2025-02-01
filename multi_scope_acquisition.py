@@ -314,10 +314,6 @@ class MultiScopeAcquisition:
             else:
                 print(f"Warning: No valid data from {name} for shot {shot_num}")
                 failed_scopes.append(name)
-
-
-            # start triggering again as soon as all traces are acquired
-            scope.set_trigger_mode('SINGLE')
         
         # Remove failed scopes from active list
         for name in failed_scopes:
@@ -517,7 +513,11 @@ def run_acquisition(save_path, scope_ips, motor_ips, external_delays):
                     continue
                 
                 print(f'------------------{acquisition.scopes[list(scope_ips.keys())[0]].gaaak_count}--------------------{shot_num}', sep='')
-                
+                # start triggering all scopes as soon as probe is in position
+                for name in active_scopes:
+                    scope = acquisition.scopes[name]
+                    scope.set_trigger_mode('SINGLE')
+
                 # Acquire data from all scopes at this position
                 all_data = acquisition.acquire_shot(active_scopes, shot_num)
                 
