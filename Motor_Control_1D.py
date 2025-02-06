@@ -50,10 +50,10 @@ class Motor_Control:
     # - - - - - - - - - - - - - - - - -
     # To search IP address:
 
-    def __init__(self, server_ip_addr = None, cm_per_turn = 0.254, stop_switched=True, msipa_cache_fn = None, verbose = False, name='not named'):
+    def __init__(self, server_ip_addr = None, cm_per_turn = 0.254, stop_switch_mode=3, msipa_cache_fn = None, verbose = False, name='not named'):
 
         self.cm_per_turn = cm_per_turn
-        self.stop_switched = stop_switched
+        self.stop_switched_mode = stop_switch_mode
         self.verbose = verbose
         self.name = name
         if msipa_cache_fn == None:
@@ -101,9 +101,13 @@ class Motor_Control:
         # Setup encoder and motor steps
         self.__stepsPerRev = self.steps_per_rev()
         
-        if self.stop_switched:# Setup motor to stop when limit switch is hit
-            self.send_text('DL2') # uncomment this line when stop switch is connected properly
+        # Setup motor stop switch mode depending on electrical hook-up
+        # 1: Energized open
+        # 2: Energized closed
+        # 3: No connection
+        self.send_text('DL'+str(self.stop_switch_mode))
         
+
         # Check and clear alarm present on motor
         alarm = self.check_alarm
         if alarm == False:

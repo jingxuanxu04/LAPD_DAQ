@@ -27,13 +27,14 @@ properties: motor_velocity, motor_positions, stop_now, reset_motor, set_zero, en
 class Motor_Control_2D:
 
 	def __init__(self, x_ip_addr = None, y_ip_addr = None):
-		self.x_mc = Motor_Control(verbose=True, server_ip_addr= x_ip_addr, name='x', cm_per_turn = 0.254)
-		self.y_mc = Motor_Control(verbose=True, server_ip_addr= y_ip_addr, name='y', cm_per_turn = 0.508)
+		self.x_mc = Motor_Control(verbose=True, server_ip_addr= x_ip_addr, name='x', cm_per_turn = 0.254, stop_switch_mode=2)
+		self.y_mc = Motor_Control(verbose=True, server_ip_addr= y_ip_addr, name='y', cm_per_turn = 0.508, stop_switch_mode=2)
 		# Velmex model number NN10-0300-E01-21 (short black linear drives)
 		
-		self.probe_in = 62.948 # LAPD=>58.771 # Distance from chamber wall to chamber center
-		self.poi = 125.3624 #112.762 # Length of probe outside the chamber from pivot to end
-		self.ph = 20 # Height from probe shaft to where z-motor actually moves
+		self.probe_in = 58.771 # Distance from chamber wall to chamber center
+		self.poi = 125.3624 # Length of probe outside the chamber from pivot to end (needs to be re-measured everytime new probe is installed)
+		self.ph = 20 # Height from probe shaft to center of rotating bar
+
 
 		self.motor_velocity = 4, 4
 
@@ -240,14 +241,14 @@ properties: motor_velocity, motor_positions, stop_now, reset_motor, set_zero, en
 """
 class Motor_Control_3D:
 	def __init__(self, x_ip_addr = None, y_ip_addr = None, z_ip_addr = None):
-		self.x_mc = Motor_Control(verbose=True, server_ip_addr= x_ip_addr, name='x', cm_per_turn = 0.254)
-		self.y_mc = Motor_Control(verbose=True, server_ip_addr= y_ip_addr, name='y', cm_per_turn = 0.508)
-		self.z_mc = Motor_Control(verbose=True, server_ip_addr=z_ip_addr, name='z', cm_per_turn=0.254)
+		self.x_mc = Motor_Control(verbose=True, server_ip_addr= x_ip_addr, name='x', cm_per_turn = 0.254, stop_switch_mode=1)
+		self.y_mc = Motor_Control(verbose=True, server_ip_addr= y_ip_addr, name='y', cm_per_turn = 0.254, stop_switch_mode=1)
+		self.z_mc = Motor_Control(verbose=True, server_ip_addr=z_ip_addr, name='z', cm_per_turn=0.254, stop_switch_mode=1)
 		# Velmex model number NN10-0300-E01-21 (short black linear drives)
 		
-		self.probe_in = 62.948 # LAPD=>58.771 # Distance from chamber wall to chamber center
-		self.poi = 125.3624 #112.762 # Length of probe outside the chamber from pivot to end
-		self.ph = 20 # Height from probe shaft to where z-motor actually moves
+		self.probe_in = 58.771 # Distance from ball valve center to chamber center
+		self.poi = 125.3624 # Length of probe outside the chamber from pivot to end (needs to be re-measured everytime new probe is installed)
+		self.ph = 20 # Height from probe shaft to center of rotating bar
 
 		self.motor_velocity = 4, 4, 4
 
