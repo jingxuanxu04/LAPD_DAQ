@@ -53,7 +53,7 @@ class Motor_Control:
     def __init__(self, server_ip_addr = None, cm_per_turn = 0.254, stop_switch_mode=3, msipa_cache_fn = None, verbose = False, name='not named'):
 
         self.cm_per_turn = cm_per_turn
-        self.stop_switched_mode = stop_switch_mode
+        self.stop_switch_mode = str(stop_switch_mode)
         self.verbose = verbose
         self.name = name
         if msipa_cache_fn == None:
@@ -105,7 +105,7 @@ class Motor_Control:
         # 1: Energized open
         # 2: Energized closed
         # 3: No connection
-        self.send_text('DL'+str(self.stop_switch_mode))
+        self.send_text('DL'+self.stop_switch_mode)
         
 
         # Check and clear alarm present on motor
