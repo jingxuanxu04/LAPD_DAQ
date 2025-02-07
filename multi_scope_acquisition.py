@@ -484,6 +484,8 @@ def run_acquisition(save_path, scope_ips, motor_ips, external_delays, nz):
         external_delays (dict): Dictionary of external delays for each scope
         nz (int or None): Number of z positions. If None, use 2D motor control
     """
+    from Data_Run import probe_boundary  # Import user-defined boundary
+    
     print('Starting acquisition loop at', time.ctime())
     
     # Initialize MultiScopeAcquisition for scope operations
@@ -506,10 +508,11 @@ def run_acquisition(save_path, scope_ips, motor_ips, external_delays, nz):
                     if nz is None:
                         print("XY drive in use")
                         mc = Motor_Control_2D(x_ip_addr=motor_ips['x'], y_ip_addr=motor_ips['y'])
-
                     else:
                         print("XYZ drive in use")
                         mc = Motor_Control_3D(x_ip_addr=motor_ips['x'], y_ip_addr=motor_ips['y'], z_ip_addr=motor_ips['z'])
+                        # Add user-defined boundary to motor control
+                        mc.add_boundary(probe_boundary)
             else:
                 mc = None
                 print("No motor drives activated")
@@ -542,6 +545,9 @@ def run_acquisition(save_path, scope_ips, motor_ips, external_delays, nz):
                         mc.disable
                 except KeyboardInterrupt:
                     raise KeyboardInterrupt
+                except ValueError as e:
+                    print(f'\nSkipping position - {str(e)}')
+                    continue
                 except Exception as e:
                     print(f'\nMotor failed to move with {str(e)}')
                     continue

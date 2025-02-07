@@ -233,6 +233,34 @@ class Motor_Control_2D:
 
 #############################################################################################
 #############################################################################################
+
+class BoundaryChecker:
+    def __init__(self):
+        self.boundaries = []
+        self.obstacles = []
+    
+    def add_boundary(self, boundary_func):
+        """Add a boundary function that returns True if position is valid"""
+        self.boundaries.append(boundary_func)
+    
+    def add_obstacle(self, obstacle_func):
+        """Add an obstacle function that returns True if position collides"""
+        self.obstacles.append(obstacle_func)
+    
+    def is_position_valid(self, x, y, z):
+        """Check if position is valid (within boundaries and not in obstacles)"""
+        # Check all boundaries - position must be within ALL boundaries
+        for boundary in self.boundaries:
+            if not boundary(x, y, z):  # If outside any boundary
+                return False
+                
+        # Check all obstacles - position must not be in ANY obstacle
+        for obstacle in self.obstacles:
+            if obstacle(x, y, z):  # If inside any obstacle
+                return False
+                
+        return True
+
 """
 Class Motor_Control_3D: controls 3D probe drive with 3-motors (x,y,z) using Motor_Control_1D
 
@@ -240,10 +268,10 @@ functions: wait_for_motion_complete, test_limit, probe_to_motor, calculate_veloc
 properties: motor_velocity, motor_positions, stop_now, reset_motor, set_zero, enable, disable
 """
 class Motor_Control_3D:
-	def __init__(self, x_ip_addr = None, y_ip_addr = None, z_ip_addr = None):
-		self.x_mc = Motor_Control(verbose=True, server_ip_addr= x_ip_addr, name='x', cm_per_turn = 0.254, stop_switch_mode=1)
-		self.y_mc = Motor_Control(verbose=True, server_ip_addr= y_ip_addr, name='y', cm_per_turn = 0.254, stop_switch_mode=1)
-		self.z_mc = Motor_Control(verbose=True, server_ip_addr=z_ip_addr, name='z', cm_per_turn=0.254, stop_switch_mode=1)
+	def __init__(self, *args, **kwargs):
+		self.x_mc = Motor_Control(verbose=True, server_ip_addr= args[0], name='x', cm_per_turn = 0.254, stop_switch_mode=1)
+		self.y_mc = Motor_Control(verbose=True, server_ip_addr= args[1], name='y', cm_per_turn = 0.254, stop_switch_mode=1)
+		self.z_mc = Motor_Control(verbose=True, server_ip_addr=args[2], name='z', cm_per_turn=0.254, stop_switch_mode=1)
 		# Velmex model number NN10-0300-E01-21 (short black linear drives)
 		
 		self.probe_in = 58 # Distance from ball valve center to chamber center
@@ -251,6 +279,7 @@ class Motor_Control_3D:
 		self.ph = 30 # Height from probe shaft to center of rotating bar
 
 		self.motor_velocity = 4, 4, 4
+		self.boundary_checker = BoundaryChecker()
 
 	#-------------------------------------------------------------------------------------------
 	"""
@@ -289,7 +318,7 @@ class Motor_Control_3D:
 	Convert probe velocity vector to motor velocity vector
 	"""
 	def calculate_velocity(self, del_x, del_y, del_z):
-		default_speed = 4
+		default_speed = 6
 
 		del_r = math.sqrt(del_x**2 + del_y**2 + del_z**2)
 		if del_r == 0:
@@ -433,6 +462,10 @@ class Motor_Control_3D:
 	def probe_positions(self, pos):
 		xpos, ypos, zpos = pos
 
+		# Check if position is valid before moving
+		if not self.boundary_checker.is_position_valid(xpos, ypos, zpos):
+			raise ValueError(f"Position ({xpos}, {ypos}, {zpos}) violates boundaries or obstacles")
+
 		# Convert probe distance to motor distance
 		motor_x, motor_y, motor_z = self.probe_to_motor_LAPD(xpos, ypos, zpos)
 
@@ -464,16 +497,105 @@ class Motor_Control_3D:
 		self.y_mc.disable
 		self.z_mc.disable
 
+	def add_boundary(self, boundary_func):
+		self.boundary_checker.add_boundary(boundary_func)
+		
+	def add_obstacle(self, obstacle_func):
+		self.boundary_checker.add_obstacle(obstacle_func)
+
 #===============================================================================================================================================
 #<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
 #===============================================================================================================================================
 if __name__ == '__main__': # standalone testing:
-	# Test 2D motor control
-	print("Testing 2D motor control...")
-	mc2d = Motor_Control_2D(x_ip_addr = "192.168.0.40", y_ip_addr = "192.168.0.50")
-	mc2d.probe_positions
-	
-	# Test 3D motor control
-	print("\nTesting 3D motor control...")
-	mc3d = Motor_Control_3D(x_ip_addr = "192.168.0.40", y_ip_addr = "192.168.0.50", z_ip_addr = "192.168.0.60")
-	mc3d.probe_positions
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d import Axes3D
+
+    # Create a boundary checker instance
+    checker = BoundaryChecker()
+
+    # Define boundary - return True if position is within allowed range
+    def outer_boundary(x, y, z):
+        return (-40 <= x <= 60 and 
+                -30 <= y <= 30 and 
+                -7 <= z <= 7)
+
+    # Add boundary to checker
+    checker.add_boundary(outer_boundary)
+
+    print("Testing boundary checker...")
+    print("Reachable region:")
+    print("  x: -40 to +60 cm")
+    print("  y: -30 to +30 cm")
+    print("  z: -7 to +7 cm")
+
+    # Create 3D plot
+    fig = plt.figure(figsize=(16, 12))  # Increased figure size
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Draw boundary lines
+    # Front face (x = -40)
+    ax.plot([-40, -40], [-30, 30], [-7, -7], 'r-', linewidth=2)  # Bottom edge
+    ax.plot([-40, -40], [-30, 30], [7, 7], 'r-', linewidth=2)    # Top edge
+    ax.plot([-40, -40], [-30, -30], [-7, 7], 'r-', linewidth=2)  # Left edge
+    ax.plot([-40, -40], [30, 30], [-7, 7], 'r-', linewidth=2)    # Right edge
+
+    # Back face (x = 60)
+    ax.plot([60, 60], [-30, 30], [-7, -7], 'r-', linewidth=2)    # Bottom edge
+    ax.plot([60, 60], [-30, 30], [7, 7], 'r-', linewidth=2)      # Top edge
+    ax.plot([60, 60], [-30, -30], [-7, 7], 'r-', linewidth=2)    # Left edge
+    ax.plot([60, 60], [30, 30], [-7, 7], 'r-', linewidth=2)      # Right edge
+
+    # Connecting lines between front and back
+    ax.plot([-40, 60], [-30, -30], [-7, -7], 'r-', linewidth=2)  # Bottom left
+    ax.plot([-40, 60], [30, 30], [-7, -7], 'r-', linewidth=2)    # Bottom right
+    ax.plot([-40, 60], [-30, -30], [7, 7], 'r-', linewidth=2)    # Top left
+    ax.plot([-40, 60], [30, 30], [7, 7], 'r-', linewidth=2)      # Top right
+
+    # Add origin point
+    ax.scatter(0, 0, 0, c='black', marker='o', label='Origin', s=100)  # Increased point size
+
+    # Set labels and title
+    ax.set_xlabel('X (cm)', labelpad=10)
+    ax.set_ylabel('Y (cm)', labelpad=10)
+    ax.set_zlabel('Z (cm)', labelpad=10)
+    ax.set_title('Probe Movement Boundaries', pad=20, fontsize=14)
+
+    # Add legend
+    ax.legend(fontsize=12)
+
+    # Set aspect ratio to be equal
+    ax.set_box_aspect([100, 60, 14])  # Based on the range of each axis
+
+    # Set initial view angle for y/z-focused view
+    ax.view_init(elev=0, azim=90)  # Looking directly at y/z plane
+
+    # Set axis limits slightly beyond boundaries for better visualization
+    ax.set_xlim(-45, 65)
+    ax.set_ylim(-35, 35)
+    ax.set_zlim(-10, 10)
+
+    # Remove grid lines and background color
+    ax.grid(False)
+    ax.xaxis.pane.fill = False
+    ax.yaxis.pane.fill = False
+    ax.zaxis.pane.fill = False
+
+    plt.tight_layout()
+    plt.show()
+
+    # Test some specific points
+    test_points = [
+        (30, 15, 3),    # Should be valid (within bounds)
+        (-50, 0, 0),    # Should be invalid (x < -40)
+        (70, 0, 0),     # Should be invalid (x > 60)
+        (-35, 20, 5),   # Should be valid (within bounds)
+        (0, 35, 0),     # Should be invalid (y > 30)
+        (0, 0, 10)      # Should be invalid (z > 7)
+    ]
+
+    print("\nTesting specific points:")
+    for point in test_points:
+        x, y, z = point
+        valid = checker.is_position_valid(x, y, z)
+        print(f"Point ({x:3d}, {y:3d}, {z:3d}) is {'valid' if valid else 'invalid'}")

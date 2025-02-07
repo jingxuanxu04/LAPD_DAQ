@@ -11,6 +11,7 @@ The user should edit this file to:
     4) Set the HDF5 filename and experiment description
     5) Set descriptions for scopes and channels
     6) Configure any other experiment-specific parameters
+    7) Set probe movement boundaries
 
 Created on Feb.14.2024
 @author: Jia Han
@@ -19,8 +20,7 @@ Created on Feb.14.2024
 import datetime
 import os
 import numpy as np
-from multi_scope_acquisition import MultiScopeAcquisition, run_acquisition
-from Motor_Control_2D import Motor_Control_2D
+from multi_scope_acquisition import run_acquisition
 import time
 import sys
 import logging
@@ -36,6 +36,21 @@ exp_name = 'exp_02_test'  # experiment name
 date = datetime.date.today()
 path = f"C:\\data"
 save_path = f"{path}\\{exp_name}_{date}.hdf5"
+
+#-------------------------------------------------------------------------------------------------------------
+'''
+User: Set probe movement boundaries
+'''
+# Define probe movement limits
+x_limits = (-40, 60)  # (min, max) in cm
+y_limits = (-30, 30)
+z_limits = (-7, 7)
+
+def probe_boundary(x, y, z):
+    """Return True if position is within allowed range"""
+    return (x_limits[0] <= x <= x_limits[1] and 
+            y_limits[0] <= y <= y_limits[1] and 
+            z_limits[0] <= z <= z_limits[1])
 
 #-------------------------------------------------------------------------------------------------------------
 '''
