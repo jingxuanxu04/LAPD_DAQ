@@ -246,9 +246,9 @@ class Motor_Control_3D:
 		self.z_mc = Motor_Control(verbose=True, server_ip_addr=z_ip_addr, name='z', cm_per_turn=0.254, stop_switch_mode=1)
 		# Velmex model number NN10-0300-E01-21 (short black linear drives)
 		
-		self.probe_in = 58.771 # Distance from ball valve center to chamber center
-		self.poi = 125.3624 # Length of probe outside the chamber from pivot to end (needs to be re-measured everytime new probe is installed)
-		self.ph = 20 # Height from probe shaft to center of rotating bar
+		self.probe_in = 58 # Distance from ball valve center to chamber center
+		self.poi = 140 # Length of probe outside the chamber from pivot to end (needs to be re-measured everytime new probe is installed)
+		self.ph = 30 # Height from probe shaft to center of rotating bar
 
 		self.motor_velocity = 4, 4, 4
 
@@ -299,9 +299,9 @@ class Motor_Control_3D:
 			v_y = default_speed * del_y / del_r
 			v_z = default_speed * del_z / del_r
 
-		v_motor_x = v_x * 2  # factor of 2 due to different cm_per_turn
+		v_motor_x = v_x
 		v_motor_y = v_y
-		v_motor_z = v_z * 2  # factor of 2 due to different cm_per_turn
+		v_motor_z = v_z
 
 		v_motor_x = round(v_motor_x, 3)
 		v_motor_y = round(v_motor_y, 3)
@@ -396,7 +396,7 @@ class Motor_Control_3D:
 		Ltc = y/x * d2
 		
 		motor_x = D - self.probe_in
-		motor_y = self.ph - d2 - (self.poi + Ltc)*y/x
+		motor_y = -self.ph + d2 + (self.poi + Ltc)*y/x
 		motor_z = z/x * (self.poi+ Ltc)
 		
 		return motor_x, motor_y, motor_z
