@@ -73,11 +73,11 @@ class Motor_Control_2D:
 	Convert probe velocity vector to motor velocity vector
 	"""
 	def calculate_velocity(self, del_x, del_y):
-		default_speed = 4
+		default_speed = 4.0
 
 		del_r = math.sqrt(del_x**2 + del_y**2)
 		if del_r == 0:
-			v_x, v_y = 0, 0
+			v_x, v_y = 0.0, 0.0
 		else:
 			v_x = default_speed * del_x / del_r
 			v_y = default_speed * del_y / del_r
@@ -295,23 +295,22 @@ class Motor_Control_3D:
 	Convert probe velocity vector to motor velocity vector
 	"""
 	def calculate_velocity(self, del_x, del_y, del_z):
-		default_speed = 6
+		default_speed = 6.0  # Maximum speed in rev/sec
 
 		del_r = math.sqrt(del_x**2 + del_y**2 + del_z**2)
 		if del_r == 0:
-			v_x, v_y, v_z = 0, 0, 0
+			v_x, v_y, v_z = 0.0, 0.0, 0.0
 		else:
+			# Calculate velocities to maintain straight line motion
+			# The ratio of velocities must equal the ratio of distances
+			# Scale all velocities up so the largest one equals default_speed
 			v_x = default_speed * del_x / del_r
 			v_y = default_speed * del_y / del_r
 			v_z = default_speed * del_z / del_r
 
-		v_motor_x = v_x
-		v_motor_y = v_y
-		v_motor_z = v_z
-
-		v_motor_x = round(v_motor_x, 3)
-		v_motor_y = round(v_motor_y, 3)
-		v_motor_z = round(v_motor_z, 3)
+		v_motor_x = round(v_x, 3)
+		v_motor_y = round(v_y, 3)
+		v_motor_z = round(v_z, 3)
 
 		return v_motor_x, v_motor_y, v_motor_z
 
@@ -478,46 +477,22 @@ class Motor_Control_3D:
 		except ValueError as e:
 			raise ValueError(f"Cannot move to ({xpos}, {ypos}, {zpos}): {str(e)}")
 			
-		# Calculate total path length for velocity scaling
-		total_path_length = 0
-		path_segments = []
+		# Move through waypoints, ensuring straight line motion for each segment
 		prev_point = current_pos
-		
 		for waypoint in waypoints:
 			if not self.boundary_checker.is_position_valid(*waypoint):
 				raise ValueError(f"Waypoint {waypoint} is outside safe boundaries")
 			
-			# Convert current segment to motor coordinates
-			motor_coords = self.probe_to_motor_LAPD(*waypoint)
-			prev_motor_coords = self.probe_to_motor_LAPD(*prev_point)
-			
-			# Calculate segment length in motor coordinates
-			segment_delta = numpy.array(motor_coords) - numpy.array(prev_motor_coords)
-			segment_length = numpy.linalg.norm(segment_delta)
-			total_path_length += segment_length
-			
-			path_segments.append((prev_point, waypoint, segment_length))
-			prev_point = waypoint
-		
-		# Move through waypoints with synchronized velocities
-		for prev_point, waypoint, segment_length in path_segments:
-			# Scale velocity based on segment length relative to total path
-			velocity_scale = segment_length / total_path_length
-			
-			# Convert to motor coordinates
+			# Convert to motor coordinates for this segment
 			motor_x, motor_y, motor_z = self.probe_to_motor_LAPD(*waypoint)
 			
 			# Calculate and set velocity for this segment
+			# This ensures straight line motion at maximum speed
 			self.set_movement_velocity(motor_x, motor_y, motor_z)
 			
-			# Scale motor velocities to maintain smooth motion
-			current_velocities = self.motor_velocity
-			scaled_velocities = tuple(v * velocity_scale for v in current_velocities)
-			self.motor_velocity = scaled_velocities
-			
-			# Move to waypoint (motor_positions setter includes wait_for_motion_complete)
+			# Move to waypoint
 			self.motor_positions = motor_x, motor_y, motor_z
-
+			prev_point = waypoint
 
 	#-------------------------------------------------------------------------------------------------
 	@property

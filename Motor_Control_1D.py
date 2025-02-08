@@ -283,7 +283,7 @@ class Motor_Control:
 
         resp = self.send_text('VE')
 
-        return int(resp[5:])
+        return float(resp[5:])
 
     @motor_speed.setter
     def motor_speed(self, speed):
@@ -295,8 +295,8 @@ class Motor_Control:
         """ Returns the instantaneous velocity of the motor in units of rev/sec"""
 
         resp = self.send_text('IV')
-        rps = int(resp[5:]) / 60
-        return (rps)
+        rps = float(resp[5:]) / 60
+        return rps
 
 #-------------------------------------------------------------------------------------------
     """
