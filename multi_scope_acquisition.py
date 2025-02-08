@@ -512,7 +512,7 @@ def run_acquisition(save_path, scope_ips, motor_ips, external_delays, nz):
                         print("XYZ drive in use")
                         mc = Motor_Control_3D(x_ip_addr=motor_ips['x'], y_ip_addr=motor_ips['y'], z_ip_addr=motor_ips['z'])
                         # Add user-defined boundary to motor control
-                        mc.add_boundary(probe_boundary)
+                        mc.boundary_checker.add_boundary(probe_boundary)
             else:
                 mc = None
                 print("No motor drives activated")
