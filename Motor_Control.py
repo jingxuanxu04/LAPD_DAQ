@@ -12,7 +12,7 @@ import math
 from Motor_Control_1D import Motor_Control
 import time
 import numpy
-
+from obstacle_avoidance import BoundaryChecker
 from scipy.optimize import minimize
 
 # TODO: fix calculate_velocity to read from cm_per_turn directly
@@ -234,33 +234,6 @@ class Motor_Control_2D:
 #############################################################################################
 #############################################################################################
 
-class BoundaryChecker:
-    def __init__(self):
-        self.boundaries = []
-        self.obstacles = []
-    
-    def add_boundary(self, boundary_func):
-        """Add a boundary function that returns True if position is valid"""
-        self.boundaries.append(boundary_func)
-    
-    def add_obstacle(self, obstacle_func):
-        """Add an obstacle function that returns True if position collides"""
-        self.obstacles.append(obstacle_func)
-    
-    def is_position_valid(self, x, y, z):
-        """Check if position is valid (within boundaries and not in obstacles)"""
-        # Check all boundaries - position must be within ALL boundaries
-        for boundary in self.boundaries:
-            if not boundary(x, y, z):  # If outside any boundary
-                return False
-                
-        # Check all obstacles - position must not be in ANY obstacle
-        for obstacle in self.obstacles:
-            if obstacle(x, y, z):  # If inside any obstacle
-                return False
-                
-        return True
-
 """
 Class Motor_Control_3D: controls 3D probe drive with 3-motors (x,y,z) using Motor_Control_1D
 
@@ -275,11 +248,15 @@ class Motor_Control_3D:
 		# Velmex model number NN10-0300-E01-21 (short black linear drives)
 		
 		self.probe_in = 58 # Distance from ball valve center to chamber center
-		self.poi = 140 # Length of probe outside the chamber from pivot to end (needs to be re-measured everytime new probe is installed)
+		self.poi = 140 # Length of probe outside the chamber from pivot to end
 		self.ph = 30 # Height from probe shaft to center of rotating bar
 
 		self.motor_velocity = 4, 4, 4
 		self.boundary_checker = BoundaryChecker()
+		
+		# Pre-calculate common paths for faster obstacle avoidance
+		self._common_paths = {}
+		self._last_path = None  # Store last successful path for similar movements
 
 	#-------------------------------------------------------------------------------------------
 	"""
@@ -380,11 +357,16 @@ class Motor_Control_3D:
 
 				time.sleep(0.2)
 			except KeyboardInterrupt:
-				self.x_mc.stop_now
-				self.y_mc.stop_now
-				self.z_mc.stop_now
-				print('\n______Motor stopped and Halted due to Ctrl-C______')
-				raise KeyboardInterrupt
+				# Send stop commands immediately to all motors
+				try:
+					self.x_mc.stop_now
+					self.y_mc.stop_now
+					self.z_mc.stop_now
+				except Exception as e:
+					print(f"Error stopping motors: {str(e)}")
+				finally:
+					print('\n______Motor stopped and Halted due to Ctrl-C______')
+					raise KeyboardInterrupt  # Re-raise to propagate the interrupt
 
 	#--------------------------------------------------------------------------------------------------
 	@property
@@ -455,25 +437,87 @@ class Motor_Control_3D:
 	"""
 	@property
 	def probe_positions(self):
-		x_m, y_m, z_m = self.motor_positions
-		return self.motor_to_probe(x_m, y_m, z_m)
+		"""Get current probe position"""
+		return self._get_probe_position()
+
+	def find_safe_path(self, start_pos, end_pos):
+		"""Find safe path between points with optimized path finding"""
+		# Check if this is a similar movement to the last one
+		if self._last_path is not None:
+			last_start, last_end, waypoints = self._last_path
+			if (numpy.linalg.norm(numpy.array(start_pos) - numpy.array(last_start)) < 5 and
+				numpy.linalg.norm(numpy.array(end_pos) - numpy.array(last_end)) < 5):
+				# Similar movement, try the same waypoints
+				valid = True
+				prev_point = start_pos
+				for point in waypoints:
+					if not self.boundary_checker.is_path_valid(prev_point, point):
+						valid = False
+						break
+					prev_point = point
+				if valid:
+					return waypoints
+
+		# Try to find a path using the boundary checker
+		try:
+			waypoints = self.boundary_checker.find_alternative_path(start_pos, end_pos)
+			# Store successful path for future reference
+			self._last_path = (start_pos, end_pos, waypoints)
+			return waypoints
+		except ValueError as e:
+			raise ValueError(f"Cannot find safe path between {start_pos} and {end_pos}: {str(e)}")
 
 	@probe_positions.setter
 	def probe_positions(self, pos):
 		xpos, ypos, zpos = pos
+		target_pos = (xpos, ypos, zpos)
+		current_pos = self.probe_positions
+		
+		try:
+			waypoints = self.find_safe_path(current_pos, target_pos)
+		except ValueError as e:
+			raise ValueError(f"Cannot move to ({xpos}, {ypos}, {zpos}): {str(e)}")
+			
+		# Calculate total path length for velocity scaling
+		total_path_length = 0
+		path_segments = []
+		prev_point = current_pos
+		
+		for waypoint in waypoints:
+			if not self.boundary_checker.is_position_valid(*waypoint):
+				raise ValueError(f"Waypoint {waypoint} is outside safe boundaries")
+			
+			# Convert current segment to motor coordinates
+			motor_coords = self.probe_to_motor_LAPD(*waypoint)
+			prev_motor_coords = self.probe_to_motor_LAPD(*prev_point)
+			
+			# Calculate segment length in motor coordinates
+			segment_delta = numpy.array(motor_coords) - numpy.array(prev_motor_coords)
+			segment_length = numpy.linalg.norm(segment_delta)
+			total_path_length += segment_length
+			
+			path_segments.append((prev_point, waypoint, segment_length))
+			prev_point = waypoint
+		
+		# Move through waypoints with synchronized velocities
+		for prev_point, waypoint, segment_length in path_segments:
+			# Scale velocity based on segment length relative to total path
+			velocity_scale = segment_length / total_path_length
+			
+			# Convert to motor coordinates
+			motor_x, motor_y, motor_z = self.probe_to_motor_LAPD(*waypoint)
+			
+			# Calculate and set velocity for this segment
+			self.set_movement_velocity(motor_x, motor_y, motor_z)
+			
+			# Scale motor velocities to maintain smooth motion
+			current_velocities = self.motor_velocity
+			scaled_velocities = tuple(v * velocity_scale for v in current_velocities)
+			self.motor_velocity = scaled_velocities
+			
+			# Move to waypoint (motor_positions setter includes wait_for_motion_complete)
+			self.motor_positions = motor_x, motor_y, motor_z
 
-		# Check if position is valid before moving
-		if not self.boundary_checker.is_position_valid(xpos, ypos, zpos):
-			raise ValueError(f"Position ({xpos}, {ypos}, {zpos}) violates boundaries or obstacles")
-
-		# Convert probe distance to motor distance
-		motor_x, motor_y, motor_z = self.probe_to_motor_LAPD(xpos, ypos, zpos)
-
-		# Set movement velocity
-		self.set_movement_velocity(motor_x, motor_y, motor_z)
-
-		# Move motor
-		self.motor_positions = motor_x, motor_y, motor_z
 
 	#-------------------------------------------------------------------------------------------------
 	@property
@@ -497,105 +541,17 @@ class Motor_Control_3D:
 		self.y_mc.disable
 		self.z_mc.disable
 
-	def add_boundary(self, boundary_func):
-		self.boundary_checker.add_boundary(boundary_func)
-		
-	def add_obstacle(self, obstacle_func):
-		self.boundary_checker.add_obstacle(obstacle_func)
+	def add_common_path(self, name, start_region, end_region, waypoints):
+		"""Add a pre-calculated path for common movements"""
+		self._common_paths[name] = (start_region, end_region, waypoints)
+
+	def _get_probe_position(self):
+		"""Get current probe position directly from motors"""
+		x_m, y_m, z_m = self.motor_positions
+		return self.motor_to_probe(x_m, y_m, z_m)
 
 #===============================================================================================================================================
 #<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
 #===============================================================================================================================================
 if __name__ == '__main__': # standalone testing:
-    import numpy as np
-    import matplotlib.pyplot as plt
-    from mpl_toolkits.mplot3d import Axes3D
-
-    # Create a boundary checker instance
-    checker = BoundaryChecker()
-
-    # Define boundary - return True if position is within allowed range
-    def outer_boundary(x, y, z):
-        return (-40 <= x <= 60 and 
-                -30 <= y <= 30 and 
-                -7 <= z <= 7)
-
-    # Add boundary to checker
-    checker.add_boundary(outer_boundary)
-
-    print("Testing boundary checker...")
-    print("Reachable region:")
-    print("  x: -40 to +60 cm")
-    print("  y: -30 to +30 cm")
-    print("  z: -7 to +7 cm")
-
-    # Create 3D plot
-    fig = plt.figure(figsize=(16, 12))  # Increased figure size
-    ax = fig.add_subplot(111, projection='3d')
-
-    # Draw boundary lines
-    # Front face (x = -40)
-    ax.plot([-40, -40], [-30, 30], [-7, -7], 'r-', linewidth=2)  # Bottom edge
-    ax.plot([-40, -40], [-30, 30], [7, 7], 'r-', linewidth=2)    # Top edge
-    ax.plot([-40, -40], [-30, -30], [-7, 7], 'r-', linewidth=2)  # Left edge
-    ax.plot([-40, -40], [30, 30], [-7, 7], 'r-', linewidth=2)    # Right edge
-
-    # Back face (x = 60)
-    ax.plot([60, 60], [-30, 30], [-7, -7], 'r-', linewidth=2)    # Bottom edge
-    ax.plot([60, 60], [-30, 30], [7, 7], 'r-', linewidth=2)      # Top edge
-    ax.plot([60, 60], [-30, -30], [-7, 7], 'r-', linewidth=2)    # Left edge
-    ax.plot([60, 60], [30, 30], [-7, 7], 'r-', linewidth=2)      # Right edge
-
-    # Connecting lines between front and back
-    ax.plot([-40, 60], [-30, -30], [-7, -7], 'r-', linewidth=2)  # Bottom left
-    ax.plot([-40, 60], [30, 30], [-7, -7], 'r-', linewidth=2)    # Bottom right
-    ax.plot([-40, 60], [-30, -30], [7, 7], 'r-', linewidth=2)    # Top left
-    ax.plot([-40, 60], [30, 30], [7, 7], 'r-', linewidth=2)      # Top right
-
-    # Add origin point
-    ax.scatter(0, 0, 0, c='black', marker='o', label='Origin', s=100)  # Increased point size
-
-    # Set labels and title
-    ax.set_xlabel('X (cm)', labelpad=10)
-    ax.set_ylabel('Y (cm)', labelpad=10)
-    ax.set_zlabel('Z (cm)', labelpad=10)
-    ax.set_title('Probe Movement Boundaries', pad=20, fontsize=14)
-
-    # Add legend
-    ax.legend(fontsize=12)
-
-    # Set aspect ratio to be equal
-    ax.set_box_aspect([100, 60, 14])  # Based on the range of each axis
-
-    # Set initial view angle for y/z-focused view
-    ax.view_init(elev=0, azim=90)  # Looking directly at y/z plane
-
-    # Set axis limits slightly beyond boundaries for better visualization
-    ax.set_xlim(-45, 65)
-    ax.set_ylim(-35, 35)
-    ax.set_zlim(-10, 10)
-
-    # Remove grid lines and background color
-    ax.grid(False)
-    ax.xaxis.pane.fill = False
-    ax.yaxis.pane.fill = False
-    ax.zaxis.pane.fill = False
-
-    plt.tight_layout()
-    plt.show()
-
-    # Test some specific points
-    test_points = [
-        (30, 15, 3),    # Should be valid (within bounds)
-        (-50, 0, 0),    # Should be invalid (x < -40)
-        (70, 0, 0),     # Should be invalid (x > 60)
-        (-35, 20, 5),   # Should be valid (within bounds)
-        (0, 35, 0),     # Should be invalid (y > 30)
-        (0, 0, 10)      # Should be invalid (z > 7)
-    ]
-
-    print("\nTesting specific points:")
-    for point in test_points:
-        x, y, z = point
-        valid = checker.is_position_valid(x, y, z)
-        print(f"Point ({x:3d}, {y:3d}, {z:3d}) is {'valid' if valid else 'invalid'}")
+	mc = Motor_Control_3D()

@@ -2,6 +2,118 @@
  Data acquisition script using Ethernet motor and LeCroy scope as digitizer on LAPD.
 Modified from Scope_DAQ used on process plasma chamber
 
+## Motor Control and Obstacle Avoidance
+
+### Motor Control Classes
+The system supports both 2D and 3D probe movement through the `Motor_Control_2D` and `Motor_Control_3D` classes:
+
+1. **Motor_Control_1D**
+   - Base class for individual motor control
+   - Handles direct motor commands and status monitoring
+   - Properties: position, velocity, status, alarms
+   - Safety features: limit switches, timeout protection
+
+2. **Motor_Control_2D**
+   - Controls X-Y probe movement
+   - Converts probe coordinates to motor coordinates
+   - Synchronizes motor velocities for straight-line motion
+   - Properties: probe_positions, motor_positions, motor_velocity
+
+3. **Motor_Control_3D**
+   - Controls X-Y-Z probe movement
+   - Advanced path planning with obstacle avoidance
+   - Intelligent waypoint generation for safe paths
+   - Velocity scaling for smooth multi-segment motion
+
+### Obstacle Avoidance System
+
+The `BoundaryChecker` class provides intelligent path planning around obstacles:
+
+1. **Boundaries and Obstacles**
+   ```python
+   # Define probe movement limits and obstacles in Data_Run.py
+   def probe_boundary(x, y, z):
+       # Check outer boundary
+       in_outer_boundary = (x_limits[0] <= x <= x_limits[1] and 
+                          y_limits[0] <= y <= y_limits[1] and 
+                          z_limits[0] <= z <= z_limits[1])
+       
+       # Check obstacles (e.g., large box obstacle)
+       in_obstacle = (-50 <= x <= -20 and 
+                     -3 <= y <= 3 and 
+                     -5.5 <= z <= 5.5)
+       
+       return in_outer_boundary and not in_obstacle
+   ```
+
+2. **Path Planning Features**
+   - Automatic detection of blocked paths
+   - Multi-strategy path finding:
+     - Direct paths when possible
+     - Two-point paths with offset
+     - Three-point paths for complex obstacles
+     - Random exploration for difficult cases
+   - Path optimization for smooth motion
+   - Caching of successful paths for similar movements
+
+3. **Safety Features**
+   - Minimum clearance from obstacles
+   - Configurable resolution for path checking
+   - Velocity scaling based on path complexity
+   - Emergency stop handling
+
+### Data Acquisition Integration
+
+The system handles inaccessible positions gracefully:
+
+1. **Position Skipping**
+   - When a position is blocked by an obstacle:
+     ```
+     shot_group.attrs['skipped'] = True
+     shot_group.attrs['skip_reason'] = "Cannot find valid path: Position blocked by obstacle"
+     ```
+   - Data file maintains complete record of attempted positions
+   - Empty shot groups created with skip explanations
+
+2. **HDF5 Structure**
+   ```
+   experiment_name.hdf5/
+   ├── Control/
+   │   └── Positions/
+   │       ├── positions_setup_array  # Planned positions
+   │       └── positions_array        # Actual achieved positions
+   │
+   ├── scope_name/
+   │   ├── shot_N/                   # For successful positions
+   │   │   └── [scope data]
+   │   │
+   │   └── shot_M/                   # For skipped positions
+   │       ├── attrs/
+   │       │   ├── skipped = True
+   │       │   └── skip_reason = "..."
+   │       └── acquisition_time
+   ```
+
+### Usage Example
+```python
+# Initialize 3D motor control with obstacle avoidance
+mc = Motor_Control_3D(x_ip_addr='...', y_ip_addr='...', z_ip_addr='...')
+mc.boundary_checker.add_boundary(probe_boundary)
+
+# Move to position with automatic obstacle avoidance
+try:
+    mc.probe_positions = (x, y, z)
+except ValueError as e:
+    print(f"Position skipped: {e}")
+```
+
+### Notes
+- Obstacle definitions can be modified in `Data_Run.py`
+- Path planning strategies can be tuned via `BoundaryChecker` parameters
+- Failed positions are documented in the HDF5 file
+- Motor movement is disabled between acquisitions for safety
+- Emergency stops preserve the last known good position
+
 ## HDF5 Data Structure
 The data acquisition script creates HDF5 files with the following structure:
 
