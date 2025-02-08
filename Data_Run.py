@@ -48,9 +48,19 @@ z_limits = (-7, 7)
 
 def probe_boundary(x, y, z):
     """Return True if position is within allowed range"""
-    return (x_limits[0] <= x <= x_limits[1] and 
-            y_limits[0] <= y <= y_limits[1] and 
-            z_limits[0] <= z <= z_limits[1])
+    # Check outer boundary
+    in_outer_boundary = (x_limits[0] <= x <= x_limits[1] and 
+                        y_limits[0] <= y <= y_limits[1] and 
+                        z_limits[0] <= z <= z_limits[1])
+    
+    # Check large box obstacle (30x6x11 cm box from x=-50 to -20)
+    buffer = 0.2  # Small buffer to ensure paths don't get too close
+    in_obstacle = (-50-buffer <= x <= -20+buffer and 
+                  -3-buffer <= y <= 3+buffer and 
+                  -5.5-buffer <= z <= 5.5+buffer)
+    
+    # Return True if within outer boundary AND not in obstacle
+    return in_outer_boundary and not in_obstacle
 
 #-------------------------------------------------------------------------------------------------------------
 '''

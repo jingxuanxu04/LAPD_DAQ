@@ -547,9 +547,25 @@ def run_acquisition(save_path, scope_ips, motor_ips, external_delays, nz):
                     raise KeyboardInterrupt
                 except ValueError as e:
                     print(f'\nSkipping position - {str(e)}')
+                    # Create empty shot group with explanation
+                    with h5py.File(save_path, 'a') as f:
+                        for scope_name in scope_ips:
+                            scope_group = f[scope_name]
+                            shot_group = scope_group.create_group(f'shot_{shot_num}')
+                            shot_group.attrs['skipped'] = True
+                            shot_group.attrs['skip_reason'] = str(e)
+                            shot_group.attrs['acquisition_time'] = time.ctime()
                     continue
                 except Exception as e:
                     print(f'\nMotor failed to move with {str(e)}')
+                    # Create empty shot group with explanation
+                    with h5py.File(save_path, 'a') as f:
+                        for scope_name in scope_ips:
+                            scope_group = f[scope_name]
+                            shot_group = scope_group.create_group(f'shot_{shot_num}')
+                            shot_group.attrs['skipped'] = True
+                            shot_group.attrs['skip_reason'] = f"Motor movement failed: {str(e)}"
+                            shot_group.attrs['acquisition_time'] = time.ctime()
                     continue
                 
                 print(f'------------------{acquisition.scopes[list(scope_ips.keys())[0]].gaaak_count}--------------------{shot_num}')
