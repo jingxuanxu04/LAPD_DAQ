@@ -7,30 +7,38 @@ from mpl_toolkits.mplot3d import Axes3D
 
 class BoundaryChecker:
     def __init__(self):
-        self.boundaries = []
-        self.obstacles = []
-        self.check_resolution = 0.1  # Default to finer resolution for better accuracy
-        self.min_clearance = 0.2  # Minimum clearance from obstacles
+        self.probe_boundaries = []
+        self.motor_boundaries = []
+        self.check_resolution = 0.1
+        self.min_clearance = 1.0
         
-    def add_boundary(self, boundary_func):
-        """Add a boundary function that returns True if position is valid"""
-        self.boundaries.append(boundary_func)
+    def add_probe_boundary(self, boundary_func):
+        """Add a boundary function that operates in probe space"""
+        self.probe_boundaries.append(boundary_func)
+        
+    def add_motor_boundary(self, boundary_func):
+        """Add a boundary function that operates in motor space"""
+        self.motor_boundaries.append(boundary_func)
     
-    def add_obstacle(self, obstacle_func):
-        """Add an obstacle function that returns True if position collides"""
-        self.obstacles.append(obstacle_func)
-    
-    def is_position_valid(self, x, y, z):
-        """Check if position is valid (within boundaries and not in obstacles)"""
-        # Check all boundaries - position must be within ALL boundaries
-        for boundary in self.boundaries:
-            if not boundary(x, y, z):  # If outside any boundary
+    def is_position_valid(self, probe_pos, motor_pos=None):
+        """Check if position is valid in both spaces
+        Args:
+            probe_pos: (x, y, z) tuple in probe coordinates
+            motor_pos: Optional (x, y, z) tuple in motor coordinates. 
+                      If None, only probe boundaries are checked.
+        """
+        # Check probe space boundaries
+        x, y, z = probe_pos
+        for boundary in self.probe_boundaries:
+            if not boundary(x, y, z):
                 return False
                 
-        # Check all obstacles - position must not be in ANY obstacle
-        for obstacle in self.obstacles:
-            if obstacle(x, y, z):  # If inside any obstacle
-                return False
+        # Check motor space boundaries if motor_pos is provided
+        if motor_pos is not None:
+            mx, my, mz = motor_pos
+            for boundary in self.motor_boundaries:
+                if not boundary(mx, my, mz):
+                    return False
                 
         return True
 
@@ -50,7 +58,7 @@ class BoundaryChecker:
         for i in range(num_points + 1):
             t = i / num_points
             point = np.array([x1, y1, z1]) + t * path_vector
-            if not self.is_position_valid(*point):
+            if not self.is_position_valid(tuple(point)):
                 return False
                 
         return True
@@ -277,8 +285,8 @@ def test_small_box_obstacle():
                 -1-buffer <= y <= 1+buffer and 
                 -1-buffer <= z <= 1+buffer)
     
-    checker.add_boundary(outer_boundary)
-    checker.add_obstacle(small_box_obstacle)
+    checker.add_probe_boundary(outer_boundary)
+    checker.add_motor_boundary(small_box_obstacle)
     checker.check_resolution = 0.1  # Finer resolution for small obstacle
     checker.min_clearance = 0.5    # Minimum clearance from obstacles
     
@@ -343,8 +351,8 @@ def test_large_box_obstacle():
                 -3-buffer <= y <= 3+buffer and 
                 -5.5-buffer <= z <= 5.5+buffer)
     
-    checker.add_boundary(outer_boundary)
-    checker.add_obstacle(large_box_obstacle)
+    checker.add_probe_boundary(outer_boundary)
+    checker.add_motor_boundary(large_box_obstacle)
     checker.check_resolution = 0.2  # Slightly coarser resolution for large obstacle
     checker.min_clearance = 1.0    # Larger minimum clearance for bigger obstacle
     

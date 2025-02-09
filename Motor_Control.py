@@ -193,11 +193,9 @@ class Motor_Control_2D:
 		return round(res.x[0], 3), round(res.x[1], 3)
 
 	#-------------------------------------------------------------------------------------------------
-	"""
-	Set probe position by moving two motors through calculation using probe_to_motor
-	"""
 	@property
 	def probe_positions(self):
+		"""Get current probe position directly from motors"""
 		x_m, y_m = self.motor_positions
 		return self.motor_to_probe(x_m, y_m)
 
@@ -258,6 +256,8 @@ class Motor_Control_3D:
 		self._common_paths = {}
 		self._last_path = None  # Store last successful path for similar movements
 
+		self._current_pos = None
+
 	#-------------------------------------------------------------------------------------------
 	"""
 	Set and get the target velocity of motor in units of rev/sec
@@ -278,7 +278,7 @@ class Motor_Control_3D:
 	Set motor velocity according to its current position and target position
 	"""
 	def set_movement_velocity(self, motor_x, motor_y, motor_z):
-		x_m, y_m, z_m = self.motor_positions
+		x_m, y_m, z_m = self._current_pos
 
 		# distance between current motor position to final motor position
 		delta_x = abs(motor_x - x_m)
@@ -431,68 +431,67 @@ class Motor_Control_3D:
 		return round(res.x[0], 3), round(res.x[1], 3), round(res.x[2], 3)
 
 	#-------------------------------------------------------------------------------------------------
-	"""
-	Set probe position by moving three motors through calculation using probe_to_motor
-	"""
 	@property
 	def probe_positions(self):
-		"""Get current probe position"""
-		return self._get_probe_position()
-
-	def find_safe_path(self, start_pos, end_pos):
-		"""Find safe path between points with optimized path finding"""
-		# Check if this is a similar movement to the last one
-		if self._last_path is not None:
-			last_start, last_end, waypoints = self._last_path
-			if (numpy.linalg.norm(numpy.array(start_pos) - numpy.array(last_start)) < 5 and
-				numpy.linalg.norm(numpy.array(end_pos) - numpy.array(last_end)) < 5):
-				# Similar movement, try the same waypoints
-				valid = True
-				prev_point = start_pos
-				for point in waypoints:
-					if not self.boundary_checker.is_path_valid(prev_point, point):
-						valid = False
-						break
-					prev_point = point
-				if valid:
-					return waypoints
-
-		# Try to find a path using the boundary checker
-		try:
-			waypoints = self.boundary_checker.find_alternative_path(start_pos, end_pos)
-			# Store successful path for future reference
-			self._last_path = (start_pos, end_pos, waypoints)
-			return waypoints
-		except ValueError as e:
-			raise ValueError(f"Cannot find safe path between {start_pos} and {end_pos}: {str(e)}")
+		"""Get current probe position directly from motors"""
+		x_m, y_m, z_m = self.motor_positions
+		return self.motor_to_probe(x_m, y_m, z_m)
 
 	@probe_positions.setter
-	def probe_positions(self, pos):
-		xpos, ypos, zpos = pos
-		target_pos = (xpos, ypos, zpos)
-		current_pos = self.probe_positions
+	def probe_positions(self, xpos, ypos, zpos):
+
+		# Check if the target position is unreachable in probe space
+		if not self.boundary_checker.is_position_valid((xpos, ypos, zpos)):
+			raise ValueError(f"Target position ({xpos}, {ypos}, {zpos}) is outside probe boundaries")
+		# Check if target motor position is unreachable
+		mpos = self.probe_to_motor_LAPD(xpos, ypos, zpos)
+		if not self.boundary_checker.is_position_valid(mpos):
+			raise ValueError(f"Target motor position ({mpos}) is outside limit switch")
+
+		max_retries = 3  # Maximum number of path finding attempts
+		retry_count = 0
+		failed_paths = set()  # Track failed paths to avoid retrying them
 		
-		try:
-			waypoints = self.find_safe_path(current_pos, target_pos)
-		except ValueError as e:
-			raise ValueError(f"Cannot move to ({xpos}, {ypos}, {zpos}): {str(e)}")
+		while retry_count < max_retries:
+
+			try:
+				self._current_pos = self.motor_positions
+				current_pos = self.motor_to_probe(*self._current_pos)
+
+				waypoints = self.find_safe_path(current_pos, (xpos, ypos, zpos))
+				
+				# Convert waypoints to string for tracking
+				path_key = str(waypoints)
+
+				for waypoint in waypoints:
+					# First check probe space boundaries
+					if not self.boundary_checker.is_position_valid(waypoint):
+						print(f"Waypoint {waypoint} is outside probe boundaries, trying alternative path...")
+						failed_paths.add(path_key)
+						break
+					
+					# Convert to motor coordinates for this segment
+					motor_x, motor_y, motor_z = self.probe_to_motor_LAPD(*waypoint)
+					self.set_movement_velocity(motor_x, motor_y, motor_z)
+					self.motor_positions = motor_x, motor_y, motor_z
+
+					# Then check motor space boundaries
+					if not self.boundary_checker.is_position_valid((motor_x, motor_y, motor_z)):
+						failed_paths.add(path_key)
+						break
+				# If for loop breaks, the last path_key is in failed_paths
+				if path_key in failed_paths:
+					retry_count += 1
+					continue
+				return # If we complete the for loop without breaking, path was successful
 			
-		# Move through waypoints, ensuring straight line motion for each segment
-		prev_point = current_pos
-		for waypoint in waypoints:
-			if not self.boundary_checker.is_position_valid(*waypoint):
-				raise ValueError(f"Waypoint {waypoint} is outside safe boundaries")
-			
-			# Convert to motor coordinates for this segment
-			motor_x, motor_y, motor_z = self.probe_to_motor_LAPD(*waypoint)
-			
-			# Calculate and set velocity for this segment
-			# This ensures straight line motion at maximum speed
-			self.set_movement_velocity(motor_x, motor_y, motor_z)
-			
-			# Move to waypoint
-			self.motor_positions = motor_x, motor_y, motor_z
-			prev_point = waypoint
+			except Exception as e:
+				print(f"Path attempt {retry_count + 1} failed: {str(e)}")
+				failed_paths.add(path_key)
+				retry_count += 1
+		# If we get here, we've exhausted all retries
+		raise ValueError(f"Cannot find safe path to ({xpos}, {ypos}, {zpos}) after {max_retries} attempts.")
+
 
 	#-------------------------------------------------------------------------------------------------
 	@property
@@ -519,11 +518,6 @@ class Motor_Control_3D:
 	def add_common_path(self, name, start_region, end_region, waypoints):
 		"""Add a pre-calculated path for common movements"""
 		self._common_paths[name] = (start_region, end_region, waypoints)
-
-	def _get_probe_position(self):
-		"""Get current probe position directly from motors"""
-		x_m, y_m, z_m = self.motor_positions
-		return self.motor_to_probe(x_m, y_m, z_m)
 
 #===============================================================================================================================================
 #<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
