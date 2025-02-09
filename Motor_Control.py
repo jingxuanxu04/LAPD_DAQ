@@ -348,13 +348,42 @@ class Motor_Control_3D:
 				y_not_moving = y_stat.find('M') == -1
 				z_not_moving = z_stat.find('M') == -1
 
+				x_disabled = x_stat.find('D') == 1
+				y_disabled = y_stat.find('D') == 1
+				z_disabled = z_stat.find('D') == 1
+
+				x_alarmed = x_stat.find('A') == 1
+				y_alarmed = y_stat.find('A') == 1
+				z_alarmed = z_stat.find('A') == 1
+
+				if x_alarmed:
+					self.y_mc.stop_now
+					self.z_mc.stop_now
+					print(f"Motor {self.x_mc.name} is alarmed, stopping other motors")
+					break
+				elif y_alarmed:
+					self.x_mc.stop_now
+					self.z_mc.stop_now
+					print(f"Motor {self.y_mc.name} is alarmed, stopping other motors")
+					break
+				elif z_alarmed:
+					self.x_mc.stop_now
+					self.y_mc.stop_now
+					print(f"Motor {self.z_mc.name} is alarmed, stopping other motors")
+					break
+
 				if x_not_moving and y_not_moving and z_not_moving:
 					time.sleep(0.2)
+					break
+
+				elif x_disabled or y_disabled or z_disabled:
+					print("Motor is not moving because it is disabled")
 					break
 				elif time.time() > timeout:
 					raise TimeoutError("Motor has been moving for over 5min???")
 
 				time.sleep(0.2)
+
 			except KeyboardInterrupt:
 				# Send stop commands immediately to all motors
 				try:
@@ -479,8 +508,8 @@ class Motor_Control_3D:
 					if not self.boundary_checker.is_position_valid((motor_x, motor_y, motor_z)):
 						failed_paths.add(path_key)
 						break
-				# If for loop breaks, the last path_key is in failed_paths
-				if path_key in failed_paths:
+				
+				if path_key in failed_paths: # If for loop breaks, the last path_key is in failed_paths
 					retry_count += 1
 					continue
 				return # If we complete the for loop without breaking, path was successful
