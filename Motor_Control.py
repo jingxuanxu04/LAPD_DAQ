@@ -471,56 +471,43 @@ class Motor_Control_3D:
 		xpos, ypos, zpos = pos
 
 		# Check if the target position is unreachable in probe space
-		if not self.boundary_checker.is_position_valid((xpos, ypos, zpos)):
-			raise ValueError(f"Target position ({xpos}, {ypos}, {zpos}) is outside probe boundaries")
+		probe_pos = (xpos, ypos, zpos)
+		if not self.boundary_checker.outer_boundary(probe_pos[0], probe_pos[1], probe_pos[2]):
+			raise ValueError(f"Target position {probe_pos} is outside probe outer boundary")
+		if not self.boundary_checker.obstacle_boundary(probe_pos[0], probe_pos[1], probe_pos[2]):
+			raise ValueError(f"Target position {probe_pos} collides with obstacle")
+
 		# Check if target motor position is unreachable
-		mpos = self.probe_to_motor_LAPD(xpos, ypos, zpos)
-		if not self.boundary_checker.is_position_valid(mpos):
-			raise ValueError(f"Target motor position ({mpos}) is outside limit switch")
+		motor_pos = self.probe_to_motor_LAPD(xpos, ypos, zpos)
+		if not self.boundary_checker.motor_boundary(*motor_pos):
+			raise ValueError(f"Target position {probe_pos} is outside motor limits")
 
-		max_retries = 3  # Maximum number of path finding attempts
-		retry_count = 0
-		failed_paths = set()  # Track failed paths to avoid retrying them
-		
-		while retry_count < max_retries:
+		self._current_pos = self.motor_positions
+		current_pos = self.motor_to_probe(*self._current_pos)
 
-			try:
-				self._current_pos = self.motor_positions
-				current_pos = self.motor_to_probe(*self._current_pos)
-
-				waypoints = self.find_safe_path(current_pos, (xpos, ypos, zpos))
-				
-				# Convert waypoints to string for tracking
-				path_key = str(waypoints)
-
-				for waypoint in waypoints:
-					# First check probe space boundaries
-					if not self.boundary_checker.is_position_valid(waypoint):
-						print(f"Waypoint {waypoint} is outside probe boundaries, trying alternative path...")
-						failed_paths.add(path_key)
-						break
-					
-					# Convert to motor coordinates for this segment
-					motor_x, motor_y, motor_z = self.probe_to_motor_LAPD(*waypoint)
-					self.set_movement_velocity(motor_x, motor_y, motor_z)
-					self.motor_positions = motor_x, motor_y, motor_z
-
-					# Then check motor space boundaries
-					if not self.boundary_checker.is_position_valid((motor_x, motor_y, motor_z)):
-						failed_paths.add(path_key)
-						break
-				
-				if path_key in failed_paths: # If for loop breaks, the last path_key is in failed_paths
-					retry_count += 1
-					continue
-				return # If we complete the for loop without breaking, path was successful
+		try:
+			# Get waypoints from boundary checker
+			waypoints = self.boundary_checker.find_alternative_path(current_pos, probe_pos)
 			
-			except Exception as e:
-				print(f"Path attempt {retry_count + 1} failed: {str(e)}")
-				failed_paths.add(path_key)
-				retry_count += 1
-		# If we get here, we've exhausted all retries
-		raise ValueError(f"Cannot find safe path to ({xpos}, {ypos}, {zpos}) after {max_retries} attempts.")
+			# Move through each waypoint
+			for waypoint in waypoints:
+				# Convert to motor coordinates for this segment
+				motor_x, motor_y, motor_z = self.probe_to_motor_LAPD(*waypoint)
+				
+				# Verify motor position is within limits
+				if not self.boundary_checker.motor_boundary(motor_x, motor_y, motor_z):
+					raise ValueError(f"Waypoint motor position {(motor_x, motor_y, motor_z)} is outside motor limits")
+				
+				# Set velocity for this segment
+				self.set_movement_velocity(motor_x, motor_y, motor_z)
+				
+				# Move to waypoint
+				self.motor_positions = motor_x, motor_y, motor_z
+				
+		except ValueError as e:
+			raise ValueError(f"Cannot find safe path to ({xpos}, {ypos}, {zpos}): {str(e)}")
+		except Exception as e:
+			raise ValueError(f"Error during movement: {str(e)}")
 
 
 	#-------------------------------------------------------------------------------------------------

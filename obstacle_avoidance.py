@@ -8,29 +8,102 @@ from mpl_toolkits.mplot3d import Axes3D
 class BoundaryChecker:
     def __init__(self):
         self.probe_boundaries = []
+        self.outer_boundary = None  # Function defining the valid workspace
+        self.obstacle_boundaries = []  # Functions defining obstacles
         self.motor_boundaries = []
         self.check_resolution = 0.1
         self.min_clearance = 1.0
+        self.buffer = 0.5  # Safety buffer for clearance
+        self.obstacle_dimensions = None  # Will store (x_min, x_max), (y_min, y_max), (z_min, z_max)
+        self.axis_clearances = None  # Will store [x_clearance, y_clearance, z_clearance]
         
-    def add_probe_boundary(self, boundary_func):
-        """Add a boundary function that operates in probe space"""
-        self.probe_boundaries.append(boundary_func)
+    def add_probe_boundary(self, boundary_func, is_outer_boundary=False):
+        """Add a boundary function that operates in probe space
+        Args:
+            boundary_func: Function that returns True if position is valid
+            is_outer_boundary: If True, this defines the valid workspace limits
+        """
+        if is_outer_boundary:
+            self.outer_boundary = boundary_func
+        else:
+            self.obstacle_boundaries.append(boundary_func)
+            # Calculate obstacle dimensions and clearances when first obstacle is added
+            if len(self.obstacle_boundaries) == 1:
+                self.find_obstacle_dimensions()
+                if self.obstacle_dimensions:
+                    self._calculate_clearances()
         
     def add_motor_boundary(self, boundary_func):
         """Add a boundary function that operates in motor space"""
         self.motor_boundaries.append(boundary_func)
-    
+
+    def find_obstacle_dimensions(self):
+        """Find obstacle dimensions by sampling points within the valid workspace"""
+        if not self.obstacle_boundaries or not self.outer_boundary:
+            return None
+
+        # Initialize with extreme values
+        x_min, x_max = float('inf'), float('-inf')
+        y_min, y_max = float('inf'), float('-inf')
+        z_min, z_max = float('inf'), float('-inf')
+        
+        # Sample points in a reasonable range
+        x_range = np.linspace(-60, 60, 100)  # Adjust range based on your workspace
+        y_range = np.linspace(-30, 30, 100)
+        z_range = np.linspace(-15, 15, 100)
+        
+        # Find points where obstacles exist within valid workspace
+        for x in x_range:
+            for y in y_range:
+                for z in z_range:
+                    # First check if point is in valid workspace
+                    if not self.outer_boundary(x, y, z):
+                        continue
+                        
+                    # Then check if point is in any obstacle
+                    for obstacle in self.obstacle_boundaries:
+                        if not obstacle(x, y, z):  # Point is in obstacle
+                            x_min = min(x_min, x)
+                            x_max = max(x_max, x)
+                            y_min = min(y_min, y)
+                            y_max = max(y_max, y)
+                            z_min = min(z_min, z)
+                            z_max = max(z_max, z)
+                            break
+        
+        if x_min == float('inf'):  # No obstacles found
+            self.obstacle_dimensions = None
+        else:
+            self.obstacle_dimensions = (
+                (x_min, x_max),
+                (y_min, y_max),
+                (z_min, z_max)
+            )
+
+    def _calculate_clearances(self):
+        """Calculate clearance for each axis based on obstacle dimensions"""
+        if not self.obstacle_dimensions:
+            self.axis_clearances = None
+            return
+            
+        (obs_x_min, obs_x_max), (obs_y_min, obs_y_max), (obs_z_min, obs_z_max) = self.obstacle_dimensions
+        self.axis_clearances = [
+            abs(obs_x_max - obs_x_min) + 2*self.buffer,  # X clearance
+            abs(obs_y_max - obs_y_min) + 2*self.buffer,  # Y clearance
+            abs(obs_z_max - obs_z_min) + 2*self.buffer   # Z clearance
+        ]
+
     def is_position_valid(self, probe_pos, motor_pos=None):
-        """Check if position is valid in both spaces
-        Args:
-            probe_pos: (x, y, z) tuple in probe coordinates
-            motor_pos: Optional (x, y, z) tuple in motor coordinates. 
-                      If None, only probe boundaries are checked.
-        """
-        # Check probe space boundaries
+        """Check if position is valid in both spaces"""
         x, y, z = probe_pos
-        for boundary in self.probe_boundaries:
-            if not boundary(x, y, z):
+        
+        # First check if position is within valid workspace
+        if self.outer_boundary and not self.outer_boundary(x, y, z):
+            return False
+                
+        # Then check if position is in any obstacle
+        for obstacle in self.obstacle_boundaries:
+            if not obstacle(x, y, z):
                 return False
                 
         # Check motor space boundaries if motor_pos is provided
@@ -65,98 +138,58 @@ class BoundaryChecker:
 
     def find_alternative_path(self, start_pos, end_pos, max_attempts=20):
         """Find an alternative path using intermediate points when direct path is blocked"""
+        # Quick returns for simple cases
+        if not self.probe_boundaries or self.obstacle_dimensions is None:
+            return [end_pos]
+            
         if self.is_path_valid(start_pos, end_pos):
             return [end_pos]
             
         x1, y1, z1 = start_pos
         x2, y2, z2 = end_pos
-        
-        # Calculate path vector and properties
-        path_vector = np.array([x2-x1, y2-y1, z2-z1])
-        path_length = np.linalg.norm(path_vector)
-        
-        # Determine primary movement direction
-        direction_magnitudes = np.abs(path_vector)
-        primary_axis = np.argmax(direction_magnitudes)
-        
-        # For movements near obstacles, use larger step sizes
-        x_step = 10.0  # Step size in X direction (away from obstacle)
-        y_step = 5.0   # Step size in Y direction
-        z_step = 5.0   # Step size in Z direction
-        
-        # Special handling for parallel movements near obstacles
-        if abs(x2 - x1) < 0.1:  # Moving parallel to obstacle
-            # Try stepping out in X direction (away from obstacle)
-            if x1 < -30:  # We're on the negative X side
-                x_offset = x_step  # Step towards positive X
-            else:
-                x_offset = -x_step  # Step towards negative X
-                
-            # First try: step out in X, move, step back
-            mid_points = [
-                (x1 + x_offset, y1, z1),  # Step out in X
-                (x1 + x_offset, y2, z2),  # Move to target Y,Z
-                (x2, y2, z2)              # Return to target X
-            ]
             
-            if all(self.is_path_valid(p1, p2) for p1, p2 in zip(mid_points[:-1], mid_points[1:])):
-                return mid_points[1:]
-                
-            # Second try: step out in X and up in Z, move, step back
-            mid_points = [
-                (x1 + x_offset, y1, z1 + z_step),  # Step out and up
-                (x1 + x_offset, y2, z1 + z_step),  # Move in Y while offset
-                (x1 + x_offset, y2, z2),           # Move to target Z
-                (x2, y2, z2)                       # Return to target X
-            ]
+        # Function to generate waypoints for a given direction
+        def get_waypoints_for_direction(axis, direction):
+            # Use pre-calculated clearance
+            offset = self.axis_clearances[axis] * direction
             
-            if all(self.is_path_valid(p1, p2) for p1, p2 in zip(mid_points[:-1], mid_points[1:])):
-                return mid_points[1:]
-                
-            # Third try: larger step out in X
-            mid_points = [
-                (x1 + 2*x_offset, y1, z1),  # Step out further in X
-                (x1 + 2*x_offset, y2, z2),  # Move to target Y,Z
-                (x2, y2, z2)                # Return to target X
-            ]
+            # Base waypoint with only the offset applied
+            waypoint = list(start_pos)
+            waypoint[axis] += offset
             
-            if all(self.is_path_valid(p1, p2) for p1, p2 in zip(mid_points[:-1], mid_points[1:])):
-                return mid_points[1:]
+            # Generate path based on axis
+            if axis == 0:  # X axis
+                return [
+                    tuple(waypoint),                    # Move in X
+                    (waypoint[0], y2, z1),             # Move in Y
+                    (waypoint[0], y2, z2),             # Move in Z
+                    end_pos                            # Final position
+                ]
+            elif axis == 1:  # Y axis
+                return [
+                    tuple(waypoint),                    # Move in Y
+                    (x1, waypoint[1], z2),             # Move in Z
+                    (x2, waypoint[1], z2),             # Move in X
+                    end_pos                            # Final position
+                ]
+            else:  # Z axis
+                return [
+                    tuple(waypoint),                    # Move in Z
+                    (x2, y1, waypoint[2]),             # Move in X
+                    (x2, y2, waypoint[2]),             # Move in Y
+                    end_pos                            # Final position
+                ]
+
+        # Try each axis in order of priority (Y, X, Z)
+        axes_to_try = [(1, 1), (1, -1), (0, 1), (0, -1), (2, 1), (2, -1)]
         
-        # If special handling didn't work, try standard strategies
-        clearance = max(path_length * 0.3, self.min_clearance * 3)
-        strategies = []
-        
-        # Basic offset strategies
-        offsets = [
-            (x_step, 0, 0),
-            (-x_step, 0, 0),
-            (0, 0, z_step),
-            (0, 0, -z_step)
-        ]
-        
-        # Add two-point and three-point strategies
-        for offset in offsets:
-            # Two-point strategy
-            strategies.append([
-                (x1 + offset[0], y1 + offset[1], z1 + offset[2]),
-                (x2 + offset[0], y2 + offset[1], z2 + offset[2]),
-                (x2, y2, z2)
-            ])
+        # Try each direction systematically
+        for axis, direction in axes_to_try:
+            waypoints = get_waypoints_for_direction(axis, direction)
             
-            # Three-point strategy with midpoint
-            strategies.append([
-                (x1 + offset[0], y1 + offset[1], z1 + offset[2]),
-                ((x1 + x2)/2 + offset[0], (y1 + y2)/2 + offset[1], (z1 + z2)/2 + offset[2]),
-                (x2 + offset[0], y2 + offset[1], z2 + offset[2]),
-                (x2, y2, z2)
-            ])
-        
-        # Try each strategy
-        for waypoints in strategies:
+            # Validate entire path
             valid = True
             prev_point = start_pos
-            
             for point in waypoints:
                 if not self.is_path_valid(prev_point, point):
                     valid = False
@@ -165,17 +198,6 @@ class BoundaryChecker:
                 
             if valid:
                 return waypoints
-        
-        # If no strategy works, try random intermediate points with bias
-        for _ in range(max_attempts):
-            # Generate random intermediate point with bias towards successful directions
-            rand_offset = np.random.uniform(-1, 1, 3) * np.array([x_step, y_step/2, z_step])
-            mid_point = np.array([x1, y1, z1]) + path_vector * 0.5 + rand_offset
-            
-            # Check if path through this point is valid
-            if (self.is_path_valid(start_pos, tuple(mid_point)) and 
-                self.is_path_valid(tuple(mid_point), end_pos)):
-                return [tuple(mid_point), end_pos]
                 
         raise ValueError("Could not find valid path between points")
 
