@@ -467,7 +467,8 @@ class Motor_Control_3D:
 		return self.motor_to_probe(x_m, y_m, z_m)
 
 	@probe_positions.setter
-	def probe_positions(self, xpos, ypos, zpos):
+	def probe_positions(self, pos):
+		xpos, ypos, zpos = pos
 
 		# Check if the target position is unreachable in probe space
 		if not self.boundary_checker.is_position_valid((xpos, ypos, zpos)):
