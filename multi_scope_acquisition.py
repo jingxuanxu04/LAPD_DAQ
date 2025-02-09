@@ -475,52 +475,48 @@ class MultiScopeAcquisition:
 # Main Acquisition Function
 #===============================================================================================================================================
 def run_acquisition(save_path, scope_ips, motor_ips, external_delays, nz):
-    """Main acquisition function that handles probe movement and data acquisition.
-    
-    Args:
-        save_path (str): Path to save the HDF5 file
-        scope_ips (dict): Dictionary of scope names and IP addresses
-        motor_ips (dict): Dictionary of motor axis names and IP addresses
-        external_delays (dict): Dictionary of external delays for each scope
-        nz (int or None): Number of z positions. If None, use 2D motor control
-    """
-    from Data_Run import probe_boundary  # Import user-defined boundary
-    
+    """Run the main acquisition sequence"""
     print('Starting acquisition loop at', time.ctime())
     
-    # Initialize MultiScopeAcquisition for scope operations
-    with MultiScopeAcquisition(scope_ips, save_path, external_delays, nz) as acquisition:
+    # Initialize multi-scope acquisition
+    with MultiScopeAcquisition(scope_ips, save_path, external_delays, nz) as msa:
         try:
             # Initialize HDF5 file structure
             print("Initializing HDF5 file...")
-            positions = acquisition.initialize_hdf5()
+            positions = msa.initialize_hdf5()
             
             # Check if motor movement is needed
+            needs_movement = False
             if len(positions) > 1:
                 first_pos = positions[0]
                 last_pos = positions[-1]
-                if first_pos['x'] == last_pos['x'] and first_pos['y'] == last_pos['y'] and \
-                   (nz is None or first_pos['z'] == last_pos['z']):
-                    mc = None
-                    print("No motor movement required")                
+                if not (first_pos['x'] == last_pos['x'] and first_pos['y'] == last_pos['y'] and 
+                       (nz is None or first_pos['z'] == last_pos['z'])):
+                    needs_movement = True
+            
+            # Initialize motor control if needed
+            mc = None
+            if needs_movement:
+                print("Initializing motor...", end='')
+                from Data_Run import outer_boundary, obstacle_boundary, motor_boundary
+                if nz is None:
+                    print("XY drive in use")
+                    mc = Motor_Control_2D(motor_ips['x'], motor_ips['y'])
                 else:
-                    print("Initializing motor...", end='')
-                    if nz is None:
-                        print("XY drive in use")
-                        mc = Motor_Control_2D(x_ip_addr=motor_ips['x'], y_ip_addr=motor_ips['y'])
-                    else:
-                        print("XYZ drive in use")
-                        mc = Motor_Control_3D(x_ip_addr=motor_ips['x'], y_ip_addr=motor_ips['y'], z_ip_addr=motor_ips['z'])
-                        # Add user-defined boundary to motor control
-                        mc.boundary_checker.add_boundary(probe_boundary)
+                    print("XYZ drive in use")
+                    mc = Motor_Control_3D(motor_ips['x'], motor_ips['y'], motor_ips['z'])
+                
+                # Add boundaries to boundary checker
+                mc.boundary_checker.add_probe_boundary(outer_boundary, is_outer_boundary=True)
+                mc.boundary_checker.add_probe_boundary(obstacle_boundary)
+                mc.boundary_checker.add_motor_boundary(motor_boundary)
             else:
-                mc = None
-                print("No motor drives activated")
+                print("No motor movement required")
 
             # First shot: Initialize scopes and save time arrays
             print("\nStarting initial acquisition...")
             
-            active_scopes = acquisition.initialize_scopes()
+            active_scopes = msa.initialize_scopes()
             if not active_scopes:
                 raise RuntimeError("No valid data found from any scope. Aborting acquisition.")
             
@@ -529,56 +525,58 @@ def run_acquisition(save_path, scope_ips, motor_ips, external_delays, nz):
                 acquisition_loop_start_time = time.time()
                 shot_num = pos['shot_num']  # shot_num is 1-based
 
-                # Move to next position
-                if nz is None:
-                    print(f'Shot = {shot_num}, x = {pos["x"]}, y = {pos["y"]}', end='')
-                else:
-                    print(f'Shot = {shot_num}, x = {pos["x"]}, y = {pos["y"]}, z = {pos["z"]}', end='')
-                    
-                try:
-                    if mc is not None:
+                # Move to next position if motor control is active
+                if needs_movement:
+                    if nz is None:
+                        print(f'Shot = {shot_num}, x = {pos["x"]}, y = {pos["y"]}', end='')
+                    else:
+                        print(f'Shot = {shot_num}, x = {pos["x"]}, y = {pos["y"]}, z = {pos["z"]}', end='')
+                        
+                    try:
                         mc.enable
                         if nz is None:
                             mc.probe_positions = (pos['x'], pos['y'])
                         else:
                             mc.probe_positions = (pos['x'], pos['y'], pos['z'])
                         mc.disable
-                except KeyboardInterrupt:
-                    raise KeyboardInterrupt
-                except ValueError as e:
-                    print(f'\nSkipping position - {str(e)}')
-                    # Create empty shot group with explanation
-                    with h5py.File(save_path, 'a') as f:
-                        for scope_name in scope_ips:
-                            scope_group = f[scope_name]
-                            shot_group = scope_group.create_group(f'shot_{shot_num}')
-                            shot_group.attrs['skipped'] = True
-                            shot_group.attrs['skip_reason'] = str(e)
-                            shot_group.attrs['acquisition_time'] = time.ctime()
-                    continue
-                except Exception as e:
-                    print(f'\nMotor failed to move with {str(e)}')
-                    # Create empty shot group with explanation
-                    with h5py.File(save_path, 'a') as f:
-                        for scope_name in scope_ips:
-                            scope_group = f[scope_name]
-                            shot_group = scope_group.create_group(f'shot_{shot_num}')
-                            shot_group.attrs['skipped'] = True
-                            shot_group.attrs['skip_reason'] = f"Motor movement failed: {str(e)}"
-                            shot_group.attrs['acquisition_time'] = time.ctime()
-                    continue
+                    except KeyboardInterrupt:
+                        raise KeyboardInterrupt
+                    except ValueError as e:
+                        print(f'\nSkipping position - {str(e)}')
+                        # Create empty shot group with explanation
+                        with h5py.File(save_path, 'a') as f:
+                            for scope_name in scope_ips:
+                                scope_group = f[scope_name]
+                                shot_group = scope_group.create_group(f'shot_{shot_num}')
+                                shot_group.attrs['skipped'] = True
+                                shot_group.attrs['skip_reason'] = str(e)
+                                shot_group.attrs['acquisition_time'] = time.ctime()
+                        continue
+                    except Exception as e:
+                        print(f'\nMotor failed to move with {str(e)}')
+                        # Create empty shot group with explanation
+                        with h5py.File(save_path, 'a') as f:
+                            for scope_name in scope_ips:
+                                scope_group = f[scope_name]
+                                shot_group = scope_group.create_group(f'shot_{shot_num}')
+                                shot_group.attrs['skipped'] = True
+                                shot_group.attrs['skip_reason'] = f"Motor movement failed: {str(e)}"
+                                shot_group.attrs['acquisition_time'] = time.ctime()
+                        continue
+                else:
+                    print(f'Shot = {shot_num}', end='')
                 
-                print(f'------------------{acquisition.scopes[list(scope_ips.keys())[0]].gaaak_count}--------------------{shot_num}')
+                print(f'------------------{msa.scopes[list(scope_ips.keys())[0]].gaaak_count}--------------------{shot_num}')
                 # start triggering all scopes as soon as probe is in position
                 for name in active_scopes:
-                    scope = acquisition.scopes[name]
+                    scope = msa.scopes[name]
                     scope.set_trigger_mode('SINGLE')
 
                 # Acquire data from all scopes at this position
-                all_data = acquisition.acquire_shot(active_scopes, shot_num)
+                all_data = msa.acquire_shot(active_scopes, shot_num)
                 
                 if all_data:
-                    acquisition.update_hdf5(all_data, shot_num)
+                    msa.update_hdf5(all_data, shot_num)
                 else:
                     print(f"Warning: No valid data acquired at shot {shot_num}")
                 
@@ -596,8 +594,8 @@ def run_acquisition(save_path, scope_ips, motor_ips, external_delays, nz):
             with h5py.File(save_path, 'a') as f:
                 for scope_name in scope_ips:
                     scope_group = f[scope_name]
-                    scope_group.attrs['description'] = acquisition.get_scope_description(scope_name)
+                    scope_group.attrs['description'] = msa.get_scope_description(scope_name)
                     scope_group.attrs['ip_address'] = scope_ips[scope_name]
-                    scope_group.attrs['scope_type'] = acquisition.scopes[scope_name].idn_string
+                    scope_group.attrs['scope_type'] = msa.scopes[scope_name].idn_string
                     scope_group.attrs['external_delay(ms)'] = external_delays.get(scope_name, '')
             plt.close('all')  # Ensure all figures are closed
