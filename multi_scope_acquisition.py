@@ -248,7 +248,12 @@ class MultiScopeAcquisition:
                 pos_grp = ctl_grp.create_group('Positions')
                 
                 # Create positions setup array with metadata
-                pos_ds = pos_grp.create_dataset('positions_setup_array', data=positions)
+                if self.nz is None:
+                    dtype = [('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4')]
+                else:
+                    dtype = [('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4'), ('z', '>f4')]
+                    
+                pos_ds = pos_grp.create_dataset('positions_setup_array', data=positions, dtype=dtype)
                 pos_ds.attrs['xpos'] = xpos
                 pos_ds.attrs['ypos'] = ypos
                 if self.nz is not None:
@@ -564,9 +569,11 @@ def single_shot_acquisition(pos, needs_movement, nz, msa, mc, save_path, scope_i
         if needs_movement:
             xpos, ypos, zpos = mc.probe_positions
             if nz is None:
-                msa.pos_arr[shot_num-1] = (shot_num, xpos, ypos)
+                msa.pos_arr[shot_num-1] = np.array((shot_num, xpos, ypos), 
+                    dtype=[('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4')])
             else:
-                msa.pos_arr[shot_num-1] = (shot_num, xpos, ypos, zpos)
+                msa.pos_arr[shot_num-1] = np.array((shot_num, xpos, ypos, zpos), 
+                    dtype=[('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4'), ('z', '>f4')])
     else:
 
         print(f"Warning: No valid data acquired at shot {shot_num}")
