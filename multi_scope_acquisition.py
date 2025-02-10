@@ -135,8 +135,7 @@ class MultiScopeAcquisition:
         self.save_path = save_path
         self.external_delays = external_delays if external_delays else {}
         self.nz = nz
-        self.pos_arr = None
-
+        
         self.scopes = {}
         self.figures = {}
         self.time_arrays = {}  # Store time arrays for each scope
@@ -264,7 +263,7 @@ class MultiScopeAcquisition:
                     dtype = [('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4')]
                 else:
                     dtype = [('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4'), ('z', '>f4')]
-                self.pos_arr = pos_grp.create_dataset('positions_array', shape=(len(positions),), dtype=dtype)
+                pos_grp.create_dataset('positions_array', shape=(len(positions),), dtype=dtype)
 
         return positions
 
@@ -366,7 +365,7 @@ class MultiScopeAcquisition:
             time_ds.attrs['dtype'] = str(time_array.dtype)
 
 
-    def update_hdf5(self, all_data, shot_num):
+    def update_hdf5(self, all_data, shot_num, xpos, ypos, zpos):
         """Update HDF5 file with acquired data using optimized settings"""
         with h5py.File(self.save_path, 'a') as f:
             # Save data for each scope
@@ -411,6 +410,14 @@ class MultiScopeAcquisition:
                     data_ds.attrs['description'] = self.get_channel_description(tr)
                     data_ds.attrs['dtype'] = str(trace_data.dtype)
                     header_ds.attrs['description'] = f'Binary header data for {tr}'
+            
+            # Update position array if we have valid position data
+            pos_arr = f['/Control/Positions/positions_array']
+            if xpos is not None and ypos is not None:
+                if self.nz is None:
+                    pos_arr[shot_num-1] = (shot_num, xpos, ypos)
+                elif zpos is not None:
+                    pos_arr[shot_num-1] = (shot_num, xpos, ypos, zpos)
 
 
     def update_plots(self, all_data, shot_num):
@@ -565,17 +572,16 @@ def single_shot_acquisition(pos, needs_movement, nz, msa, mc, save_path, scope_i
     all_data = msa.acquire_shot(active_scopes, shot_num)
     
     if all_data:
-        msa.update_hdf5(all_data, shot_num)
-        if needs_movement:
+        if not needs_movement:
+            xpos, ypos, zpos = None, None, None
+        elif nz is None:
+            xpos, ypos = mc.probe_positions
+            zpos = None
+        else:
             xpos, ypos, zpos = mc.probe_positions
-            if nz is None:
-                msa.pos_arr[shot_num-1] = np.array((shot_num, xpos, ypos), 
-                    dtype=[('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4')])
-            else:
-                msa.pos_arr[shot_num-1] = np.array((shot_num, xpos, ypos, zpos), 
-                    dtype=[('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4'), ('z', '>f4')])
-    else:
 
+        msa.update_hdf5(all_data, shot_num, xpos, ypos, zpos)
+    else:
         print(f"Warning: No valid data acquired at shot {shot_num}")
 
 
