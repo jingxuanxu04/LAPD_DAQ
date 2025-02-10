@@ -472,15 +472,21 @@ class Motor_Control_3D:
 
 		# Check if the target position is unreachable in probe space
 		probe_pos = (xpos, ypos, zpos)
+		if self.boundary_checker.outer_boundary is None:
+			raise ValueError("No outer boundary defined")
 		if not self.boundary_checker.outer_boundary(probe_pos[0], probe_pos[1], probe_pos[2]):
 			raise ValueError(f"Target position {probe_pos} is outside probe outer boundary")
-		if not self.boundary_checker.obstacle_boundary(probe_pos[0], probe_pos[1], probe_pos[2]):
-			raise ValueError(f"Target position {probe_pos} collides with obstacle")
+			
+		# Check all obstacle boundaries
+		for obstacle_boundary in self.boundary_checker.obstacle_boundaries:
+			if not obstacle_boundary(probe_pos[0], probe_pos[1], probe_pos[2]):
+				raise ValueError(f"Target position {probe_pos} collides with obstacle")
 
 		# Check if target motor position is unreachable
 		motor_pos = self.probe_to_motor_LAPD(xpos, ypos, zpos)
-		if not self.boundary_checker.motor_boundary(*motor_pos):
-			raise ValueError(f"Target position {probe_pos} is outside motor limits")
+		for motor_boundary in self.boundary_checker.motor_boundaries:
+			if not motor_boundary(*motor_pos):
+				raise ValueError(f"Target position {probe_pos} is outside motor limits")
 
 		self._current_pos = self.motor_positions
 		current_pos = self.motor_to_probe(*self._current_pos)
@@ -495,8 +501,9 @@ class Motor_Control_3D:
 				motor_x, motor_y, motor_z = self.probe_to_motor_LAPD(*waypoint)
 				
 				# Verify motor position is within limits
-				if not self.boundary_checker.motor_boundary(motor_x, motor_y, motor_z):
-					raise ValueError(f"Waypoint motor position {(motor_x, motor_y, motor_z)} is outside motor limits")
+				for motor_boundary in self.boundary_checker.motor_boundaries:
+					if not motor_boundary(motor_x, motor_y, motor_z):
+						raise ValueError(f"Waypoint motor position {(motor_x, motor_y, motor_z)} is outside motor limits")
 				
 				# Set velocity for this segment
 				self.set_movement_velocity(motor_x, motor_y, motor_z)
