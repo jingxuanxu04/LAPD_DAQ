@@ -258,10 +258,6 @@ class Motor_Control_3D:
 		# Initialize boundary checker with the same verbose setting
 		self.boundary_checker = BoundaryChecker(verbose=verbose)
 		
-		# Pre-calculate common paths for faster obstacle avoidance
-		self._common_paths = {}
-		self._last_path = None  # Store last successful path for similar movements
-
 		self._current_pos = None
 
 	#-------------------------------------------------------------------------------------------
@@ -469,6 +465,7 @@ class Motor_Control_3D:
 			if not motor_boundary(*motor_pos):
 				raise ValueError(f"Target position {probe_pos} is outside motor limits")
 
+		# Store current position for velocity calculations
 		self._current_pos = self.motor_positions
 		current_pos = self.motor_to_probe(*self._current_pos)
 

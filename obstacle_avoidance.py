@@ -15,39 +15,24 @@ class BoundaryChecker:
         self.min_clearance = 1.0
         self.buffer = 0.5  # Safety buffer for clearance
         self.obstacle_dimensions = None  # Will store (x_min, x_max), (y_min, y_max), (z_min, z_max)
-        self.axis_clearances = None  # Will store [x_clearance, y_clearance, z_clearance]
         self.verbose = verbose
-        
-        # Default offset distances for path finding
-        self.xy_offset = 4.0  # Default XY plane offset in cm
-        self.z_offset = 2.0   # Default Z offset in cm
-        self.min_offset = 2.0 # Minimum offset distance
+        self.safe_x = 0  # Default safe x position when no obstacles
         
     def _debug_print(self, *args, **kwargs):
         """Helper method for debug printing"""
         if self.verbose:
             print(*args, **kwargs)
             
-    def _calculate_safe_offsets(self):
-        """Calculate safe offset distances based on obstacle dimensions"""
+    def _calculate_safe_x(self):
+        """Calculate safe x position based on obstacle dimensions"""
         if not self.obstacle_dimensions:
+            self.safe_x = 0
             return
             
-        (obs_x_min, obs_x_max), (obs_y_min, obs_y_max), (obs_z_min, obs_z_max) = self.obstacle_dimensions
-        
-        # Calculate obstacle size in each dimension
-        x_size = abs(obs_x_max - obs_x_min)
-        y_size = abs(obs_y_max - obs_y_min)
-        z_size = abs(obs_z_max - obs_z_min)
-        
-        # Set offsets to be 1.5 times the obstacle size in that dimension
-        # This ensures we go far enough around the obstacle
-        self.xy_offset = max(self.min_offset, max(x_size, y_size) * 1.5)
-        self.z_offset = max(self.min_offset, z_size * 1.5)
-        
-        # Add buffer for safety
-        self.xy_offset += self.buffer
-        self.z_offset += self.buffer
+        (obs_x_min, obs_x_max), _, _ = self.obstacle_dimensions
+        # Set safe_x to be 2cm beyond the largest x value of obstacle
+        self.safe_x = obs_x_max + 2.0
+        self._debug_print(f"Safe x position set to: {self.safe_x}")
 
     def add_probe_boundary(self, boundary_func, is_outer_boundary=False):
         """Add a boundary function that operates in probe space
@@ -59,12 +44,11 @@ class BoundaryChecker:
             self.outer_boundary = boundary_func
         else:
             self.obstacle_boundaries.append(boundary_func)
-            # Calculate obstacle dimensions and clearances when first obstacle is added
+            # Calculate obstacle dimensions when first obstacle is added
             if len(self.obstacle_boundaries) == 1:
                 self.find_obstacle_dimensions()
                 if self.obstacle_dimensions:
-                    self._calculate_clearances()
-                    self._calculate_safe_offsets()  # Calculate offsets AFTER we have obstacle dimensions
+                    self._calculate_safe_x()
         
     def add_motor_boundary(self, boundary_func):
         """Add a boundary function that operates in motor space"""
@@ -81,8 +65,7 @@ class BoundaryChecker:
         z_min, z_max = float('inf'), float('-inf')
         
         # Use reasonable sampling - we only need enough points to find the obstacle boundaries
-        # For a 2x2x2 box, 20 points per dimension (8000 total points) should be plenty
-        x_range = np.linspace(-5, 5, 20)  # Reduced from 200 to 20 points
+        x_range = np.linspace(-5, 5, 20)  # 20 points per dimension is sufficient
         y_range = np.linspace(-5, 5, 20)
         z_range = np.linspace(-5, 5, 20)
         
@@ -120,19 +103,6 @@ class BoundaryChecker:
                 (z_min - buffer, z_max + buffer)
             )
 
-    def _calculate_clearances(self):
-        """Calculate clearance for each axis based on obstacle dimensions"""
-        if not self.obstacle_dimensions:
-            self.axis_clearances = None
-            return
-            
-        (obs_x_min, obs_x_max), (obs_y_min, obs_y_max), (obs_z_min, obs_z_max) = self.obstacle_dimensions
-        self.axis_clearances = [
-            abs(obs_x_max - obs_x_min) + 2*self.buffer,  # X clearance
-            abs(obs_y_max - obs_y_min) + 2*self.buffer,  # Y clearance
-            abs(obs_z_max - obs_z_min) + 2*self.buffer   # Z clearance
-        ]
-
     def is_position_valid(self, probe_pos, motor_pos=None):
         """Check if position is valid in both spaces"""
         x, y, z = probe_pos
@@ -156,8 +126,7 @@ class BoundaryChecker:
         return True
 
     def is_path_valid(self, start_pos, end_pos):
-        """Check if straight line path between points is valid by checking if the line
-        intersects with any obstacle boundaries"""
+        """Check if straight line path between points is valid"""
         x1, y1, z1 = start_pos
         x2, y2, z2 = end_pos
         
@@ -171,10 +140,6 @@ class BoundaryChecker:
             
         # For each obstacle boundary
         for obstacle in self.obstacle_boundaries:
-            # For a line segment P(t) = P1 + t(P2-P1), t ∈ [0,1]
-            # Check if any point along the line intersects the obstacle
-            
-            # Get the min/max values for each coordinate where obstacle exists
             dx = x2 - x1
             dy = y2 - y1
             dz = z2 - z1
@@ -186,9 +151,9 @@ class BoundaryChecker:
             for i in range(num_checks + 1):
                 t = i / num_checks
                 point = (
-                    x1 + t*dx,  # x = x1 + t(x2-x1)
-                    y1 + t*dy,  # y = y1 + t(y2-y1)
-                    z1 + t*dz   # z = z1 + t(z2-z1)
+                    x1 + t*dx,
+                    y1 + t*dy,
+                    z1 + t*dz
                 )
                 
                 # If any point along the line is inside the obstacle, path is invalid
@@ -198,87 +163,31 @@ class BoundaryChecker:
                     
         return True
 
-    def find_alternative_path(self, start_pos, end_pos, max_attempts=20):
-        """Find an alternative path using intermediate points when direct path is blocked."""
-        # Debug state at start of pathfinding
-        self._debug_print("\nPathfinding Debug:")
-        self._debug_print(f"Number of probe boundaries: {len(self.probe_boundaries)}")
-        self._debug_print(f"Number of obstacle boundaries: {len(self.obstacle_boundaries)}")
-        self._debug_print(f"Outer boundary exists: {self.outer_boundary is not None}")
-        self._debug_print(f"Obstacle dimensions: {self.obstacle_dimensions}")
-        self._debug_print(f"Current offsets - XY: {self.xy_offset}, Z: {self.z_offset}")
-        
-        # Quick returns for simple cases
-        if not self.obstacle_boundaries:
-            self._debug_print("No obstacle boundaries defined")
-            return [end_pos]
-            
-        if self.obstacle_dimensions is None:
-            self._debug_print("No obstacle dimensions calculated")
-            return [end_pos]
-            
+    def find_alternative_path(self, start_pos, end_pos):
+        """Find path by first moving in +x direction to clear obstacle, then to target y,z, then back to target x"""
         if self.is_path_valid(start_pos, end_pos):
-            self._debug_print("Direct path is valid")
             return [end_pos]
             
         x1, y1, z1 = start_pos
         x2, y2, z2 = end_pos
         
-        # Calculate direction vector from start to end
-        dx = x2 - x1
-        dy = y2 - y1
-        dz = z2 - z1
+        # Create waypoint at safe x position
+        waypoint1 = (self.safe_x, y1, z1)
         
-        # Calculate perpendicular direction in XY plane
-        # For a vector (dx, dy), a perpendicular vector is (-dy, dx)
-        length = np.sqrt(dx*dx + dy*dy)
-        if length > 0:
-            perp_x = -dy/length * self.xy_offset
-            perp_y = dx/length * self.xy_offset
-        else:
-            perp_x = self.xy_offset
-            perp_y = 0
-        
-        self._debug_print(f"\nPath vector: ({dx:.2f}, {dy:.2f}, {dz:.2f})")
-        self._debug_print(f"Using offsets: XY=({perp_x:.2f}, {perp_y:.2f}), Z={self.z_offset}")
-        
-        # Try both positive and negative perpendicular directions
-        offsets = [
-            (perp_x, perp_y, 0),
-            (-perp_x, -perp_y, 0),
-            (0, 0, self.z_offset),
-            (0, 0, -self.z_offset)
-        ]
-        
-        for i, (offset_x, offset_y, offset_z) in enumerate(offsets):
-            # Create intermediate point offset from midpoint
-            mid_x = (x1 + x2)/2 + offset_x
-            mid_y = (y1 + y2)/2 + offset_y
-            mid_z = (z1 + z2)/2 + offset_z
-            waypoint = (mid_x, mid_y, mid_z)
+        # Check if path to first waypoint is valid
+        if not self.is_path_valid(start_pos, waypoint1):
+            raise ValueError("Cannot find safe path to clear obstacle in x direction")
             
-            self._debug_print(f"\nTrying waypoint {i+1}/4: {waypoint}")
-            # Check each segment individually for better debugging
-            valid_waypoint = self.is_position_valid(waypoint)
-            if not valid_waypoint:
-                self._debug_print(f"Waypoint {waypoint} is not valid")
-                continue
-                
-            valid_to_waypoint = self.is_path_valid(start_pos, waypoint)
-            if not valid_to_waypoint:
-                self._debug_print(f"Path to waypoint is not valid")
-                continue
-                
-            valid_from_waypoint = self.is_path_valid(waypoint, end_pos)
-            if not valid_from_waypoint:
-                self._debug_print(f"Path from waypoint is not valid")
-                continue
+        # Now move to target y,z coordinates while staying at safe_x
+        waypoint2 = (self.safe_x, y2, z2)
+        if not self.is_path_valid(waypoint1, waypoint2):
+            raise ValueError("Cannot find safe path to target y,z coordinates")
             
-            self._debug_print(f"Valid path found through waypoint: {waypoint}")
-            return [waypoint, end_pos]
-        
-        self._debug_print("\nNo valid path found after trying all offset directions")
-        raise ValueError("Could not find valid path between points")
+        # Finally move back to target x
+        if not self.is_path_valid(waypoint2, end_pos):
+            raise ValueError("Cannot find safe path to final target")
+            
+        return [waypoint1, waypoint2, end_pos]
 
 #===============================================================================================================================================
 # Test functions
@@ -535,7 +444,89 @@ def test_large_box_obstacle():
     plt.tight_layout()
     plt.show()
 
+def test_lapd_boundaries():
+    """Test boundary checker with LAPD probe limits and obstacle"""
+    print("\nTesting LAPD Boundaries...")
+    
+    # Create boundary checker instance
+    checker = BoundaryChecker(verbose=True)  # Enable verbose mode for debugging
+    
+    # Define boundaries using LAPD limits
+    def outer_boundary(x, y, z):
+        """Return True if position is within allowed range"""
+        x_limits = (-40, 60)  # (min, max) in cm
+        y_limits = (-20, 20)
+        z_limits = (-15, 15)
+        return (x_limits[0] <= x <= x_limits[1] and 
+                y_limits[0] <= y <= y_limits[1] and 
+                z_limits[0] <= z <= z_limits[1])
+    
+    def obstacle_boundary(x, y, z):
+        """Return True if position is NOT in obstacle"""
+        buffer = 0.2  # Safety buffer
+        in_obstacle = (-60-buffer <= x <= -0.5+buffer and 
+                      -3-buffer <= y <= 3+buffer and 
+                      -5.5-buffer <= z <= 5.5+buffer)
+        return not in_obstacle
+    
+    # Add boundaries to checker
+    checker.add_probe_boundary(outer_boundary, is_outer_boundary=True)
+    checker.add_probe_boundary(obstacle_boundary)
+    
+    # Define test cases that require obstacle avoidance
+    test_cases = [
+        # Test case description, start point, end point
+        ("Direct path (no obstacle)", (10, 0, 0), (20, 0, 0)),
+        ("Path through obstacle region (x movement)", (-10, 4, 0), (-10, -4, 0)),
+        ("Path near obstacle edge (y,z movement)", (-1, 4, 0), (-1, -4, 7)),
+        ("Diagonal path through obstacle", (-20, 4, 4), (-20, -4, -4)),
+        ("Complex path with x,y,z changes", (-30, 4, 4), (-5, -4, -4))
+    ]
+    
+    # Create visualization
+    fig = plt.figure(figsize=(20, 15))
+    fig.suptitle("LAPD Boundary and Obstacle Avoidance Tests - New Algorithm", fontsize=16)
+    
+    for i, (description, start_point, end_point) in enumerate(test_cases, 1):
+        print(f"\nTest {i}: {description}")
+        print(f"Start point: {start_point}")
+        print(f"End point: {end_point}")
+        
+        ax = fig.add_subplot(2, 3, i, projection='3d')
+        
+        # Plot obstacle
+        plot_box(ax, (-30.25, 0, 0), (59.5, 6, 11))  # Center at x=-30.25 (midpoint of -60 to -0.5)
+        
+        try:
+            # Check if start and end points are valid
+            if not checker.is_position_valid(start_point):
+                print(f"Start position {start_point} is invalid")
+                continue
+            if not checker.is_position_valid(end_point):
+                print(f"End position {end_point} is invalid")
+                continue
+            
+            # Try to find a path
+            path = [start_point] + checker.find_alternative_path(start_point, end_point)
+            print("Found path with waypoints:")
+            for j, point in enumerate(path):
+                print(f"Point {j}: {point}")
+            
+            # Plot the path
+            plot_path_3d(ax, path, start_point, end_point)
+            
+        except ValueError as e:
+            print(f"Could not find valid path: {str(e)}")
+        
+        # Setup plot appearance
+        setup_3d_plot(ax, description)
+        ax.set_xlim(-60, 60)
+        ax.set_ylim(-20, 20)
+        ax.set_zlim(-15, 15)
+    
+    plt.tight_layout()
+    plt.show()
+
 if __name__ == '__main__':
-    # Run both tests
-    test_small_box_obstacle()
-    # test_large_box_obstacle() 
+
+    test_lapd_boundaries()  # Add the new test
