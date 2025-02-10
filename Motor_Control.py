@@ -286,44 +286,31 @@ class Motor_Control_3D:
 	def set_movement_velocity(self, motor_x, motor_y, motor_z):
 		x_m, y_m, z_m = self._current_pos
 
-		# distance between current motor position to final motor position
+		# Calculate distances to move
 		delta_x = abs(motor_x - x_m)
 		delta_y = abs(motor_y - y_m)
 		delta_z = abs(motor_z - z_m)
 
-		# calculate velocity such that probe moves on a straight line
-		v_motor_x, v_motor_y, v_motor_z = self.calculate_velocity(delta_x, delta_y, delta_z)
-
-		# Set motor velocity accordingly
-		self.motor_velocity = v_motor_x, v_motor_y, v_motor_z
-
-	"""
-	Convert probe velocity vector to motor velocity vector
-	"""
-	def calculate_velocity(self, del_x, del_y, del_z):
-		default_speed = 6.0  # Maximum speed in rev/sec
-
-		# If no movement needed
-		if del_x == 0 and del_y == 0 and del_z == 0:
-			return 0.0, 0.0, 0.0
-
 		# Find the largest distance to determine which motor should run at max speed
-		max_delta = max(del_x, del_y, del_z)
+		max_delta = max(delta_x, delta_y, delta_z)
+		default_speed = 6.0  # Maximum speed in rev/sec
 		
 		if max_delta == 0:
-			return 0.0, 0.0, 0.0
+			self.motor_velocity = 0.0, 0.0, 0.0
+			return
 			
 		# Calculate velocities - the motor with largest distance will run at max speed
-		v_x = default_speed * del_x / max_delta
-		v_y = default_speed * del_y / max_delta
-		v_z = default_speed * del_z / max_delta
+		v_x = default_speed * delta_x / max_delta
+		v_y = default_speed * delta_y / max_delta
+		v_z = default_speed * delta_z / max_delta
 
 		# Round to 3 decimal places to avoid floating point issues
 		v_motor_x = round(v_x, 3)
 		v_motor_y = round(v_y, 3)
 		v_motor_z = round(v_z, 3)
 
-		return v_motor_x, v_motor_y, v_motor_z
+		# Set motor velocity accordingly
+		self.motor_velocity = v_motor_x, v_motor_y, v_motor_z
 
 	#--------------------------------------------------------------------------------------------------
 	"""
