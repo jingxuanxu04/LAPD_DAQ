@@ -32,7 +32,7 @@ logging.basicConfig(filename='motor.log', level=logging.WARNING,
 '''
 User: Set experiment name and path
 '''
-exp_name = 'exp_00_test_XY2planes'  # experiment name
+exp_name = 'exp_01_test_XZ2planes'  # experiment name
 date = datetime.date.today()
 path = f"C:\\data"
 save_path = f"{path}\\{exp_name}_{date}.hdf5"
@@ -48,12 +48,12 @@ nx = 11
 
 ymin = -5
 ymax = 5
-ny = 11
+ny = 2
 
 # Set z parameters to None if not using XYZ drive
 zmin = -5
 zmax = 5
-nz = 2
+nz = 11
 
 num_duplicate_shots = 1      # number of duplicate shots recorded at each location
 num_run_repeats = 1          # number of times to repeat sequentially over all locations
