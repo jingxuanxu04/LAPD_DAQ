@@ -303,17 +303,22 @@ class Motor_Control_3D:
 	def calculate_velocity(self, del_x, del_y, del_z):
 		default_speed = 6.0  # Maximum speed in rev/sec
 
-		del_r = math.sqrt(del_x**2 + del_y**2 + del_z**2)
-		if del_r == 0:
-			v_x, v_y, v_z = 0.0, 0.0, 0.0
-		else:
-			# Calculate velocities to maintain straight line motion
-			# The ratio of velocities must equal the ratio of distances
-			# Scale all velocities up so the largest one equals default_speed
-			v_x = default_speed * del_x / del_r
-			v_y = default_speed * del_y / del_r
-			v_z = default_speed * del_z / del_r
+		# If no movement needed
+		if del_x == 0 and del_y == 0 and del_z == 0:
+			return 0.0, 0.0, 0.0
 
+		# Find the largest distance to determine which motor should run at max speed
+		max_delta = max(del_x, del_y, del_z)
+		
+		if max_delta == 0:
+			return 0.0, 0.0, 0.0
+			
+		# Calculate velocities - the motor with largest distance will run at max speed
+		v_x = default_speed * del_x / max_delta
+		v_y = default_speed * del_y / max_delta
+		v_z = default_speed * del_z / max_delta
+
+		# Round to 3 decimal places to avoid floating point issues
 		v_motor_x = round(v_x, 3)
 		v_motor_y = round(v_y, 3)
 		v_motor_z = round(v_z, 3)
@@ -343,6 +348,8 @@ class Motor_Control_3D:
 	"""
 	def wait_for_motion_complete(self):
 		timeout = time.time() + 300
+		alarm_retry_count = 0
+		MAX_ALARM_RETRIES = 5
 
 		while True:
 			try:
@@ -362,22 +369,29 @@ class Motor_Control_3D:
 				y_alarmed = y_stat.find('A') == 1
 				z_alarmed = z_stat.find('A') == 1
 
-				if x_alarmed:
-					self.y_mc.stop_now
-					self.z_mc.stop_now
-					print(f"Motor {self.x_mc.name} is alarmed, stopping other motors")
-					break
-				elif y_alarmed:
-					self.x_mc.stop_now
-					self.z_mc.stop_now
-					print(f"Motor {self.y_mc.name} is alarmed, stopping other motors")
-					break
-				elif z_alarmed:
+				# Handle alarm conditions
+				if x_alarmed or y_alarmed or z_alarmed:
+					# Stop all motors
 					self.x_mc.stop_now
 					self.y_mc.stop_now
-					print(f"Motor {self.z_mc.name} is alarmed, stopping other motors")
-					break
+					self.z_mc.stop_now
+					time.sleep(0.5)  # Wait briefly for stop commands to take effect
+					
+					# Report which motor triggered the alarm
+					if x_alarmed:
+						print(f"Motor {self.x_mc.name} is alarmed")
+					if y_alarmed:
+						print(f"Motor {self.y_mc.name} is alarmed")
+					if z_alarmed:
+						print(f"Motor {self.z_mc.name} is alarmed")
+					
+					alarm_retry_count += 1
+					if alarm_retry_count >= MAX_ALARM_RETRIES:
+						print(f"Failed to clear alarm condition after {MAX_ALARM_RETRIES} attempts")
+						break
+					continue  # Try again if within retry limit
 
+				# Check if all motors have stopped moving
 				if x_not_moving and y_not_moving and z_not_moving:
 					time.sleep(0.2)
 					break
@@ -396,6 +410,7 @@ class Motor_Control_3D:
 					self.x_mc.stop_now
 					self.y_mc.stop_now
 					self.z_mc.stop_now
+					time.sleep(0.5)  # Brief wait to let stop commands take effect
 				except Exception as e:
 					print(f"Error stopping motors: {str(e)}")
 				finally:
