@@ -335,56 +335,29 @@ class Motor_Control_3D:
 	"""
 	def wait_for_motion_complete(self):
 		timeout = time.time() + 300
-		alarm_retry_count = 0
-		MAX_ALARM_RETRIES = 5
 
 		while True:
 			try:
 				x_stat = self.x_mc.motor_status
 				y_stat = self.y_mc.motor_status
 				z_stat = self.z_mc.motor_status
-				
-				x_not_moving = x_stat.find('M') == -1
-				y_not_moving = y_stat.find('M') == -1
-				z_not_moving = z_stat.find('M') == -1
 
 				x_disabled = x_stat.find('D') == 1
 				y_disabled = y_stat.find('D') == 1
 				z_disabled = z_stat.find('D') == 1
-
-				x_alarmed = x_stat.find('A') == 1
-				y_alarmed = y_stat.find('A') == 1
-				z_alarmed = z_stat.find('A') == 1
-
-				# Handle alarm conditions
-				if x_alarmed or y_alarmed or z_alarmed:
-					# Stop all motors
-					self.x_mc.stop_now
-					self.y_mc.stop_now
-					self.z_mc.stop_now
-					time.sleep(0.5)  # Wait briefly for stop commands to take effect
-					
-					# Report which motor triggered the alarm
-					if x_alarmed:
-						print(f"Motor {self.x_mc.name} is alarmed")
-					if y_alarmed:
-						print(f"Motor {self.y_mc.name} is alarmed")
-					if z_alarmed:
-						print(f"Motor {self.z_mc.name} is alarmed")
-					
-					alarm_retry_count += 1
-					if alarm_retry_count >= MAX_ALARM_RETRIES:
-						print(f"Failed to clear alarm condition after {MAX_ALARM_RETRIES} attempts")
-						break
-					continue  # Try again if within retry limit
-
-				# Check if all motors have stopped moving
-				if x_not_moving and y_not_moving and z_not_moving:
-					time.sleep(0.2)
+				if x_disabled or y_disabled or z_disabled:
+					print("Motor is not moving because it is disabled")
 					break
 
-				elif x_disabled or y_disabled or z_disabled:
-					print("Motor is not moving because it is disabled")
+				x_not_moving = x_stat.find('M') == -1
+				y_not_moving = y_stat.find('M') == -1
+				z_not_moving = z_stat.find('M') == -1
+				
+				# Check if all motors have stopped moving
+				if x_not_moving or y_not_moving or z_not_moving:
+					self.x_mc.stop_now
+					self.y_mc.stop_now 
+					self.z_mc.stop_now
 					break
 				elif time.time() > timeout:
 					raise TimeoutError("Motor has been moving for over 5min???")
