@@ -279,8 +279,9 @@ class Motor_Control_3D:
 	"""
 	Set motor velocity according to its current position and target position
 	"""
-	def set_movement_velocity(self, motor_x, motor_y, motor_z):
-		x_m, y_m, z_m = self._current_pos
+	def set_movement_velocity(self, mpos_current, mpos_target):
+		x_m, y_m, z_m = mpos_current
+		motor_x, motor_y, motor_z = mpos_target
 
 		# Calculate distances to move
 		delta_x = abs(motor_x - x_m)
@@ -350,11 +351,8 @@ class Motor_Control_3D:
 				y_not_moving = y_stat.find('M') == -1
 				z_not_moving = z_stat.find('M') == -1
 				
-				# Check if all motors have stopped moving
-				if x_not_moving or y_not_moving or z_not_moving:
-					self.x_mc.stop_now
-					self.y_mc.stop_now 
-					self.z_mc.stop_now
+				if x_not_moving and y_not_moving and z_not_moving:
+					time.sleep(0.2)
 					break
 				elif time.time() > timeout:
 					raise TimeoutError("Motor has been moving for over 5min???")
@@ -450,8 +448,6 @@ class Motor_Control_3D:
 
 		# Check if the target position is unreachable in probe space
 		probe_pos = (xpos, ypos, zpos)
-		if self.boundary_checker.outer_boundary is None:
-			raise ValueError("No outer boundary defined")
 		if not self.boundary_checker.outer_boundary(probe_pos[0], probe_pos[1], probe_pos[2]):
 			raise ValueError(f"Target position {probe_pos} is outside probe outer boundary")
 			
@@ -467,10 +463,8 @@ class Motor_Control_3D:
 				raise ValueError(f"Target position {probe_pos} is outside motor limits")
 
 		try:
-			# Store current position for velocity calculations
-			mpos = self.motor_positions
-			current_pos = self.motor_to_probe(*mpos)
-
+			mpos_current = self.motor_positions
+			current_pos = self.motor_to_probe(*mpos_current)
 			# Get waypoints from boundary checker
 			waypoints = self.boundary_checker.find_path(current_pos, probe_pos)
 			
@@ -478,6 +472,7 @@ class Motor_Control_3D:
 			for waypoint in waypoints:
 				# Convert to motor coordinates for this segment
 				motor_x, motor_y, motor_z = self.probe_to_motor_LAPD(*waypoint)
+				mpos_target = motor_x, motor_y, motor_z
 				
 				# Verify motor position is within limits
 				for motor_boundary in self.boundary_checker.motor_boundaries:
@@ -485,11 +480,12 @@ class Motor_Control_3D:
 						raise ValueError(f"Waypoint motor position {(motor_x, motor_y, motor_z)} is outside motor limits")
 				
 				# Set velocity for this segment
-				self.set_movement_velocity(motor_x, motor_y, motor_z)
+				self.set_movement_velocity(mpos_current, mpos_target)
 				
 				# Move to waypoint
 				self.motor_positions = motor_x, motor_y, motor_z
-				
+				mpos_current = self.motor_positions
+
 				
 		except ValueError as e:
 			raise ValueError(f"Cannot find safe path to ({xpos}, {ypos}, {zpos}): {str(e)}")
