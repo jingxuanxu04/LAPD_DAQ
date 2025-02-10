@@ -163,8 +163,11 @@ class BoundaryChecker:
                     
         return True
 
-    def find_alternative_path(self, start_pos, end_pos):
-        """Find path by first moving in +x direction to clear obstacle, then to target y,z, then back to target x"""
+    def find_path(self, start_pos, end_pos):
+        """Find path by first moving in +x direction to clear obstacle,
+        then to target y,z, then back to target x"""
+
+        # If direct path is valid, return it
         if self.is_path_valid(start_pos, end_pos):
             return [end_pos]
             
@@ -377,72 +380,6 @@ def test_small_box_obstacle():
     plt.tight_layout()
     plt.show()
 
-def test_large_box_obstacle():
-    """Test obstacle avoidance with a 30x6x11 cm box positioned from x=-50 to -20"""
-    print("\nTesting Large Box (30x6x11 cm)...")
-    
-    # Create boundary checker instance
-    checker = BoundaryChecker(verbose=False)  # Set to True to enable debug prints
-    
-    # Define boundaries and obstacles
-    def outer_boundary(x, y, z):
-        return (-60 <= x <= 60 and -30 <= y <= 30 and -7 <= z <= 7)
-    
-    def large_box_obstacle(x, y, z):
-        # Add a small buffer to ensure paths don't get too close to the obstacle
-        buffer = 0.2
-        return (-50-buffer <= x <= -20+buffer and 
-                -3-buffer <= y <= 3+buffer and 
-                -5.5-buffer <= z <= 5.5+buffer)
-    
-    checker.add_probe_boundary(outer_boundary)
-    checker.add_motor_boundary(large_box_obstacle)
-    checker.check_resolution = 0.2  # Slightly coarser resolution for large obstacle
-    checker.min_clearance = 1.0    # Larger minimum clearance for bigger obstacle
-    
-    # Define test cases with realistic probe positions (probe enters from x=+50)
-    test_cases = [
-        ((-25, +10, 0), (-25, -10, 0)),
-        ((-25, 0, 7), (-25, 0, -7)),
-        ((-20, 1, 7), (-20, -1, -7)),
-        ((0, 0, 0), (-25, 6, 0))
-    ]
-    
-    # Create figure
-    fig = plt.figure(figsize=(20, 15))
-    fig.suptitle("Large Box (30x6x11 cm) Obstacle Avoidance Tests", fontsize=16)
-    
-    # Run test cases
-    for i, (start_point, end_point) in enumerate(test_cases, 1):
-        title = f"Path {i}"
-        print(f"\n{title}...")
-        print(f"Start point: {start_point}")
-        print(f"End point: {end_point}")
-        
-        # Create subplot
-        ax = fig.add_subplot(2, 2, i, projection='3d')
-        
-        # Plot obstacle - centered at x=-35 (midpoint between -50 and -20)
-        plot_box(ax, (-35, 0, 0), (30, 6, 11))
-        
-        # Find and plot path
-        try:
-            waypoints = [start_point] + checker.find_alternative_path(start_point, end_point)
-            print("Found path with waypoints:")
-            for j, point in enumerate(waypoints):
-                print(f"Point {j}: {point}")
-            plot_path_3d(ax, waypoints, start_point, end_point)
-        except ValueError as e:
-            print(f"Error finding path: {str(e)}")
-        
-        # Setup plot appearance
-        setup_3d_plot(ax, title)
-        ax.set_xlim(-60, 10)  # Adjusted to show more of the approach path
-        ax.set_ylim(-10, 10)
-        ax.set_zlim(-7, 7)
-    
-    plt.tight_layout()
-    plt.show()
 
 def test_lapd_boundaries():
     """Test boundary checker with LAPD probe limits and obstacle"""

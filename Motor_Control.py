@@ -314,7 +314,8 @@ class Motor_Control_3D:
 	"""
 	@property
 	def motor_positions(self):
-		return self.x_mc.motor_position, self.y_mc.motor_position, self.z_mc.motor_position
+		self._current_pos = self.x_mc.motor_position, self.y_mc.motor_position, self.z_mc.motor_position
+		return self._current_pos
 	
 	@motor_positions.setter
 	def motor_positions(self, mpos):
@@ -465,13 +466,13 @@ class Motor_Control_3D:
 			if not motor_boundary(*motor_pos):
 				raise ValueError(f"Target position {probe_pos} is outside motor limits")
 
-		# Store current position for velocity calculations
-		self._current_pos = self.motor_positions
-		current_pos = self.motor_to_probe(*self._current_pos)
-
 		try:
+			# Store current position for velocity calculations
+			mpos = self.motor_positions
+			current_pos = self.motor_to_probe(*mpos)
+
 			# Get waypoints from boundary checker
-			waypoints = self.boundary_checker.find_alternative_path(current_pos, probe_pos)
+			waypoints = self.boundary_checker.find_path(current_pos, probe_pos)
 			
 			# Move through each waypoint
 			for waypoint in waypoints:
@@ -488,6 +489,7 @@ class Motor_Control_3D:
 				
 				# Move to waypoint
 				self.motor_positions = motor_x, motor_y, motor_z
+				
 				
 		except ValueError as e:
 			raise ValueError(f"Cannot find safe path to ({xpos}, {ypos}, {zpos}): {str(e)}")
