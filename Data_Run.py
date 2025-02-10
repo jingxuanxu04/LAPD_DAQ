@@ -32,22 +32,41 @@ logging.basicConfig(filename='motor.log', level=logging.WARNING,
 '''
 User: Set experiment name and path
 '''
-exp_name = 'exp_02_test'  # experiment name
+exp_name = 'exp_00_test_XY2planes'  # experiment name
 date = datetime.date.today()
 path = f"C:\\data"
 save_path = f"{path}\\{exp_name}_{date}.hdf5"
 
 #-------------------------------------------------------------------------------------------------------------
 '''
+User: Set probe position array
+'''
+# Probe position parameters
+xmin = -30
+xmax = -20
+nx = 11
+
+ymin = -5
+ymax = 5
+ny = 11
+
+# Set z parameters to None if not using XYZ drive
+zmin = -5
+zmax = 5
+nz = 2
+
+num_duplicate_shots = 1      # number of duplicate shots recorded at each location
+num_run_repeats = 1          # number of times to repeat sequentially over all locations
+#-------------------------------------------------------------------------------------------------------------
+'''
 User: Set probe movement boundaries
 '''
 # Define probe movement limits
-x_limits = (-40, 60)  # (min, max) in cm
-y_limits = (-30, 30)
-z_limits = (-7, 7)
+x_limits = (-40, 200)  # (min, max) in cm
+y_limits = (-20, 20)
+z_limits = (-15, 15)
 
-# Define motor movement limits
-xm_limits = (-16, 90)  # (min, max) in cm
+xm_limits = (-65, 40)
 ym_limits = (-47, 47)
 zm_limits = (-25, 20)
 
@@ -61,45 +80,26 @@ def obstacle_boundary(x, y, z):
     """Return True if position is NOT in obstacle"""
     # Check large box obstacle (30x6x11 cm box from x=-50 to -20)
     buffer = 0.2  # Small buffer to ensure paths don't get too close
-    in_obstacle = (-50-buffer <= x <= -20+buffer and 
-                  -3-buffer <= y <= 3+buffer and 
-                  -5.5-buffer <= z <= 5.5+buffer)
+    in_obstacle = ( -60-buffer <= x <= -20+buffer and 
+                    -3-buffer <= y <= 3+buffer and 
+                    -3-buffer <= z <= 3+buffer)
     
     return not in_obstacle
 
 def motor_boundary(x, y, z):
-    """Return True if position is within allowed motor range"""
-    return (xm_limits[0] <= x <= xm_limits[1] and 
-            ym_limits[0] <= y <= ym_limits[1] and 
-            zm_limits[0] <= z <= zm_limits[1])
-
-#-------------------------------------------------------------------------------------------------------------
-'''
-User: Set probe position array
-'''
-# Probe position parameters
-xmin = 0
-xmax = 0
-nx = 1
-
-ymin = 0
-ymax = 0
-ny = 1
-
-# Set z parameters to None if not using XYZ drive
-zmin = 0
-zmax = 0
-nz = 1
-
-num_duplicate_shots = 10      # number of duplicate shots recorded at each location
-num_run_repeats = 1          # number of times to repeat sequentially over all locations
+    """Return True if position is within allowed range"""
+    # Check outer boundary
+    in_outer_boundary = (xm_limits[0] <= x <= xm_limits[1] and 
+                        ym_limits[0] <= y <= ym_limits[1] and 
+                        zm_limits[0] <= z <= zm_limits[1])
+    return in_outer_boundary
 
 #-------------------------------------------------------------------------------------------------------------
 def get_experiment_description():
 
     """Return overall experiment description"""
     return f'''
-    Test data acquisition program
+    Test data acquisition program with moving probe
     
     Experiment: {exp_name}
     Date: {date}
@@ -130,17 +130,17 @@ scope_ips = {
 }
 
 motor_ips = {
-    'x': '192.168.7.161',  # X-axis motor
-    'y': '192.168.7.162',   # Y-axis motor
-    'z': '192.168.7.163'   # Z-axis motor
+    'x': '192.168.7.163',  # X-axis motor
+    'y': '192.168.7.165',   # Y-axis motor
+    'z': '192.168.7.164'   # Z-axis motor
 }
 
 def get_channel_description(tr):
     """Channel description"""
     descriptions = {
         'FastScope_C1': 'N/A',
-        'FastScope_C2': 'pulse',
-        'FastScope_C3': 'flat',
+        'FastScope_C2': 'something',
+        'FastScope_C3': 'something',
         'FastScope_C4': 'N/A'
     }
     return descriptions.get(tr, f'Channel {tr} - No description available')

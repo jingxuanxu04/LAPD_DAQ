@@ -259,7 +259,7 @@ class MultiScopeAcquisition:
                     dtype = [('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4')]
                 else:
                     dtype = [('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4'), ('z', '>f4')]
-                self.pos_arr = pos_grp.create_dataset('positions_array', shape=len(positions), dtype=dtype)
+                self.pos_arr = pos_grp.create_dataset('positions_array', shape=(len(positions),), dtype=dtype)
 
         return positions
 
