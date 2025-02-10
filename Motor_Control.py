@@ -240,9 +240,13 @@ properties: motor_velocity, motor_positions, stop_now, reset_motor, set_zero, en
 """
 class Motor_Control_3D:
 	def __init__(self, *args, **kwargs):
-		self.x_mc = Motor_Control(verbose=True, server_ip_addr= args[0], name='x', cm_per_turn = 0.254, stop_switch_mode=1)
-		self.y_mc = Motor_Control(verbose=True, server_ip_addr= args[1], name='y', cm_per_turn = 0.254, stop_switch_mode=1)
-		self.z_mc = Motor_Control(verbose=True, server_ip_addr=args[2], name='z', cm_per_turn=0.254, stop_switch_mode=1)
+		# Get verbose setting from kwargs, default to False
+		verbose = kwargs.get('verbose', False)
+		
+		# Initialize motors with the same verbose setting
+		self.x_mc = Motor_Control(verbose=verbose, server_ip_addr=args[0], name='x', cm_per_turn=0.254, stop_switch_mode=1)
+		self.y_mc = Motor_Control(verbose=verbose, server_ip_addr=args[1], name='y', cm_per_turn=0.254, stop_switch_mode=1)
+		self.z_mc = Motor_Control(verbose=verbose, server_ip_addr=args[2], name='z', cm_per_turn=0.254, stop_switch_mode=1)
 		# Velmex model number NN10-0300-E01-21 (short black linear drives)
 		
 		self.probe_in = 58 # Distance from ball valve center to chamber center
@@ -250,7 +254,9 @@ class Motor_Control_3D:
 		self.ph = 30 # Height from probe shaft to center of rotating bar
 
 		self.motor_velocity = 4, 4, 4
-		self.boundary_checker = BoundaryChecker()
+		
+		# Initialize boundary checker with the same verbose setting
+		self.boundary_checker = BoundaryChecker(verbose=verbose)
 		
 		# Pre-calculate common paths for faster obstacle avoidance
 		self._common_paths = {}

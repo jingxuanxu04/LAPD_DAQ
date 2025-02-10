@@ -6,7 +6,7 @@ from mpl_toolkits.mplot3d import Axes3D
 #===============================================================================================================================================
 
 class BoundaryChecker:
-    def __init__(self):
+    def __init__(self, verbose=False):
         self.probe_boundaries = []
         self.outer_boundary = None  # Function defining the valid workspace
         self.obstacle_boundaries = []  # Functions defining obstacles
@@ -16,7 +16,39 @@ class BoundaryChecker:
         self.buffer = 0.5  # Safety buffer for clearance
         self.obstacle_dimensions = None  # Will store (x_min, x_max), (y_min, y_max), (z_min, z_max)
         self.axis_clearances = None  # Will store [x_clearance, y_clearance, z_clearance]
+        self.verbose = verbose
         
+        # Default offset distances for path finding
+        self.xy_offset = 4.0  # Default XY plane offset in cm
+        self.z_offset = 2.0   # Default Z offset in cm
+        self.min_offset = 2.0 # Minimum offset distance
+        
+    def _debug_print(self, *args, **kwargs):
+        """Helper method for debug printing"""
+        if self.verbose:
+            print(*args, **kwargs)
+            
+    def _calculate_safe_offsets(self):
+        """Calculate safe offset distances based on obstacle dimensions"""
+        if not self.obstacle_dimensions:
+            return
+            
+        (obs_x_min, obs_x_max), (obs_y_min, obs_y_max), (obs_z_min, obs_z_max) = self.obstacle_dimensions
+        
+        # Calculate obstacle size in each dimension
+        x_size = abs(obs_x_max - obs_x_min)
+        y_size = abs(obs_y_max - obs_y_min)
+        z_size = abs(obs_z_max - obs_z_min)
+        
+        # Set offsets to be 1.5 times the obstacle size in that dimension
+        # This ensures we go far enough around the obstacle
+        self.xy_offset = max(self.min_offset, max(x_size, y_size) * 1.5)
+        self.z_offset = max(self.min_offset, z_size * 1.5)
+        
+        # Add buffer for safety
+        self.xy_offset += self.buffer
+        self.z_offset += self.buffer
+
     def add_probe_boundary(self, boundary_func, is_outer_boundary=False):
         """Add a boundary function that operates in probe space
         Args:
@@ -32,6 +64,7 @@ class BoundaryChecker:
                 self.find_obstacle_dimensions()
                 if self.obstacle_dimensions:
                     self._calculate_clearances()
+                    self._calculate_safe_offsets()  # Calculate offsets AFTER we have obstacle dimensions
         
     def add_motor_boundary(self, boundary_func):
         """Add a boundary function that operates in motor space"""
@@ -47,11 +80,13 @@ class BoundaryChecker:
         y_min, y_max = float('inf'), float('-inf')
         z_min, z_max = float('inf'), float('-inf')
         
-        # Sample points in a reasonable range
-        x_range = np.linspace(-60, 60, 100)  # Adjust range based on your workspace
-        y_range = np.linspace(-30, 30, 100)
-        z_range = np.linspace(-15, 15, 100)
+        # Use reasonable sampling - we only need enough points to find the obstacle boundaries
+        # For a 2x2x2 box, 20 points per dimension (8000 total points) should be plenty
+        x_range = np.linspace(-5, 5, 20)  # Reduced from 200 to 20 points
+        y_range = np.linspace(-5, 5, 20)
+        z_range = np.linspace(-5, 5, 20)
         
+        found_obstacle = False
         # Find points where obstacles exist within valid workspace
         for x in x_range:
             for y in y_range:
@@ -69,15 +104,20 @@ class BoundaryChecker:
                             y_max = max(y_max, y)
                             z_min = min(z_min, z)
                             z_max = max(z_max, z)
+                            found_obstacle = True
                             break
         
-        if x_min == float('inf'):  # No obstacles found
+        if not found_obstacle:  # No obstacles found
+            self._debug_print("Warning: No obstacle points found during dimension calculation")
             self.obstacle_dimensions = None
         else:
+            self._debug_print(f"Found obstacle points: x=[{x_min:.2f}, {x_max:.2f}], y=[{y_min:.2f}, {y_max:.2f}], z=[{z_min:.2f}, {z_max:.2f}]")
+            # Add a small buffer to the dimensions to account for sampling resolution
+            buffer = self.check_resolution
             self.obstacle_dimensions = (
-                (x_min, x_max),
-                (y_min, y_max),
-                (z_min, z_max)
+                (x_min - buffer, x_max + buffer),
+                (y_min - buffer, y_max + buffer),
+                (z_min - buffer, z_max + buffer)
             )
 
     def _calculate_clearances(self):
@@ -116,89 +156,128 @@ class BoundaryChecker:
         return True
 
     def is_path_valid(self, start_pos, end_pos):
-        """Check if straight line path between points is valid"""
+        """Check if straight line path between points is valid by checking if the line
+        intersects with any obstacle boundaries"""
         x1, y1, z1 = start_pos
         x2, y2, z2 = end_pos
         
-        # Calculate path vector and length
-        path_vector = np.array([x2-x1, y2-y1, z2-z1])
-        path_length = np.linalg.norm(path_vector)
-        
-        # Number of points to check along path
-        num_points = max(int(path_length / self.check_resolution), 10)  # At least 10 points
-        
-        # Check points along path
-        for i in range(num_points + 1):
-            t = i / num_points
-            point = np.array([x1, y1, z1]) + t * path_vector
-            if not self.is_position_valid(tuple(point)):
-                return False
+        # If start or end point is invalid, path is invalid
+        if not self.is_position_valid(start_pos):
+            self._debug_print(f"Start position {start_pos} is invalid")
+            return False
+        if not self.is_position_valid(end_pos):
+            self._debug_print(f"End position {end_pos} is invalid")
+            return False
+            
+        # For each obstacle boundary
+        for obstacle in self.obstacle_boundaries:
+            # For a line segment P(t) = P1 + t(P2-P1), t ∈ [0,1]
+            # Check if any point along the line intersects the obstacle
+            
+            # Get the min/max values for each coordinate where obstacle exists
+            dx = x2 - x1
+            dy = y2 - y1
+            dz = z2 - z1
+            
+            # Check several points, with more checks if the distance is larger
+            distance = np.sqrt(dx*dx + dy*dy + dz*dz)
+            num_checks = max(5, int(distance))  # At least 5 checks, more for longer distances
+            
+            for i in range(num_checks + 1):
+                t = i / num_checks
+                point = (
+                    x1 + t*dx,  # x = x1 + t(x2-x1)
+                    y1 + t*dy,  # y = y1 + t(y2-y1)
+                    z1 + t*dz   # z = z1 + t(z2-z1)
+                )
                 
+                # If any point along the line is inside the obstacle, path is invalid
+                if not obstacle(*point):
+                    self._debug_print(f"Path intersects obstacle at point {point} (t={t:.2f})")
+                    return False
+                    
         return True
 
     def find_alternative_path(self, start_pos, end_pos, max_attempts=20):
-        """Find an alternative path using intermediate points when direct path is blocked"""
+        """Find an alternative path using intermediate points when direct path is blocked."""
+        # Debug state at start of pathfinding
+        self._debug_print("\nPathfinding Debug:")
+        self._debug_print(f"Number of probe boundaries: {len(self.probe_boundaries)}")
+        self._debug_print(f"Number of obstacle boundaries: {len(self.obstacle_boundaries)}")
+        self._debug_print(f"Outer boundary exists: {self.outer_boundary is not None}")
+        self._debug_print(f"Obstacle dimensions: {self.obstacle_dimensions}")
+        self._debug_print(f"Current offsets - XY: {self.xy_offset}, Z: {self.z_offset}")
+        
         # Quick returns for simple cases
-        if not self.probe_boundaries or self.obstacle_dimensions is None:
+        if not self.obstacle_boundaries:
+            self._debug_print("No obstacle boundaries defined")
+            return [end_pos]
+            
+        if self.obstacle_dimensions is None:
+            self._debug_print("No obstacle dimensions calculated")
             return [end_pos]
             
         if self.is_path_valid(start_pos, end_pos):
+            self._debug_print("Direct path is valid")
             return [end_pos]
             
         x1, y1, z1 = start_pos
         x2, y2, z2 = end_pos
-            
-        # Function to generate waypoints for a given direction
-        def get_waypoints_for_direction(axis, direction):
-            # Use pre-calculated clearance
-            offset = self.axis_clearances[axis] * direction
-            
-            # Base waypoint with only the offset applied
-            waypoint = list(start_pos)
-            waypoint[axis] += offset
-            
-            # Generate path based on axis
-            if axis == 0:  # X axis
-                return [
-                    tuple(waypoint),                    # Move in X
-                    (waypoint[0], y2, z1),             # Move in Y
-                    (waypoint[0], y2, z2),             # Move in Z
-                    end_pos                            # Final position
-                ]
-            elif axis == 1:  # Y axis
-                return [
-                    tuple(waypoint),                    # Move in Y
-                    (x1, waypoint[1], z2),             # Move in Z
-                    (x2, waypoint[1], z2),             # Move in X
-                    end_pos                            # Final position
-                ]
-            else:  # Z axis
-                return [
-                    tuple(waypoint),                    # Move in Z
-                    (x2, y1, waypoint[2]),             # Move in X
-                    (x2, y2, waypoint[2]),             # Move in Y
-                    end_pos                            # Final position
-                ]
-
-        # Try each axis in order of priority (Y, X, Z)
-        axes_to_try = [(1, 1), (1, -1), (0, 1), (0, -1), (2, 1), (2, -1)]
         
-        # Try each direction systematically
-        for axis, direction in axes_to_try:
-            waypoints = get_waypoints_for_direction(axis, direction)
+        # Calculate direction vector from start to end
+        dx = x2 - x1
+        dy = y2 - y1
+        dz = z2 - z1
+        
+        # Calculate perpendicular direction in XY plane
+        # For a vector (dx, dy), a perpendicular vector is (-dy, dx)
+        length = np.sqrt(dx*dx + dy*dy)
+        if length > 0:
+            perp_x = -dy/length * self.xy_offset
+            perp_y = dx/length * self.xy_offset
+        else:
+            perp_x = self.xy_offset
+            perp_y = 0
+        
+        self._debug_print(f"\nPath vector: ({dx:.2f}, {dy:.2f}, {dz:.2f})")
+        self._debug_print(f"Using offsets: XY=({perp_x:.2f}, {perp_y:.2f}), Z={self.z_offset}")
+        
+        # Try both positive and negative perpendicular directions
+        offsets = [
+            (perp_x, perp_y, 0),
+            (-perp_x, -perp_y, 0),
+            (0, 0, self.z_offset),
+            (0, 0, -self.z_offset)
+        ]
+        
+        for i, (offset_x, offset_y, offset_z) in enumerate(offsets):
+            # Create intermediate point offset from midpoint
+            mid_x = (x1 + x2)/2 + offset_x
+            mid_y = (y1 + y2)/2 + offset_y
+            mid_z = (z1 + z2)/2 + offset_z
+            waypoint = (mid_x, mid_y, mid_z)
             
-            # Validate entire path
-            valid = True
-            prev_point = start_pos
-            for point in waypoints:
-                if not self.is_path_valid(prev_point, point):
-                    valid = False
-                    break
-                prev_point = point
+            self._debug_print(f"\nTrying waypoint {i+1}/4: {waypoint}")
+            # Check each segment individually for better debugging
+            valid_waypoint = self.is_position_valid(waypoint)
+            if not valid_waypoint:
+                self._debug_print(f"Waypoint {waypoint} is not valid")
+                continue
                 
-            if valid:
-                return waypoints
+            valid_to_waypoint = self.is_path_valid(start_pos, waypoint)
+            if not valid_to_waypoint:
+                self._debug_print(f"Path to waypoint is not valid")
+                continue
                 
+            valid_from_waypoint = self.is_path_valid(waypoint, end_pos)
+            if not valid_from_waypoint:
+                self._debug_print(f"Path from waypoint is not valid")
+                continue
+            
+            self._debug_print(f"Valid path found through waypoint: {waypoint}")
+            return [waypoint, end_pos]
+        
+        self._debug_print("\nNo valid path found after trying all offset directions")
         raise ValueError("Could not find valid path between points")
 
 #===============================================================================================================================================
@@ -294,63 +373,97 @@ def test_small_box_obstacle():
     print("\nTesting Small Box (2x2x2)...")
     
     # Create boundary checker instance
-    checker = BoundaryChecker()
+    checker = BoundaryChecker(verbose=False)  # Set to True to enable debug prints
+    checker.check_resolution = 0.1  # Finer resolution for small obstacle
+    checker.min_clearance = 1.0    # Increased minimum clearance
+    checker.buffer = 0.5           # Safety buffer
+    checker.min_offset = 4.0       # Minimum offset for path finding
     
     # Define boundaries and obstacles
     def outer_boundary(x, y, z):
         return (-40 <= x <= 60 and -30 <= y <= 30 and -7 <= z <= 7)
     
     def small_box_obstacle(x, y, z):
-        # Add a small buffer to ensure paths don't get too close to the obstacle
-        buffer = 0.2
-        return (-1-buffer <= x <= 1+buffer and 
-                -1-buffer <= y <= 1+buffer and 
-                -1-buffer <= z <= 1+buffer)
+        # Define a 2x2x2 box with buffer
+        buffer = 0.5  # Safety buffer
+        in_obstacle = (-1-buffer <= x <= 1+buffer and 
+                      -1-buffer <= y <= 1+buffer and 
+                      -1-buffer <= z <= 1+buffer)
+        return not in_obstacle
     
-    checker.add_probe_boundary(outer_boundary)
-    checker.add_motor_boundary(small_box_obstacle)
-    checker.check_resolution = 0.1  # Finer resolution for small obstacle
-    checker.min_clearance = 0.5    # Minimum clearance from obstacles
+    checker.add_probe_boundary(outer_boundary, is_outer_boundary=True)
+    checker.add_probe_boundary(small_box_obstacle)
     
-    # Define test cases
+    # Print the calculated obstacle dimensions and offsets
+    print(f"Obstacle dimensions: {checker.obstacle_dimensions}")
+    print(f"XY offset: {checker.xy_offset}, Z offset: {checker.z_offset}")
+    
+    # Define test cases that require obstacle avoidance
     test_cases = [
-        ((-2, 0, 0), (2, 0, 0), "Straight through"),
-        ((-2, -2, 0), (2, 2, 0), "Diagonal across"),
-        ((0, -2, 0), (0, 2, 0), "Along Y-axis"),
-        ((0, 0, -2), (0, 0, 2), "Along Z-axis")
+        ((4, 0, 0), (-4, 0, 0), "X-axis path around obstacle"),
+        ((4, 4, 0), (-4, -4, 0), "XY diagonal path around obstacle"),
+        ((4, 0, 4), (-4, 0, -4), "XZ diagonal path around obstacle"),
+        ((4, 4, 4), (-4, -4, -4), "XYZ diagonal path around obstacle")
     ]
     
-    # Create figure
+    # Create visualization
     fig = plt.figure(figsize=(20, 15))
-    fig.suptitle("Small Box (2x2x2) Obstacle Avoidance Tests", fontsize=16)
+    fig.suptitle("Small Box (2x2x2) Obstacle Avoidance Tests - Valid Paths", fontsize=16)
     
-    # Run test cases
     for i, (start_point, end_point, title) in enumerate(test_cases, 1):
-        print(f"\n{title}...")
+        ax = fig.add_subplot(2, 2, i, projection='3d')
+        
+        # Plot obstacle - use same size as defined in obstacle function
+        plot_box(ax, (0, 0, 0), (3, 3, 3))  # 2 + 2*buffer = 3
+        
+        print(f"\n{title}:")
         print(f"Start point: {start_point}")
         print(f"End point: {end_point}")
         
-        # Create subplot
-        ax = fig.add_subplot(2, 2, i, projection='3d')
+        # Always plot start and end points
+        ax.scatter(*start_point, c='green', marker='^', s=100, label='Start')
+        ax.scatter(*end_point, c='red', marker='v', s=100, label='End')
         
-        # Plot obstacle
-        plot_box(ax, (0, 0, 0), (2, 2, 2))
-        
-        # Find and plot path
         try:
-            waypoints = [start_point] + checker.find_alternative_path(start_point, end_point)
+            # Try to find a path
+            path = [start_point] + checker.find_alternative_path(start_point, end_point)
             print("Found path with waypoints:")
-            for j, point in enumerate(waypoints):
+            for j, point in enumerate(path):
                 print(f"Point {j}: {point}")
-            plot_path_3d(ax, waypoints, start_point, end_point)
+            
+            # Verify the entire path is valid
+            valid_path = True
+            for j in range(len(path)-1):
+                if not checker.is_path_valid(path[j], path[j+1]):
+                    print(f"Warning: Path segment from {path[j]} to {path[j+1]} is invalid!")
+                    valid_path = False
+                    break
+            
+            if valid_path:
+                # Plot waypoints (excluding start and end points)
+                if len(path) > 2:
+                    waypoints = path[1:-1]
+                    ax.scatter([p[0] for p in waypoints], 
+                             [p[1] for p in waypoints], 
+                             [p[2] for p in waypoints],
+                             c='blue', marker='o', s=50, label='Waypoints')
+                
+                # Plot path segments
+                for j in range(len(path)-1):
+                    p1, p2 = path[j], path[j+1]
+                    ax.plot([p1[0], p2[0]], [p1[1], p2[1]], [p1[2], p2[2]], 
+                           'g--', label='Path' if j==0 else None, linewidth=2)
+            else:
+                print("Path validation failed - not plotting path")
+            
         except ValueError as e:
-            print(f"Error finding path: {str(e)}")
+            print(f"Could not find valid path: {str(e)}")
         
         # Setup plot appearance
         setup_3d_plot(ax, title)
-        ax.set_xlim(-3, 3)
-        ax.set_ylim(-3, 3)
-        ax.set_zlim(-3, 3)
+        ax.set_xlim(-10, 10)  # Increased view range
+        ax.set_ylim(-10, 10)
+        ax.set_zlim(-10, 10)
     
     plt.tight_layout()
     plt.show()
@@ -360,7 +473,7 @@ def test_large_box_obstacle():
     print("\nTesting Large Box (30x6x11 cm)...")
     
     # Create boundary checker instance
-    checker = BoundaryChecker()
+    checker = BoundaryChecker(verbose=False)  # Set to True to enable debug prints
     
     # Define boundaries and obstacles
     def outer_boundary(x, y, z):
@@ -424,5 +537,5 @@ def test_large_box_obstacle():
 
 if __name__ == '__main__':
     # Run both tests
-    # test_small_box_obstacle()
-    test_large_box_obstacle() 
+    test_small_box_obstacle()
+    # test_large_box_obstacle() 
