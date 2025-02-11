@@ -1,6 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+import inspect
+import re
 
 #===============================================================================================================================================
 #===============================================================================================================================================
@@ -13,8 +15,6 @@ class BoundaryChecker:
         self.motor_boundaries = []
         self.check_resolution = 0.1
         self.min_clearance = 1.0
-        self.buffer = 0.5  # Safety buffer for clearance
-        self.obstacle_dimensions = None  # Will store (x_min, x_max), (y_min, y_max), (z_min, z_max)
         self.verbose = verbose
         self.safe_x = 0  # Default safe x position when no obstacles
         
@@ -23,17 +23,6 @@ class BoundaryChecker:
         if self.verbose:
             print(*args, **kwargs)
             
-    def _calculate_safe_x(self):
-        """Calculate safe x position based on obstacle dimensions"""
-        if not self.obstacle_dimensions:
-            self.safe_x = 0
-            return
-            
-        (obs_x_min, obs_x_max), _, _ = self.obstacle_dimensions
-        # Set safe_x to be 2cm beyond the largest x value of obstacle
-        self.safe_x = obs_x_max + 2.0
-        self._debug_print(f"Safe x position set to: {self.safe_x}")
-
     def add_probe_boundary(self, boundary_func, is_outer_boundary=False):
         """Add a boundary function that operates in probe space
         Args:
@@ -44,64 +33,17 @@ class BoundaryChecker:
             self.outer_boundary = boundary_func
         else:
             self.obstacle_boundaries.append(boundary_func)
-            # Calculate obstacle dimensions when first obstacle is added
+            # For the first obstacle, set safe_x to be 5cm beyond the obstacle's max x
             if len(self.obstacle_boundaries) == 1:
-                self.find_obstacle_dimensions()
-                if self.obstacle_dimensions:
-                    self._calculate_safe_x()
+                source = inspect.getsource(boundary_func)
+                # Get the second number in the x range (x_max)
+                x_max = float(re.findall(r'-?\d+(?:\.\d+)?', source)[1])
+                self.safe_x = x_max + 5  # Set safe_x 5cm beyond obstacle's max x
+                self._debug_print(f"Safe x position set to: {self.safe_x}")
         
     def add_motor_boundary(self, boundary_func):
         """Add a boundary function that operates in motor space"""
         self.motor_boundaries.append(boundary_func)
-
-    def find_obstacle_dimensions(self):
-        """Find obstacle dimensions by sampling points within the valid workspace"""
-        if not self.obstacle_boundaries or not self.outer_boundary:
-            return None
-
-        # Initialize with extreme values
-        x_min, x_max = float('inf'), float('-inf')
-        y_min, y_max = float('inf'), float('-inf')
-        z_min, z_max = float('inf'), float('-inf')
-        
-        # Use reasonable sampling - we only need enough points to find the obstacle boundaries
-        x_range = np.linspace(-5, 5, 20)  # 20 points per dimension is sufficient
-        y_range = np.linspace(-5, 5, 20)
-        z_range = np.linspace(-5, 5, 20)
-        
-        found_obstacle = False
-        # Find points where obstacles exist within valid workspace
-        for x in x_range:
-            for y in y_range:
-                for z in z_range:
-                    # First check if point is in valid workspace
-                    if not self.outer_boundary(x, y, z):
-                        continue
-                        
-                    # Then check if point is in any obstacle
-                    for obstacle in self.obstacle_boundaries:
-                        if not obstacle(x, y, z):  # Point is in obstacle
-                            x_min = min(x_min, x)
-                            x_max = max(x_max, x)
-                            y_min = min(y_min, y)
-                            y_max = max(y_max, y)
-                            z_min = min(z_min, z)
-                            z_max = max(z_max, z)
-                            found_obstacle = True
-                            break
-        
-        if not found_obstacle:  # No obstacles found
-            self._debug_print("Warning: No obstacle points found during dimension calculation")
-            self.obstacle_dimensions = None
-        else:
-            self._debug_print(f"Found obstacle points: x=[{x_min:.2f}, {x_max:.2f}], y=[{y_min:.2f}, {y_max:.2f}], z=[{z_min:.2f}, {z_max:.2f}]")
-            # Add a small buffer to the dimensions to account for sampling resolution
-            buffer = self.check_resolution
-            self.obstacle_dimensions = (
-                (x_min - buffer, x_max + buffer),
-                (y_min - buffer, y_max + buffer),
-                (z_min - buffer, z_max + buffer)
-            )
 
     def is_position_valid(self, probe_pos, motor_pos=None):
         """Check if position is valid in both spaces"""

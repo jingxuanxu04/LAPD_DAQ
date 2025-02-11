@@ -80,9 +80,9 @@ def obstacle_boundary(x, y, z):
     """Return True if position is NOT in obstacle"""
     # Check large box obstacle (30x6x11 cm box from x=-50 to -20)
     buffer = 0.2  # Small buffer to ensure paths don't get too close
-    in_obstacle = ( -60-buffer <= x <= -20+buffer and 
-                    -3-buffer <= y <= 3+buffer and 
-                    -3-buffer <= z <= 3+buffer)
+    in_obstacle = ( -60 <= x <= -17 and 
+                    -2.5 <= y <= 5 and 
+                    -6.5 <= z <= 9)
     
     return not in_obstacle
 
