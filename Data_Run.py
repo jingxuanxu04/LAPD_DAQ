@@ -32,7 +32,7 @@ logging.basicConfig(filename='motor.log', level=logging.WARNING,
 '''
 User: Set experiment name and path
 '''
-exp_name = 'exp_01_test_XZ2planes'  # experiment name
+exp_name = '01-Ez-XYplane-P30-1p2kG'  # experiment name
 date = datetime.date.today()
 path = f"C:\\data"
 save_path = f"{path}\\{exp_name}_{date}.hdf5"
@@ -48,14 +48,14 @@ nx = 11
 
 ymin = -5
 ymax = 5
-ny = 2
+ny = 11
 
 # Set z parameters to None if not using XYZ drive
-zmin = -5
-zmax = 5
-nz = 11
+zmin = -8
+zmax = -8
+nz = 1
 
-num_duplicate_shots = 1      # number of duplicate shots recorded at each location
+num_duplicate_shots = 10      # number of duplicate shots recorded at each location
 num_run_repeats = 1          # number of times to repeat sequentially over all locations
 #-------------------------------------------------------------------------------------------------------------
 '''
@@ -113,16 +113,44 @@ def get_experiment_description():
     
     Setup:
     - Plasma condition
-        - Helium backside pressure 42 Psi
-        - Puff 
-        - Discharge XX ms; bank XX V; current XX kA
+        - Heater 2200 A
+        - Puff Helium backside pressure 48 Psi
+        - Puff voltage 95V for 23ms West+East
+        - Hydrogen 200 SCCM MFC is set to "300", or 60 SCCM
+        - Discharge 25 ms; bank charging 92 V; current 4.5 kA
+        - Pulsing 1/4.25 Hz; plasma breakdown ~12 ms
         - Pressure XX mTorr
+    - Magnetic field
+        - Straight 1.2 kG
+        - Black (South) 672 A
+        - Yellow 3120 A
+        - Purple 1092 A
+        - Black (North) 0 A
+    - Antenna (ZZ-#3 six wire mesh paddles wt 1/8inch gap)
+        - connected +-+-+- from south to north at 2.5GHz
+        - paddles are connected using delay lines to generate pi phase shift
+        - tip of mesh is approx 31 cm past wall (x = approx -19)
+        - LMX2572 signal generator set to 2.48 GHz, setpoint "40" in TICS software
+        - LMX2572 output goes to the RF switch, then to a ($200) DC block then to a -6dB attenuator on the input of the amplifier
+        - The amplifier is floating at the plasma potential because there is a direct connection to the mesh launcher
+        - The output of the amplifier goes through a directional coupler, then to a 25 foot coax.
+        - The coax has a measured attenuation of 6dB at 2.5 GHz
+        - The -20dB signal from the directional coupler goes to a -6dB attenuator, then to a ($200) DC block, then a 6 dB attenuator, then to channel 2 of the scope
+        - The rf switch is enabled for 20 ns at t = start + 20 ms
+    - Probe
+        - Dipole probe DP-JL-2CEW-0 (2 pairs of tips, Y and Z direction)
+        - we are connected to the "-z" whisker
+        - then a ($200) dc block
+        - then x100 0.15-2.5GHz amplifier
+        - then to channel 3 of the scope
+
+        note: the ($200) DC blocks described above break both ground and signal connections and introduce only a few degrees of phase at 3 GHz
 
     - Scope descriptions: See scope_group.attrs['description']
     - Channel descriptions: See channel_group.attrs['description']
 
     Notes:
-    All delays are set with respect to plasma 1kA as T=0
+    wave is launched with respect to plasma 1kA as T=0
     '''
 #-------------------------------------------------------------------------------------------------------------
 scope_ips = {
@@ -139,8 +167,8 @@ def get_channel_description(tr):
     """Channel description"""
     descriptions = {
         'FastScope_C1': 'N/A',
-        'FastScope_C2': 'something',
-        'FastScope_C3': 'something',
+        'FastScope_C2': 'RF signal at amplifier output',
+        'FastScope_C3': 'Probe signal',
         'FastScope_C4': 'N/A'
     }
     return descriptions.get(tr, f'Channel {tr} - No description available')
@@ -148,7 +176,7 @@ def get_channel_description(tr):
 def get_scope_description(scope_name):
     """Return description for each scope"""
     descriptions = {
-        'FastScope': '''LeCroy WavePro 404HD 4GHz 20GS/s'''
+        'FastScope': '''LeCroy WavePro 404HD 4GHz 20GS/s; triggering on channel 2 (RF signal)'''
     }
     return descriptions.get(scope_name, f'Scope {scope_name} - No description available')
 
