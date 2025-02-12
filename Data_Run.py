@@ -32,7 +32,7 @@ logging.basicConfig(filename='motor.log', level=logging.WARNING,
 '''
 User: Set experiment name and path
 '''
-exp_name = '01-Ez-XYplane-P30-1p2kG'  # experiment name
+exp_name = '08-Ez-XYZ-P30-1p2kG'  # experiment name
 date = datetime.date.today()
 path = f"C:\\data"
 save_path = f"{path}\\{exp_name}_{date}.hdf5"
@@ -42,20 +42,20 @@ save_path = f"{path}\\{exp_name}_{date}.hdf5"
 User: Set probe position array
 '''
 # Probe position parameters
-xmin = -30
-xmax = -20
-nx = 11
+xmin = -35
+xmax = -17
+nx = 18
 
-ymin = -5
-ymax = 5
-ny = 11
+ymin = -15
+ymax = 3
+ny = 19
 
 # Set z parameters to None if not using XYZ drive
-zmin = -8
-zmax = -8
-nz = 1
+zmin = -15
+zmax = -4.5
+nz = 7
 
-num_duplicate_shots = 10      # number of duplicate shots recorded at each location
+num_duplicate_shots = 5      # number of duplicate shots recorded at each location
 num_run_repeats = 1          # number of times to repeat sequentially over all locations
 #-------------------------------------------------------------------------------------------------------------
 '''
@@ -63,7 +63,7 @@ User: Set probe movement boundaries
 '''
 # Define probe movement limits
 x_limits = (-40, 200)  # (min, max) in cm
-y_limits = (-20, 20)
+y_limits = (-30, 30)
 z_limits = (-15, 15)
 
 xm_limits = (-65, 40)
@@ -113,13 +113,14 @@ def get_experiment_description():
     
     Setup:
     - Plasma condition
-        - Heater 2200 A
+        - Heater 2100 A
         - Puff Helium backside pressure 48 Psi
         - Puff voltage 95V for 23ms West+East
-        - Hydrogen 200 SCCM MFC is set to "300", or 60 SCCM
-        - Discharge 25 ms; bank charging 92 V; current 4.5 kA
+        - Hydrogen 200 SCCM MFC is set to "180"
+        - Discharge 25 ms; bank charging 90 V; current 4.5 kA
         - Pulsing 1/4.25 Hz; plasma breakdown ~12 ms
-        - Pressure XX mTorr
+        - Pressure ~0.14 mTorr
+        - Interferometer density ~1.5e13@P20 ~0.8e13@P29 (assume 40cm)
     - Magnetic field
         - Straight 1.2 kG
         - Black (South) 672 A
