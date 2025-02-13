@@ -214,10 +214,11 @@ class Motor_Control_2D:
 
 		# Convert probe distance to motor distance
 		motor_x, motor_y = self.probe_to_motor_LAPD(xpos, ypos)
+		motor_pos = motor_x, motor_y, 0 # TODO: this needs to be fixed as some point
 
-		for probe_boundary in self.boundary_checker.probe_boundaries:
-			if not probe_boundary(xpos, ypos):
-				raise ValueError(f"Target probe position ({xpos}, {ypos}) is outside probe limits")
+		for motor_boundary in self.boundary_checker.motor_boundaries:
+			if not motor_boundary(*motor_pos):
+				raise ValueError(f"Target position {pos} is outside motor limits")
 
 		# Set movement velocity
 		self.set_movement_velocity(motor_x, motor_y)

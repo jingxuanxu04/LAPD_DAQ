@@ -32,7 +32,7 @@ logging.basicConfig(filename='motor.log', level=logging.WARNING,
 '''
 User: Set experiment name and path
 '''
-exp_name = '08-Ez-XYZ-P30-1p2kG'  # experiment name
+exp_name = '12-Ey-XY-P33-1p2kG'  # experiment name
 date = datetime.date.today()
 path = f"C:\\data"
 save_path = f"{path}\\{exp_name}_{date}.hdf5"
@@ -42,32 +42,33 @@ save_path = f"{path}\\{exp_name}_{date}.hdf5"
 User: Set probe position array
 '''
 # Probe position parameters
-xmin = -35
-xmax = -17
-nx = 18
+xmin = -38
+xmax = 38
+nx = 39
 
-ymin = -15
-ymax = 3
-ny = 19
+ymin = -38
+ymax = 38
+ny = 39
 
 # Set z parameters to None if not using XYZ drive
-zmin = -15
-zmax = -4.5
-nz = 7
+zmin = None #-15
+zmax = None #-4.5
+nz = None
 
-num_duplicate_shots = 5      # number of duplicate shots recorded at each location
+num_duplicate_shots = 10      # number of duplicate shots recorded at each location
 num_run_repeats = 1          # number of times to repeat sequentially over all locations
 #-------------------------------------------------------------------------------------------------------------
 '''
 User: Set probe movement boundaries
 '''
-# Define probe movement limits
+# Define probe movement limits with 3D drive only
 x_limits = (-40, 200)  # (min, max) in cm
 y_limits = (-30, 30)
 z_limits = (-15, 15)
 
-xm_limits = (-40,40) # For 3D drive (-65, 40)
-ym_limits = (-40,40) # For 3D drive(-47, 47)
+# Motor limit swtich for 2D or 3D drive
+xm_limits = (-60, 39) # For 3D drive (-65, 40)
+ym_limits = (-74, 59) # For 3D drive(-47, 47)
 zm_limits = (-25, 20)
 
 def outer_boundary(x, y, z):
@@ -94,11 +95,12 @@ def motor_boundary(x, y, z):
                         zm_limits[0] <= z <= zm_limits[1])
     return in_outer_boundary
 
-def motor_boundary_2D(x, y):
+def motor_boundary_2D(x, y, z):
     """Return True if position is within allowed range"""
     # Check outer boundary
     in_outer_boundary = (xm_limits[0] <= x <= xm_limits[1] and 
-                        ym_limits[0] <= y <= ym_limits[1])
+                        ym_limits[0] <= y <= ym_limits[1] and
+                        -999 <= z <= 999)
     return in_outer_boundary
 
 #-------------------------------------------------------------------------------------------------------------
@@ -120,17 +122,17 @@ def get_experiment_description():
     
     Setup:
     - Plasma condition
-        - Heater 2100 A
+        - Heater 2150 A
         - Puff Helium backside pressure 48 Psi
-        - Puff voltage 95V for 23ms West+East
-        - Hydrogen 200 SCCM MFC is set to "180"
-        - Discharge 25 ms; bank charging 90 V; current 4.5 kA
-        - Pulsing 1/4.25 Hz; plasma breakdown ~12 ms
-        - Pressure ~0.14 mTorr
-        - Interferometer density ~1.5e13@P20 ~0.8e13@P29 (assume 40cm)
+        - Puff voltage 81V for 31ms West+East
+        - Hydrogen 200 SCCM MFC is set to "400"
+        - Discharge 23 ms; bank charging 73 V; current 4 kA
+        - Pulsing 1/4.25 Hz; plasma breakdown ~13 ms
+        - Pressure ~0.165 mTorr
+        - Interferometer density 1.1~e13@P20 ~5.8e12@P29 (assume 40cm) at 20ms
     - Magnetic field
         - Straight 1.2 kG
-        - Black (South) 672 A
+        - Black (South) 2.4kG (1333 A)
         - Yellow 3120 A
         - Purple 1092 A
         - Black (North) 0 A
@@ -144,12 +146,12 @@ def get_experiment_description():
         - The output of the amplifier goes through a directional coupler, then to a 25 foot coax.
         - The coax has a measured attenuation of 6dB at 2.5 GHz
         - The -20dB signal from the directional coupler goes to a -6dB attenuator, then to a ($200) DC block, then a 6 dB attenuator, then to channel 2 of the scope
-        - The rf switch is enabled for 20 ns at t = start + 20 ms
+        - The rf switch is enabled for 30 ns at t = start + 36 ms
     - Probe
         - Dipole probe DP-JL-2CEW-0 (2 pairs of tips, Y and Z direction)
-        - we are connected to the "-z" whisker
-        - then a ($200) dc block
-        - then x100 0.15-2.5GHz amplifier
+        - we are connected to the "+y" whisker
+        - then a ($200) dc block and limiter
+        - then x100 0.15-2.5GHz amplifier, followed by a second ($200) limiter
         - then to channel 3 of the scope
 
         note: the ($200) DC blocks described above break both ground and signal connections and introduce only a few degrees of phase at 3 GHz
@@ -166,9 +168,9 @@ scope_ips = {
 }
 
 motor_ips = {
-    'x': '192.168.7.163',  # X-axis motor
-    'y': '192.168.7.165',   # Y-axis motor
-    'z': '192.168.7.164'   # Z-axis motor
+    'x': '192.168.7.161',  # X-axis motor 163
+    'y': '192.168.7.162'   # Y-axis motor 165
+    # 'z': '192.168.7.164'   # Z-axis motor
 }
 
 def get_channel_description(tr):

@@ -620,8 +620,9 @@ def single_shot_acquisition(pos, needs_movement, nz, msa, mc, save_path, scope_i
             zpos = None
         else:
             xpos, ypos, zpos = mc.probe_positions
-
-        msa.update_hdf5(all_data, shot_num, xpos, ypos, zpos)
+        
+        positions = {'x': xpos, 'y': ypos, 'z': zpos}
+        msa.update_hdf5(all_data, shot_num, positions)
     else:
         print(f"Warning: No valid data acquired at shot {shot_num}")
 #===============================================================================================================================================
