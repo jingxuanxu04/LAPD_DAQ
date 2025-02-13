@@ -541,11 +541,14 @@ def initialize_motor(positions, motor_ips, nz):
     mc = None
     if needs_movement:
         print("Initializing motor...", end='')
-        from Data_Run import outer_boundary, obstacle_boundary, motor_boundary
         if nz is None:
+            from Data_Run import motor_boundary
             print("XY drive in use")
             mc = Motor_Control_2D(motor_ips['x'], motor_ips['y'])
+            # Add motor boundary for 2D drive
+            mc.boundary_checker.add_motor_boundary(motor_boundary)
         else:
+            from Data_Run import outer_boundary, obstacle_boundary, motor_boundary
             print("XYZ drive in use")
             mc = Motor_Control_3D(motor_ips['x'], motor_ips['y'], motor_ips['z'])
             # Add boundaries only for 3D drive

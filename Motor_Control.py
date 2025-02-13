@@ -26,17 +26,22 @@ properties: motor_velocity, motor_positions, stop_now, reset_motor, set_zero, en
 """
 class Motor_Control_2D:
 
-	def __init__(self, x_ip_addr = None, y_ip_addr = None):
-		self.x_mc = Motor_Control(verbose=True, server_ip_addr= x_ip_addr, name='x', cm_per_turn = 0.254, stop_switch_mode=2)
+	def __init__(self, x_ip_addr = None, y_ip_addr = None, **kwargs):
+		# Get verbose setting from kwargs, default to False
+		verbose = kwargs.get('verbose', False)
+		
+		self.x_mc = Motor_Control(verbose=True, server_ip_addr= x_ip_addr, name='x', cm_per_turn = 0.508, stop_switch_mode=2)
 		self.y_mc = Motor_Control(verbose=True, server_ip_addr= y_ip_addr, name='y', cm_per_turn = 0.508, stop_switch_mode=2)
 		# Velmex model number NN10-0300-E01-21 (short black linear drives)
 		
 		self.probe_in = 58.771 # Distance from chamber wall to chamber center
-		self.poi = 125.3624 # Length of probe outside the chamber from pivot to end (needs to be re-measured everytime new probe is installed)
+		self.poi = 121.5 # Length of probe outside the chamber from pivot to end (needs to be re-measured everytime new probe is installed)
 		self.ph = 20 # Height from probe shaft to center of rotating bar
 
-
 		self.motor_velocity = 4, 4
+		
+		# Initialize boundary checker with the same verbose setting
+		self.boundary_checker = BoundaryChecker(verbose=verbose)
 
 	#-------------------------------------------------------------------------------------------
 	"""
@@ -203,8 +208,16 @@ class Motor_Control_2D:
 	def probe_positions(self, pos):
 		xpos, ypos = pos
 
+		r = math.sqrt(xpos**2 + ypos**2)
+		if r > 40:
+			raise ValueError(f"Target probe position ({xpos}, {ypos}) is too close to the chamber wall.")
+
 		# Convert probe distance to motor distance
 		motor_x, motor_y = self.probe_to_motor_LAPD(xpos, ypos)
+
+		for probe_boundary in self.boundary_checker.probe_boundaries:
+			if not probe_boundary(xpos, ypos):
+				raise ValueError(f"Target probe position ({xpos}, {ypos}) is outside probe limits")
 
 		# Set movement velocity
 		self.set_movement_velocity(motor_x, motor_y)
