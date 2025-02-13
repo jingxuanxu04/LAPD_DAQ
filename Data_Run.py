@@ -66,8 +66,8 @@ x_limits = (-40, 200)  # (min, max) in cm
 y_limits = (-30, 30)
 z_limits = (-15, 15)
 
-xm_limits = (-65, 40)
-ym_limits = (-47, 47)
+xm_limits = (-40,40) # For 3D drive (-65, 40)
+ym_limits = (-40,40) # For 3D drive(-47, 47)
 zm_limits = (-25, 20)
 
 def outer_boundary(x, y, z):
@@ -92,6 +92,13 @@ def motor_boundary(x, y, z):
     in_outer_boundary = (xm_limits[0] <= x <= xm_limits[1] and 
                         ym_limits[0] <= y <= ym_limits[1] and 
                         zm_limits[0] <= z <= zm_limits[1])
+    return in_outer_boundary
+
+def motor_boundary_2D(x, y):
+    """Return True if position is within allowed range"""
+    # Check outer boundary
+    in_outer_boundary = (xm_limits[0] <= x <= xm_limits[1] and 
+                        ym_limits[0] <= y <= ym_limits[1])
     return in_outer_boundary
 
 #-------------------------------------------------------------------------------------------------------------
