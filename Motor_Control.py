@@ -30,15 +30,15 @@ class Motor_Control_2D:
 		# Get verbose setting from kwargs, default to False
 		verbose = kwargs.get('verbose', False)
 		
-		self.x_mc = Motor_Control(verbose=True, server_ip_addr= x_ip_addr, name='x', cm_per_turn = 0.508, stop_switch_mode=2)
+		self.x_mc = Motor_Control(verbose=True, server_ip_addr= x_ip_addr, name='x', cm_per_turn = 0.254, stop_switch_mode=2)
 		self.y_mc = Motor_Control(verbose=True, server_ip_addr= y_ip_addr, name='y', cm_per_turn = 0.508, stop_switch_mode=2)
 		# Velmex model number NN10-0300-E01-21 (short black linear drives)
 		
 		self.probe_in = 58.771 # Distance from chamber wall to chamber center
-		self.poi = 121.5 # Length of probe outside the chamber from pivot to end (needs to be re-measured everytime new probe is installed)
+		self.poi = 104.5 # Length of probe outside the chamber from pivot to end (needs to be re-measured everytime new probe is installed)
 		self.ph = 20 # Height from probe shaft to center of rotating bar
 
-		self.motor_velocity = 4, 4
+		self.motor_velocity = 8, 4
 		
 		# Initialize boundary checker with the same verbose setting
 		self.boundary_checker = BoundaryChecker(verbose=verbose)
@@ -78,7 +78,7 @@ class Motor_Control_2D:
 	Convert probe velocity vector to motor velocity vector
 	"""
 	def calculate_velocity(self, del_x, del_y):
-		default_speed = 4.0
+		default_speed = 5.0
 
 		del_r = math.sqrt(del_x**2 + del_y**2)
 		if del_r == 0:

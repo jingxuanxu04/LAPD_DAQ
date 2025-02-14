@@ -215,7 +215,7 @@ class MultiScopeAcquisition:
         current_dir = os.path.dirname(os.path.abspath(__file__))
         
         # List of scripts to include
-        scripts = ['Data_Run_0D.py', 'multi_scope_acquisition.py', 'LeCroy_Scope.py']
+        scripts = ['Data_Run.py', 'multi_scope_acquisition.py', 'LeCroy_Scope.py']
         
         for script in scripts:
             script_path = os.path.join(current_dir, script)
