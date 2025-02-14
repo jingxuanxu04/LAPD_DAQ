@@ -32,7 +32,7 @@ logging.basicConfig(filename='motor.log', level=logging.WARNING,
 '''
 User: Set experiment name and path
 '''
-exp_name = '12-Ey-XY-P33-1p2kG'  # experiment name
+exp_name = '16-Ey-XY-P33-1p2kG-segment'  # experiment name
 date = datetime.date.today()
 path = f"C:\\data"
 save_path = f"{path}\\{exp_name}_{date}.hdf5"
@@ -44,18 +44,18 @@ User: Set probe position array
 # Probe position parameters
 xmin = -38
 xmax = 38
-nx = 39
+nx = 55
 
 ymin = -38
 ymax = 38
-ny = 39
+ny = 55
 
 # Set z parameters to None if not using XYZ drive
 zmin = None #-15
 zmax = None #-4.5
 nz = None
 
-num_duplicate_shots = 10      # number of duplicate shots recorded at each location
+num_duplicate_shots = 5      # number of duplicate shots recorded at each location
 num_run_repeats = 1          # number of times to repeat sequentially over all locations
 #-------------------------------------------------------------------------------------------------------------
 '''
@@ -67,9 +67,9 @@ y_limits = (-30, 30)
 z_limits = (-15, 15)
 
 # Motor limit swtich for 2D or 3D drive
-xm_limits = (-60, 39) # For 3D drive (-65, 40)
-ym_limits = (-74, 59) # For 3D drive(-47, 47)
-zm_limits = (-25, 20)
+xm_limits = (-60, 39) # For 3D drive (-84, 40)
+ym_limits = (-74, 59) # For 3D drive(-47, 45)
+zm_limits = (-24, 26)
 
 def outer_boundary(x, y, z):
     """Return True if position is within allowed range"""
@@ -126,13 +126,13 @@ def get_experiment_description():
         - Puff Helium backside pressure 48 Psi
         - Puff voltage 81V for 31ms West+East
         - Hydrogen 200 SCCM MFC is set to "400"
-        - Discharge 23 ms; bank charging 73 V; current 4 kA
-        - Pulsing 1/4.25 Hz; plasma breakdown ~13 ms
+        - Discharge 23 ms; bank charging 73 V; current 4.3 kA
+        - Pulsing 1/4.25 Hz; plasma breakdown ~8 ms
         - Pressure ~0.165 mTorr
-        - Interferometer density 1.1~e13@P20 ~5.8e12@P29 (assume 40cm) at 20ms
+        - Interferometer density 1.0e13 downto .75 @P20;  5.e12 downto 3.5 @P29 (assume 40cm)
     - Magnetic field
         - Straight 1.2 kG
-        - Black (South) 2.4kG (1333 A)
+        - Black (South) 1.2kG (673 A)
         - Yellow 3120 A
         - Purple 1092 A
         - Black (North) 0 A
@@ -146,7 +146,9 @@ def get_experiment_description():
         - The output of the amplifier goes through a directional coupler, then to a 25 foot coax.
         - The coax has a measured attenuation of 6dB at 2.5 GHz
         - The -20dB signal from the directional coupler goes to a -6dB attenuator, then to a ($200) DC block, then a 6 dB attenuator, then to channel 2 of the scope
-        - The rf switch is enabled for 30 ns at t = start + 36 ms
+        - The rf switch is enabled by a Keysight Function generator triggered by Stanford
+        - Each RF burst is 30ns long starting at t = T_0 ms;
+        - Keysight setting: Freq 6.25kHz, 44 cycles
     - Probe
         - Dipole probe DP-JL-2CEW-0 (2 pairs of tips, Y and Z direction)
         - we are connected to the "+y" whisker
