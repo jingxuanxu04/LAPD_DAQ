@@ -553,7 +553,7 @@ def initialize_motor(positions, motor_ips, nz):
             mc = Motor_Control_3D(motor_ips['x'], motor_ips['y'], motor_ips['z'])
             # Add boundaries only for 3D drive
             mc.boundary_checker.add_probe_boundary(outer_boundary, is_outer_boundary=True)
-            mc.boundary_checker.add_probe_boundary(obstacle_boundary)
+            # mc.boundary_checker.add_probe_boundary(obstacle_boundary)
             mc.boundary_checker.add_motor_boundary(motor_boundary)
     else:
         print("No motor movement required")

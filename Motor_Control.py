@@ -459,6 +459,10 @@ class Motor_Control_3D:
 	@probe_positions.setter
 	def probe_positions(self, pos):
 		xpos, ypos, zpos = pos
+		
+		r = math.sqrt(xpos**2 + ypos**2)
+		if r > 40:
+			raise ValueError(f"Target probe position ({xpos}, {ypos}) is too close to the chamber wall.")
 
 		# Check if the target position is unreachable in probe space
 		probe_pos = (xpos, ypos, zpos)
