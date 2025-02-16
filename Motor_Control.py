@@ -35,10 +35,10 @@ class Motor_Control_2D:
 		# Velmex model number NN10-0300-E01-21 (short black linear drives)
 		
 		self.probe_in = 58.771 # Distance from chamber wall to chamber center
-		self.poi = 104.5 # Length of probe outside the chamber from pivot to end (needs to be re-measured everytime new probe is installed)
+		self.poi = 121.5 # Length of probe outside the chamber from pivot to end (needs to be re-measured everytime new probe is installed)
 		self.ph = 20 # Height from probe shaft to center of rotating bar
 
-		self.motor_velocity = 8, 4
+		self.motor_velocity = 5, 5
 		
 		# Initialize boundary checker with the same verbose setting
 		self.boundary_checker = BoundaryChecker(verbose=verbose)

@@ -32,7 +32,7 @@ logging.basicConfig(filename='motor.log', level=logging.WARNING,
 '''
 User: Set experiment name and path
 '''
-exp_name = '17-Ey-XYZ-P29-1p2kG-segment'  # experiment name
+exp_name = '20-Ey-XY-P31-1p2kG-segment'  # experiment name
 date = datetime.date.today()
 path = f"C:\\data"
 save_path = f"{path}\\{exp_name}_{date}.hdf5"
@@ -44,16 +44,16 @@ User: Set probe position array
 # Probe position parameters
 xmin = -38
 xmax = 38
-nx = 39
+nx = 55
 
 ymin = -38
 ymax = 38
-ny = 39
+ny = 55
 
 # Set z parameters to None if not using XYZ drive
-zmin = 0 #-15
-zmax = 0 #-4.5
-nz = 1
+zmin =None #-15
+zmax = None #-4.5
+nz = None
 
 num_duplicate_shots = 5      # number of duplicate shots recorded at each location
 num_run_repeats = 1          # number of times to repeat sequentially over all locations
@@ -67,8 +67,8 @@ y_limits = (-40, 40)
 z_limits = (-15, 15)
 
 # Motor limit swtich for 2D or 3D drive
-xm_limits = (-84, 40)
-ym_limits = (-47, 45)
+xm_limits = (-60, 40)# 3D: (-84, 40)
+ym_limits = (-65.5, 60.5)# 3D: (-47, 45)
 zm_limits = (-24, 26)
 
 def outer_boundary(x, y, z):
@@ -121,15 +121,16 @@ def get_experiment_description():
     - {num_run_repeats} full scan repeats
     
     Setup:
+    - This duplicates everything at or after Y=0 in the previous run
     - Plasma condition
         - Heater 2150 A
-        - Puff Helium backside pressure 48 Psi
+        - Puff Helium backside pressure 40 Psi
         - Puff voltage 81V for 31ms West+East
         - Hydrogen 200 SCCM MFC is set to "400"
-        - Discharge 23 ms; bank charging 73 V; current 4.3 kA
-        - Pulsing 1/4.25 Hz; plasma breakdown ~8 ms
-        - Pressure ~0.165 mTorr
-        - Interferometer density 0.95e13 downto .75 @P20;  0.48e12 downto 3.5 @P29 (assume 40cm)
+        - Discharge 23 ms; bank charging 73 V; current 4.0 kA
+        - Pulsing 1/4.25 Hz; plasma breakdown ~9 ms
+        - Pressure ~0.155 mTorr
+        - Interferometer density 9e12=>8e12 @P20;  5e12=>4e12 @P29 (assume 40cm)
     - Magnetic field
         - Straight 1.2 kG
         - Black (South) 1.2kG (673 A)
@@ -137,21 +138,20 @@ def get_experiment_description():
         - Purple 1092 A
         - Black (North) 0 A
     - Antenna (ZZ-#3 six wire mesh paddles wt 1/8inch gap)
-        - connected +-+-+- from south to north at 2.5GHz
-        - paddles are connected using delay lines to generate pi phase shift at 2.5 GHz
+        - connected +-+-+- from south to north at 2.48GHz
+        - paddles are connected using delay lines to generate pi phase shift at 1.1 GHz
         - tip of mesh is approx 31 cm past wall (x = approx -19)
-        - LMX2572 signal generator set to 2.48 GHz, setpoint "40" in TICS software
+        - LMX2572 signal generator set to 2.48 GHz, setpoint "30" in TICS software
         - LMX2572 output goes to the RF switch, then to a ($200) DC block then to a -6dB attenuator on the input of the amplifier
         - The amplifier is floating at the plasma potential because there is a direct connection to the mesh launcher
         - The output of the amplifier goes through a directional coupler, then to a 25 foot coax.
-        - The coax has a measured attenuation of 6dB at 2.5 GHz
+        - The coax has a measured attenuation of ?dB at 1.1 GHz  - probably 2.4 dB based on 2.5 GHz measurement
         - The -20dB signal from the directional coupler goes to a -6dB attenuator, then to a ($200) DC block, then a 6 dB attenuator, then to channel 2 of the scope
         - The rf switch is enabled by a Keysight Function generator triggered by Stanford
         - Each RF burst is 30ns long starting at t = T_0 ms;
         - Keysight setting: Freq 6.25kHz, 44 cycles
     - Probe
-        - Dipole probe DP-JL-2CEW-0 (2 pairs of tips, Y and Z direction)
-        -    PP verified that this is the correct probe. It is probably incorrectly listed in run descriptions for port 33
+        - Dipole probe DP-JL-2CEW-1 (2 pairs of tips, Y and Z direction)
         - we are connected to the "+y" whisker
         - then a ($200) dc block and limiter
         - then x100 0.15-2.5GHz amplifier, followed by a second ($200) limiter
@@ -170,10 +170,9 @@ scope_ips = {
     'FastScope': '192.168.7.63' # LeCroy WavePro 404HD 4GHz 20GS/s
 }
 
-motor_ips = {
-    'x': '192.168.7.163',  # X-axis motor 163
-    'y': '192.168.7.165',   # Y-axis motor 165
-    'z': '192.168.7.164'   # Z-axis motor
+motor_ips = { # For 3D X:163, Y:165, Z:164
+    'x': '192.168.7.166',  # X-axis motor 163
+    'y': '192.168.7.167',   # Y-axis motor 165
 }
 
 def get_channel_description(tr):
