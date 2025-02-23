@@ -32,7 +32,7 @@ logging.basicConfig(filename='motor.log', level=logging.WARNING,
 '''
 User: Set experiment name and path
 '''
-exp_name = '20-Ey-XY-P31-1p2kG-segment'  # experiment name
+exp_name = 'test01'  # experiment name
 date = datetime.date.today()
 path = f"C:\\data"
 save_path = f"{path}\\{exp_name}_{date}.hdf5"
@@ -42,18 +42,18 @@ save_path = f"{path}\\{exp_name}_{date}.hdf5"
 User: Set probe position array
 '''
 # Probe position parameters
-xmin = -38
-xmax = 38
-nx = 55
+xmin = 0
+xmax = 0
+nx = 1
 
-ymin = -38
-ymax = 38
-ny = 55
+ymin = 20
+ymax = 22
+ny = 2
 
 # Set z parameters to None if not using XYZ drive
-zmin =None #-15
-zmax = None #-4.5
-nz = None
+zmin = 4 #-13
+zmax = 4  #4
+nz = 1
 
 num_duplicate_shots = 5      # number of duplicate shots recorded at each location
 num_run_repeats = 1          # number of times to repeat sequentially over all locations
@@ -67,9 +67,9 @@ y_limits = (-40, 40)
 z_limits = (-15, 15)
 
 # Motor limit swtich for 2D or 3D drive
-xm_limits = (-60, 40)# 3D: (-84, 40)
-ym_limits = (-65.5, 60.5)# 3D: (-47, 45)
-zm_limits = (-24, 26)
+xm_limits = (-84, 38)
+ym_limits = (-39, 48)
+zm_limits = (-24, 9)
 
 def outer_boundary(x, y, z):
     """Return True if position is within allowed range"""
@@ -108,8 +108,6 @@ def get_experiment_description():
 
     """Return overall experiment description"""
     return f'''
-    Test data acquisition program with moving probe
-    
     Experiment: {exp_name}
     Date: {date}
     Operator: Jia Han
@@ -117,11 +115,11 @@ def get_experiment_description():
     Probe Movement:
     - X range: {xmin} to {xmax} cm, {nx} points
     - Y range: {ymin} to {ymax} cm, {ny} points
+    - Z range: {zmin} to {zmax} cm, {nz} points (part 1 was -12 to -4)
     - {num_duplicate_shots} shots per position
     - {num_run_repeats} full scan repeats
     
     Setup:
-    - This duplicates everything at or after Y=0 in the previous run
     - Plasma condition
         - Heater 2150 A
         - Puff Helium backside pressure 40 Psi
@@ -139,7 +137,7 @@ def get_experiment_description():
         - Black (North) 0 A
     - Antenna (ZZ-#3 six wire mesh paddles wt 1/8inch gap)
         - connected +-+-+- from south to north at 2.48GHz
-        - paddles are connected using delay lines to generate pi phase shift at 1.1 GHz
+        - paddles are connected using delay lines to generate pi phase shift at 2.48 GHz
         - tip of mesh is approx 31 cm past wall (x = approx -19)
         - LMX2572 signal generator set to 2.48 GHz, setpoint "30" in TICS software
         - LMX2572 output goes to the RF switch, then to a ($200) DC block then to a -6dB attenuator on the input of the amplifier
@@ -171,8 +169,9 @@ scope_ips = {
 }
 
 motor_ips = { # For 3D X:163, Y:165, Z:164
-    'x': '192.168.7.166',  # X-axis motor 163
-    'y': '192.168.7.167',   # Y-axis motor 165
+    'x': '192.168.7.163',  # X-axis motor 163
+    'y': '192.168.7.165',   # Y-axis motor 165
+    'z': '192.168.7.164'   # Z-axis motor 164
 }
 
 def get_channel_description(tr):

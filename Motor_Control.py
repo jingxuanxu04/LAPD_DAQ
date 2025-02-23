@@ -264,7 +264,7 @@ class Motor_Control_3D:
 		# Velmex model number NN10-0300-E01-21 (short black linear drives)
 		
 		self.probe_in = 58 # Distance from ball valve center to chamber center
-		self.poi = 114.5 # Length of probe outside the chamber from pivot to end
+		self.poi = 118 # Length of probe outside the chamber from pivot to end
 		self.ph = 30 # Height from probe shaft to center of rotating bar
 
 		self.motor_velocity = 4, 4, 4
@@ -304,7 +304,7 @@ class Motor_Control_3D:
 
 		# Find the largest distance to determine which motor should run at max speed
 		max_delta = max(delta_x, delta_y, delta_z)
-		default_speed = 6.0  # Maximum speed in rev/sec
+		default_speed = 2.0  # Maximum speed in rev/sec
 		
 		if max_delta == 0:
 			self.motor_velocity = 0.0, 0.0, 0.0
