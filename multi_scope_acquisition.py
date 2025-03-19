@@ -699,7 +699,7 @@ def single_shot_acquisition_45(pos, motors, msa, save_path, scope_ips, active_sc
     """
     # Extract the shot number from the first probe's position data
     # Access by index since it's a numpy record array (0 is shot_num, 1 is x)
-    shot_num = int(pos['P16']['shot_num'])
+    shot_num = int(pos['P16'][0])
     positions = {}
     
     print(f'Shot = {shot_num}', end='')
@@ -836,5 +836,4 @@ def run_acquisition(save_path, scope_ips, motor_ips, external_delays=None, nz=No
                     scope_group.attrs['description'] = msa.get_scope_description(scope_name)
                     scope_group.attrs['ip_address'] = scope_ips[scope_name]
                     scope_group.attrs['scope_type'] = msa.scopes[scope_name].idn_string
-                    scope_group.attrs['external_delay(ms)'] = external_delays.get(scope_name, '')
             plt.close('all')  # Ensure all figures are closed

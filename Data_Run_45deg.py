@@ -41,11 +41,11 @@ save_path = f"{path}\\{exp_name}_{date}.hdf5"
 User: Set probe position array
 '''
 # Set up position array (unit: cm)
-xstart = {'P16': 0, 'P22': 0, 'P29': 0, 'P34': 0, 'P42': 0}
-xstop  = {'P16': 0, 'P22': 0, 'P29': 0, 'P34': 0, 'P42': 0}
+xstart = {'P16': 0, 'P22': -40, 'P29': -40, 'P34': -40, 'P42': 0}
+xstop  = {'P16': 0, 'P22': -40, 'P29': -40, 'P34': -40, 'P42': 0}
 nx = 1       # number of positions
 
-nshot = 4    # number of shots at each position
+nshot = 1    # number of shots at each position
 
 #-------------------------------------------------------------------------------------------------------------
 def get_experiment_description():
