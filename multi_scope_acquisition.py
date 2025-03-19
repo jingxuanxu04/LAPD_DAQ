@@ -324,7 +324,6 @@ class MultiScopeAcquisition:
                 print(f"Error initializing {name}: {str(e)}")
                 self.cleanup_scope(name)
                 continue
-        print(active_scopes)
         return active_scopes
 
     def cleanup_scope(self, name):
@@ -342,7 +341,7 @@ class MultiScopeAcquisition:
         failed_scopes = []
         
         for name in active_scopes:
-            print(f"\nAcquiring data from {name}...")
+            print(f"Acquiring data from {name}...")
             scope = self.scopes[name]
             
             if active_scopes[name] == 0:
@@ -603,8 +602,7 @@ def single_shot_acquisition(pos, needs_movement, nz, msa, mc, save_path, scope_i
     else:
         print(f'Shot = {shot_num}', end='')
     
-    print(f'------------------{msa.scopes[list(scope_ips.keys())[0]].gaaak_count}--------------------{shot_num}')
-    # start triggering all scopes as soon as probe is in position
+    # Start triggering all scopes as soon as probe is in position
     for name in active_scopes:
         scope = msa.scopes[name]
         scope.set_trigger_mode('SINGLE')
@@ -647,7 +645,7 @@ def initialize_motor_45deg(positions, motor_ips):
                 
             # Set motor speed if connection successful
             motors[probe].motor_speed = 4
-            print(f"Successfully connected to {probe} motor")
+            print(f"Connected to {probe} motor")
             
         except Exception as e:
             print(f"Could not connect to {probe} motor: {str(e)}")
@@ -742,7 +740,6 @@ def single_shot_acquisition_45(pos, motors, msa, save_path, scope_ips, active_sc
                     shot_group.attrs['acquisition_time'] = time.ctime()
             return
     
-    print(f'------------------{msa.scopes[list(scope_ips.keys())[0]].gaaak_count}--------------------{shot_num}')
     # Start triggering all scopes as soon as probes are in position
     for name in active_scopes:
         scope = msa.scopes[name]
@@ -800,8 +797,6 @@ def run_acquisition(save_path, scope_ips, motor_ips, external_delays=None, nz=No
                     for probe in positions:
                         shot_pos[probe] = positions[probe][i]  # Get ith position for each probe
                     
-                    shot_num = shot_pos['P16'][0]  # Get shot number for clearer logging
-                    print(f"\nProcessing shot {shot_num}/{shots_count} (index {i})")
                     acquisition_loop_start_time = time.time()
                     
                     single_shot_acquisition_45(shot_pos, motors, msa, save_path, scope_ips, active_scopes)
