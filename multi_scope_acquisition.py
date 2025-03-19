@@ -626,6 +626,8 @@ def single_shot_acquisition(pos, needs_movement, nz, msa, mc, save_path, scope_i
     else:
         print(f"Warning: No valid data acquired at shot {shot_num}")
 #===============================================================================================================================================
+
+#===============================================================================================================================================
 # Acquisition Function for 45 degree probe drive
 #===============================================================================================================================================
 def initialize_motor_45deg(positions, motor_ips):
@@ -688,14 +690,16 @@ def move_45deg_probes(mc_list, move_to_list):
 def single_shot_acquisition_45(pos, motors, msa, save_path, scope_ips, active_scopes):
     """Acquire a single shot for 45-degree probe setup
     Args:
-        pos: Dictionary containing shot number and positions for each probe
+        pos: Dictionary containing positions for each probe, where each position is a numpy record with 'shot_num' and 'x' fields
         motors: Dictionary of motor controllers for each probe
         msa: MultiScopeAcquisition instance
         save_path: Path to save HDF5 file
         scope_ips: Dictionary of scope IPs
         active_scopes: Dictionary of active scopes
     """
-    shot_num = pos['P16']['shot_num']  # shot_num is 1-based
+    # Extract the shot number from the first probe's position data
+    # Access by index since it's a numpy record array (0 is shot_num, 1 is x)
+    shot_num = int(pos['P16']['shot_num'])
     positions = {}
     
     print(f'Shot = {shot_num}', end='')
@@ -707,9 +711,11 @@ def single_shot_acquisition_45(pos, motors, msa, save_path, scope_ips, active_sc
     
     for probe, motor in motors.items():
         if motor is not None:
-            print(f', {probe}: {pos[probe]["x"]}', end='')
+            # Access by index since it's a numpy record array (0 is shotnum, 1 is x)
+            x_position = float(pos[probe][1])  # Get the x field
+            print(f', {probe}: {x_position}', end='')
             active_motors.append(motor)
-            target_positions.append(pos[probe]['x'])
+            target_positions.append(x_position)
             probe_order.append(probe)
             positions[probe] = None  # Initialize all positions to None
         else:
@@ -786,20 +792,37 @@ def run_acquisition(save_path, scope_ips, motor_ips, external_delays=None, nz=No
                 raise RuntimeError("No valid data found from any scope. Aborting acquisition.")
             
             # Main acquisition loop
-            for pos in positions:
-                print(pos.dtype)
-                acquisition_loop_start_time = time.time()
+            if is_45deg:
+                # For 45-degree probes, we need to extract corresponding positions for each shot
+                shots_count = len(positions['P16'])  # Use P16 as reference for number of shots
+                for i in range(shots_count):
+                    shot_pos = {}
+                    for probe in positions:
+                        shot_pos[probe] = positions[probe][i]  # Get ith position for each probe
+                    
+                    shot_num = shot_pos['P16'][0]  # Get shot number for clearer logging
+                    print(f"\nProcessing shot {shot_num}/{shots_count} (index {i})")
+                    acquisition_loop_start_time = time.time()
+                    
+                    single_shot_acquisition_45(shot_pos, motors, msa, save_path, scope_ips, active_scopes)
+                    
+                    # Calculate and display remaining time
+                    time_per_pos = (time.time() - acquisition_loop_start_time)
+                    remaining_positions = shots_count - (i+1)
+                    remaining_time = remaining_positions * time_per_pos
+                    print(f'Remaining time: {remaining_time/3600:.2f}h')
+            else:
+                # Original loop for XY/XYZ acquisition
+                for pos in positions:
+                    acquisition_loop_start_time = time.time()
 
-                if is_45deg:
-                    single_shot_acquisition_45(pos, motors, msa, save_path, scope_ips, active_scopes)
-                else:
                     single_shot_acquisition(pos, needs_movement, nz, msa, motors, save_path, scope_ips, active_scopes)
 
-                # Calculate and display remaining time
-                time_per_pos = (time.time() - acquisition_loop_start_time)
-                remaining_positions = len(positions) - pos['shot_num']
-                remaining_time = remaining_positions * time_per_pos
-                print(f'Remaining time: {remaining_time/3600:.2f}h')
+                    # Calculate and display remaining time
+                    time_per_pos = (time.time() - acquisition_loop_start_time)
+                    remaining_positions = len(positions) - pos['shot_num']
+                    remaining_time = remaining_positions * time_per_pos
+                    print(f'Remaining time: {remaining_time/3600:.2f}h')
 
         except KeyboardInterrupt:
             print('\n______Halted due to Ctrl-C______', '  at', time.ctime())

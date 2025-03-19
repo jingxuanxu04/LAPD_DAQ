@@ -136,7 +136,7 @@ def get_positions(xstart, xstop, nx, nshots):
 	xpos = np.linspace(xstart, xstop, nx)
 
 	# allocate positions array, fill it with zeros
-	positions = np.zeros((nx*nshots), dtype=[('shotnum', np.int32), ('x', np.float64)])
+	positions = np.zeros((nx*nshots), dtype=[('shot_num', np.int32), ('x', np.float64)])
 
 	#create rectangular shape position array with height z
 	index = 0
