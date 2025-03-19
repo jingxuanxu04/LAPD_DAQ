@@ -31,7 +31,7 @@ logging.basicConfig(filename='motor.log', level=logging.WARNING,
 '''
 User: Set experiment name and path
 '''
-exp_name = '01-Ez-XYplane-P30-1p2kG'  # experiment name
+exp_name = '01-test'  # experiment name
 date = datetime.date.today()
 path = f"C:\\data"
 save_path = f"{path}\\{exp_name}_{date}.hdf5"
@@ -41,9 +41,9 @@ save_path = f"{path}\\{exp_name}_{date}.hdf5"
 User: Set probe position array
 '''
 # Set up position array (unit: cm)
-xstart = {'P16': 0, 'P22': 10, 'P29': 10, 'P34': -40, 'P42': 0}
-xstop  = {'P16': 0, 'P22': -40, 'P29': -40, 'P34': -40, 'P42': 0}
-nx = 51       # number of positions
+xstart = {'P16': 0, 'P22': 0, 'P29': 0, 'P34': 0, 'P42': 0}
+xstop  = {'P16': 0, 'P22': 0, 'P29': 0, 'P34': 0, 'P42': 0}
+nx = 1       # number of positions
 
 nshot = 4    # number of shots at each position
 
@@ -52,7 +52,7 @@ def get_experiment_description():
 
     """Return overall experiment description"""
     return f'''
-    Test data acquisition program with moving probe
+    Test data acquisition program at single location
     
     Experiment: {exp_name}
     Date: {date}
@@ -97,7 +97,7 @@ def get_experiment_description():
     '''
 #-------------------------------------------------------------------------------------------------------------
 scope_ips = {
-    'Scope': '192.168.7.63' # LeCroy WavePro 404HD 4GHz 20GS/s
+    'Scope': '192.168.7.64' # LeCroy WavePro 404HD 4GHz 20GS/s
 }
 
 motor_ips = {
@@ -114,7 +114,7 @@ def get_channel_description(tr):
         'Scope_C1': 'Isat',
         'Scope_C2': 'Isat',
         'Scope_C3': 'Isat',
-        'Scope_C4': 'Isat'
+        'Scope_C4': 'N/A'
     }
     return descriptions.get(tr, f'Channel {tr} - No description available')
 
@@ -187,7 +187,7 @@ def main():
     t_start = time.time()
     
     try:
-            run_acquisition(save_path, scope_ips, motor_ips)
+        run_acquisition(save_path, scope_ips, motor_ips, is_45deg=True)
         
     except KeyboardInterrupt:
         print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
@@ -212,3 +212,5 @@ def main():
 if __name__ == '__main__':
 
     main()
+    
+    # positions, xpos = create_all_positions(['P16', 'P22', 'P29', 'P34', 'P42'], xstart, xstop, nx, nshot)

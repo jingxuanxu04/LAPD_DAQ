@@ -695,7 +695,7 @@ def single_shot_acquisition_45(pos, motors, msa, save_path, scope_ips, active_sc
         scope_ips: Dictionary of scope IPs
         active_scopes: Dictionary of active scopes
     """
-    shot_num = pos['shot_num']  # shot_num is 1-based
+    shot_num = pos['P16']['shot_num']  # shot_num is 1-based
     positions = {}
     
     print(f'Shot = {shot_num}', end='')
@@ -787,6 +787,7 @@ def run_acquisition(save_path, scope_ips, motor_ips, external_delays=None, nz=No
             
             # Main acquisition loop
             for pos in positions:
+                print(pos.dtype)
                 acquisition_loop_start_time = time.time()
 
                 if is_45deg:
