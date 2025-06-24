@@ -3,23 +3,20 @@
 
 This file defines the class that implements communication with a LeCroy X-Stream scope.
 To use this need:
-	1. Install National Instruments Visa
-	2. Install pyvisa library
-	3. Install LeCroy "passport"
-	4. If not working, may need to setup in NI-VISA (check NI-VISA documentation)
+	1. Install pyvisa library
+	2. Install LeCroy "passport"
+	3. Either National Instruments Visa or pyvisa-py (see links below)
+	4. If using NI-VISA, may need certain setup (check NI-VISA documentation)
 
 See inline comments for the function of the member functions
 
 Header interpretation is based on PP's previous internet scrapings in C++ program ScopeData, in particular
 "P:\W\ScopeData\Scopedata\Lecroy_Binary_Header.h"
 
-Created on Wed Aug 31, 2016
-
-@author: Patrick
-
 PyVisa documentation:                                https://media.readthedocs.org/pdf/pyvisa/1.6/pyvisa.pdf
 LeCroy Automation Command Reference Manual:          http://cdn.teledynelecroy.com/files/manuals/automation_command_ref_manual_ws.pdf
 LeCroy Remote Control Manual for "X-Stream" scopes:  http://cdn.teledynelecroy.com/files/manuals/wm-rcm-e_rev_d.pdf
+pyvisa-py: Recommanded over NI-VISA for Windows 10   https://pyvisa.readthedocs.io/projects/pyvisa-py/en/latest/
 National Instruments Visa at                         http://www.ni.com/download/ni-visa-16.0/6184/en/     (Aug 2016) NOTE: PyVisa FAQ Points to an old version
 	setting up the LeCroy scope "Passport":          http://forums.ni.com/ni/attachments/ni/170/579106/1/VICP-NI-MAX.doc
 LeCroy "passport" for NI-Visa:                       http://teledynelecroy.com/support/softwaredownload/home.aspx
@@ -35,6 +32,10 @@ NI VISA Manuals:
   NI-VISA User Manual                   http://digital.ni.com/manuals.nsf/websearch/266526277DFF74F786256ADC0065C50C
   NI-VISA Programmer Reference Manual   http://digital.ni.com/manuals.nsf/websearch/87E52268CF9ACCEE86256D0F006E860D
 
+
+Originally created on Wed Aug 31, 2016
+@author: Patrick  
+
 Major update Jan.2025
 Reformat how header and trace bytes are handled in LeCroy_Scope class
 hdr and trace_bytes are no longer updated in the class, but are returned by the function based on input trace
@@ -45,8 +46,12 @@ hdr and trace_bytes are no longer updated in the class, but are returned by the 
 - Modified functions
 	- acquire
 Add function acquire_sequence_data to acquire data in sequence mode
-
 TODO: Need to modify other functions in class to reflect changes in hdr and trace_bytes
+
+Update June.2025
+- Adjusted wait_for_max_sweeps to use "SINGLE" mode when scope internal averaging is not used
+- Update wait_for_sweeps with changes in 2021 that checks if scope clears sweeps successfully
+- Adjust progress printing during scope internal averaging to show progress without verbose mode
 """
 
 import numpy
@@ -446,10 +451,13 @@ class LeCroy_Scope:
 		""" determine maximum averaging count across all displayed channels, then wait for that many sweeps
 		"""
 		NSweeps, ach = self.max_averaging_count()
+		if self.verbose:
+			print("NSweeps is reading ", NSweeps, " Is something wrong?")
 		self.write_status_msg(aux_text + 'Waiting for averaging('+str(NSweeps)+') to complete')
 
 		if NSweeps == 1: # For single sweep, use 'SINGLE' mode on scope
-			print(f'      Using single-sweep acquisition...')
+			if self.verbose:
+				print(f'"SINGLE" mode acquisition...')
 		
 			# Clear sweep on scope before acquiring data
 			self.scope.write('CLEAR_SWEEPS')     # clear sweeps
@@ -487,7 +495,8 @@ class LeCroy_Scope:
 				n = 0
 		
 		else: # For multiple sweeps, use the robust wait_for_sweeps method
-			print(f'      Using multi-sweep acquisition for {NSweeps} sweeps...')
+			if self.verbose:
+				print(f'"NORM" acquisition with scope internal averaging over {NSweeps} sweeps.')
 			timed_out, n = self.wait_for_sweeps(ach, NSweeps, timeout)
 			
 		if timed_out:
@@ -508,32 +517,50 @@ class LeCroy_Scope:
 		#      stop at nearly the exact time.  Then take an extra sweep if necessary. If we cared.
 		channel = self.validate_channel(channel)
 
-		print_interval = 3  #seconds
+        # read number of sweeps at this time
+		self.scope.write(channel+':WAVEFORM?')
+		hdr_bytes = self.scope.read_raw()
+		initial_sweeps_per_acq = struct.unpack('=l', hdr_bytes[15+148:15+148+4])[0]
 
-		#17-07-11 self.scope.write('TRIG_MODE AUTO')   # try to make sure it is triggering
-		self.set_trigger_mode('AUTO')
+		self.set_trigger_mode('AUTO')   # try to make sure it is triggering
 		self.scope.write('CLEAR_SWEEPS')     # clear sweeps
+		if self.verbose: print('clearing sweeps')
+		time.sleep(0.25)
 		self.set_trigger_mode('NORM')
-		time.sleep(0.05)  # 17-07-11 sometimes is not clearing sweeps
+
+		# 2021-03-26 Add the following to check count until the scope finishes clearing the sweeps
+		sweeps_per_acq = struct.unpack('=l', hdr_bytes[15+148:15+148+4])[0]
+		clear_sweeps_timeout = time.time()+10
+		while time.time() < clear_sweeps_timeout and sweeps_per_acq > 1:
+
+            # Some time is apparently required to allow for the scope to propagate the requested
+            #   settings through to the hardware. This matters at the beginning of polling after
+            #   CLEAR_SWEEPS should set have the number to 0. (Aug 2016 - Tested on LeCroy HDO4104)
+            # Eliminating this delay causes intermittent "gaaak" fails as per below
+            #time.sleep(1.2)    # 0.1 second still results in a gaaak remediation maybe 0.3% of the time (in verbose mode), and 0.01% (1e-4) in non-verbose mode
+            # 2017-07-11 - 0.1 second -> 600 gaaak errors out of 1200 shots; changed to 0.25, much more infrequent (1/1800)
+
+            # see if we managed to clear sweeps:
+			self.scope.write(channel+':WAVEFORM?')
+			hdr_bytes = self.scope.read_raw()
+			sweeps_per_acq = struct.unpack('=l', hdr_bytes[15+148:15+148+4])[0]
+			if sweeps_per_acq < initial_sweeps_per_acq  or  sweeps_per_acq == 1:           # added "  or  sweeps_per_acq == 1" - see 21-05-10 comment above UGLY
+				break
+			
 		self.scope.write('COMM_FORMAT DEF9,BYTE,BIN')             # set byte data transfer
 		self.scope.write('WAVEFORM_SETUP SP,0,NP,1,FP,1,SN,0')    # read 1 data points
 		self.scope.write('COMM_HEADER OFF')
+		timeout += time.time()
 
-		# Some time is apparently required to allow for the scope to propagate the requested
-		#   settings through to the hardware. This matters at the beginning of polling after
-		#   CLEAR_SWEEPS should set have the number to 0. (Aug 2016 - Tested on LeCroy HDO4104)
-		# Eliminating this delay causes intermittent "gaaak" fails as per below
-		time.sleep(0.25)    # 0.1 second still results in a gaaak remediation maybe 0.3% of the time (in verbose mode), and 0.01% (1e-4) in non-verbose mode
-		                    # 2017-07-11 - 0.1 second -> 600 gaaak errors out of 1200 shots; changed to 0.25, much more infrequent (1/1800)
-		t = time.time()
-		timeout += t
-		next_print_time = t+print_interval
-
-		if self.verbose: print('<:> waiting for averaging to complete')
+		print(f'      Waiting for {NSweeps} sweeps: 0/{NSweeps}', end='', flush=True)
 
 		timed_out = True
 		gaaak = 0
 		while time.time() < timeout:
+			#bad idea? pp 4/4/2021
+			#if sweeps_per_acq == 1:
+			#	timed_out = False
+			#	break   # no need to do this if we only want the current trace
 
 			#  -----------  bug 2  ----------------
 			# scope goes crazy: says "Processing" for maybe 20 seconds, then comes back to life
@@ -545,7 +572,7 @@ class LeCroy_Scope:
 				time.sleep(sleep_interval)
 				t0 = time.time()
 				try:
-					#print("wait_for_sweeps(): attempting to read waveform data")
+					if self.verbose: print("wait_for_sweeps(): attempting to read waveform data")
 					self.scope.write(channel+':WAVEFORM?')              ### this is all we really want to do here:
 					hdr_bytes = self.scope.read_raw()                   ###    get the scope waveform data
 					break                                               ###    and stop trying
@@ -571,17 +598,14 @@ class LeCroy_Scope:
 
 			# desired field is a long int at offset 148 in the header; note: there 15 bytes of non-header at beginning of buffer
 			sweeps_per_acq = struct.unpack('=l', hdr_bytes[15+148:15+148+4])[0]   # note: struct.unpack returns a tuple
-
-			#print("wait_for_sweeps(): sweeps_per_acq = ",sweeps_per_acq)
+			
 			gaaak = sweeps_per_acq   # for catching error, below
 			if sweeps_per_acq >= NSweeps:
-				#print('done waiting because sweeps_per_acq =', sweeps_per_acq,'/',NSweeps)
 				timed_out = False
 				break
-			if time.time() > next_print_time:
-				next_print_time += print_interval
-				if self.verbose: print(sweeps_per_acq, '/', NSweeps)
-			if self.verbose: print('.', sep='', end='', flush=True)
+			
+			# Update progress every sweep completion - overwrite same line
+			print(f'\r      Waiting for {NSweeps} sweeps: {sweeps_per_acq}/{NSweeps}', end='', flush=True)
 
 		#17-07-11 self.scope.write('TRIG_MODE STOP')  # stop triggering
 		self.set_trigger_mode('STOP')
@@ -596,7 +620,7 @@ class LeCroy_Scope:
 			print('=o=o=o=o=o=o=o==================================================gaaak, read', gaaak, 'then', sweeps_per_acq)
 			return self.wait_for_sweeps(channel, NSweeps, timeout, sleep_interval)  # tail recurse to try again
 
-		if self.verbose: print(sweeps_per_acq, '/', NSweeps)
+		print(f'\r      Waiting for {NSweeps} sweeps: {sweeps_per_acq}/{NSweeps} - Complete!')
 		return timed_out, sweeps_per_acq
 
 	#-------------------------------------------------------------------------
@@ -913,35 +937,6 @@ if __name__ == '__main__':
 
 	import matplotlib.pyplot as plt
 
-	with LeCroy_Scope("192.168.7.63", verbose=False) as scope:
-		scope.screen_dump("Bdot", png_fn='Bdot.png', show_plot=False)
-		
-	with LeCroy_Scope("192.168.7.64", verbose=False) as scope:
-		scope.screen_dump("magnetron", png_fn='magnetron.png', show_plot=False)
-
-	with LeCroy_Scope("192.168.7.66", verbose=False) as scope:
-		scope.screen_dump("x-ray", png_fn='xray.png', show_plot=False)
-
-	# Load images
-	img1 = mpimg.imread('Bdot.png')
-	img2 = mpimg.imread('magnetron.png')
-	img3 = mpimg.imread('xray.png')
-
-	# Create a figure to stack images vertically
-	fig, axs = plt.subplots(3, 1, figsize=(10, 15))
-
-	axs[0].imshow(img1)
-	axs[0].axis('off')
-	axs[0].set_title('Bdot')
-
-	axs[1].imshow(img2)
-	axs[1].axis('off')
-	axs[1].set_title('Magnetron')
-
-	axs[2].imshow(img3)
-	axs[2].axis('off')
-	axs[2].set_title('X-ray')
-
-	plt.tight_layout()
-	plt.show()
+	with LeCroy_Scope("192.168.7.91", verbose=True) as scope:
+		scope.wait_for_max_sweeps()
 
