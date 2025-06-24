@@ -448,66 +448,60 @@ class LeCroy_Scope:
 		NSweeps, ach = self.max_averaging_count()
 		self.write_status_msg(aux_text + 'Waiting for averaging('+str(NSweeps)+') to complete')
 
-		# For multiple sweeps, use the robust wait_for_sweeps method
-		if NSweeps > 1:
+		if NSweeps == 1: # For single sweep, use 'SINGLE' mode on scope
+			print(f'      Using single-sweep acquisition...')
+		
+			# Clear sweep on scope before acquiring data
+			self.scope.write('CLEAR_SWEEPS')     # clear sweeps
+			time.sleep(0.05)
+
+			max_wait_per_sweep = timeout  # maximum seconds to wait for the single sweep to complete
+			check_interval = 0.01  # seconds between status checks
+			
+			# Print initial status
+			print(f'      Starting single sweep acquisition...', end='', flush=True)
+			
+			self.set_trigger_mode('SINGLE')
+			
+			# Wait for scope to enter STOP state with retry mechanism
+			sweep_start_time = time.time()
+			scope_stopped = False
+			
+			while time.time() - sweep_start_time < max_wait_per_sweep:
+				time.sleep(check_interval)
+				current_mode = self.set_trigger_mode("")
+				
+				if current_mode[0:4] == 'STOP':
+					scope_stopped = True
+					break
+			
+			# Complete the progress line
+			print(' Complete!' if scope_stopped else ' Timed out!')
+			
+			# Set return values
+			if scope_stopped:
+				timed_out = False
+				n = 1
+			else:
+				timed_out = True
+				n = 0
+		
+		else: # For multiple sweeps, use the robust wait_for_sweeps method
 			print(f'      Using multi-sweep acquisition for {NSweeps} sweeps...')
 			timed_out, n = self.wait_for_sweeps(ach, NSweeps, timeout)
-			return timed_out, n
-		
-		# For single sweep, use the simpler single-shot logic
-		print(f'      Using single-sweep acquisition...')
-		
-		# Clear sweep on scope before acquiring data
-		self.scope.write('CLEAR_SWEEPS')     # clear sweeps
-		time.sleep(0.05)
-
-		max_wait_per_sweep = timeout  # maximum seconds to wait for the single sweep to complete
-		check_interval = 0.01  # seconds between status checks
-		
-		# Print initial status
-		print(f'      Starting single sweep acquisition...', end='', flush=True)
-		
-		self.set_trigger_mode('SINGLE')
-		
-		# Wait for scope to enter STOP state with retry mechanism
-		sweep_start_time = time.time()
-		scope_stopped = False
-		
-		while time.time() - sweep_start_time < max_wait_per_sweep:
-			time.sleep(check_interval)
-			current_mode = self.set_trigger_mode("")
 			
-			if current_mode[0:4] == 'STOP':
-				scope_stopped = True
-				break
-		
-		# Complete the progress line
-		print(' Complete!' if scope_stopped else ' Timed out!')
-		
-		# Set return values
-		if scope_stopped:
-			timed_out = False
-			n = 1
-		else:
-			timed_out = True
-			n = 0
-		
 		if timed_out:
 			msg = 'averaging timed out at:' + str(n) + '/' + str(NSweeps) + 'after %.1f s' % timeout
 		else:
 			msg = 'averaging('+str(NSweeps)+'), completed, got '+str(n)
-		self.write_status_msg(aux_text + msg)
 
+		self.write_status_msg(aux_text + msg)
 		return timed_out, n
 
 	def wait_for_sweeps(self, channel, NSweeps, timeout=100, sleep_interval=0.1):
-		"""
-		Wait for a given channel to trigger NSweeps times using robust polling method.
-		Used by wait_for_max_sweeps() for multi-sweep acquisitions (NSweeps > 1).
-		
-		This method polls the scope to determine number of sweeps that have occurred, 
-		includes error handling for scope communication issues, and may overshoot slightly.
-		(To get faster polling, set sleep_interval(seconds) to a smaller number)
+		""" Worker for above: wait for a given channel to trigger NSweeps times
+			This polls the scope to determine number of sweeps that have occurred, so may overshoot
+			(to get faster polling, set sleep_interval(seconds) to a smaller number)
 		"""
 		#todo: instead of a timeout, generate a linear fit to sweeps per second, then fail if t_dropout > 6*sigma delayed
 		#      In addition, it would be possible to actually project when the process will complete, and
@@ -530,18 +524,15 @@ class LeCroy_Scope:
 		#   CLEAR_SWEEPS should set have the number to 0. (Aug 2016 - Tested on LeCroy HDO4104)
 		# Eliminating this delay causes intermittent "gaaak" fails as per below
 		time.sleep(0.25)    # 0.1 second still results in a gaaak remediation maybe 0.3% of the time (in verbose mode), and 0.01% (1e-4) in non-verbose mode
-							# 2017-07-11 - 0.1 second -> 600 gaaak errors out of 1200 shots; changed to 0.25, much more infrequent (1/1800)
+		                    # 2017-07-11 - 0.1 second -> 600 gaaak errors out of 1200 shots; changed to 0.25, much more infrequent (1/1800)
 		t = time.time()
 		timeout += t
 		next_print_time = t+print_interval
 
-		print(f'      Waiting for averaging {NSweeps} to complete ...')
+		if self.verbose: print('<:> waiting for averaging to complete')
 
 		timed_out = True
 		gaaak = 0
-		# Initialize progress display
-		print(f'      Averaging progress: 0/{NSweeps}', end='', flush=True)
-		
 		while time.time() < timeout:
 
 			#  -----------  bug 2  ----------------
@@ -589,8 +580,7 @@ class LeCroy_Scope:
 				break
 			if time.time() > next_print_time:
 				next_print_time += print_interval
-				print(f'\r      Averaging progress: {sweeps_per_acq}/{NSweeps}', end='', flush=True)
-			# Show progress dots (only if verbose to avoid too much output)
+				if self.verbose: print(sweeps_per_acq, '/', NSweeps)
 			if self.verbose: print('.', sep='', end='', flush=True)
 
 		#17-07-11 self.scope.write('TRIG_MODE STOP')  # stop triggering
@@ -606,7 +596,7 @@ class LeCroy_Scope:
 			print('=o=o=o=o=o=o=o==================================================gaaak, read', gaaak, 'then', sweeps_per_acq)
 			return self.wait_for_sweeps(channel, NSweeps, timeout, sleep_interval)  # tail recurse to try again
 
-		print(f'\r      Final averaging count: {sweeps_per_acq}/{NSweeps}')  # Complete the progress line
+		if self.verbose: print(sweeps_per_acq, '/', NSweeps)
 		return timed_out, sweeps_per_acq
 
 	#-------------------------------------------------------------------------
