@@ -32,45 +32,121 @@ logging.basicConfig(filename='motor.log', level=logging.WARNING,
 '''
 User: Set experiment name and path
 '''
-exp_name = 'test01'  # experiment name
+exp_name = '18-isatswp-p39-xy-2000G-800G'  # experiment name
 date = datetime.date.today()
-path = f"C:\\data"
+path = f"C:\\data\\PPPL_AlfvenWave"
 save_path = f"{path}\\{exp_name}_{date}.hdf5"
 
 #-------------------------------------------------------------------------------------------------------------
 '''
-User: Set probe position array
+User: Set probe position array (units in cm)
 '''
 # Probe position parameters
-xmin = 0
-xmax = 0
-nx = 1
+xmin = -15
+xmax = 15
+nx = 31
 
-ymin = 20
-ymax = 22
-ny = 2
+ymin = -20
+ymax = 20
+ny = 41
 
 # Set z parameters to None if not using XYZ drive
-zmin = 4 #-13
-zmax = 4  #4
-nz = 1
+zmin = None
+zmax = None
+nz = None
 
-num_duplicate_shots = 5      # number of duplicate shots recorded at each location
+num_duplicate_shots = 11      # number of duplicate shots recorded at each location
 num_run_repeats = 1          # number of times to repeat sequentially over all locations
 #-------------------------------------------------------------------------------------------------------------
 '''
-User: Set probe movement boundaries
+User: Set probe movement boundaries (unit: cm)
 '''
-# Define probe movement limits with 3D drive only
+# Motor limit swtich distance with respect to (0,0)
+xm_limits = (-57, 40)
+ym_limits = (-64, 61)
+zm_limits = (-24, 9) # 3D drive only
+
+# For 3D drive only; probe limit
 x_limits = (-40, 200)  # (min, max) in cm
 y_limits = (-40, 40)
 z_limits = (-15, 15)
+#-------------------------------------------------------------------------------------------------------------
 
-# Motor limit swtich for 2D or 3D drive
-xm_limits = (-84, 38)
-ym_limits = (-39, 48)
-zm_limits = (-24, 9)
+def get_experiment_description():
 
+    """Return overall experiment description"""
+    return f'''
+    
+    Isat and Langmuir sweep ylines. 6K Compumotor is broken. Using Jia's Python world to rescue. Instead of SIS, data from Oscilloscope is directly recorded.
+
+    LAPD B field:
+    ========
+    Black magnets at south:(PS12-13: 1100A)	2.0 kG
+    Magenta & yellow magnets: 		0.8 kG
+    Black magnet at north PS11: (0 A) 	0.0 kG
+
+    South LaB6 source:
+    ============
+    He plasma, 120 V bank discharge voltage, 3282 A discharge current
+    1/3 Hz rep rate 
+    Heater: ~36Vrms/2050 A
+    Gas puff using Piezo near south anode (~1" size cu tube feeding gas ~ x = 40 cm)
+    from both sides (east & west)
+    He 40PSI, 67 V from east and west pulses on Piezo valves 
+    Max Pressure: 4.5e-5  torr (New Cold magnetron gauge P33 west, N2 calibration) 
+    8.5/100 mtorr max mech pumps
+    Interferrometer (~288 GHz) @port 20, density at 15 ms ~6e12 cm^-3 assuming 40 cm plasma dia 
+    Interferrometer (~288 GHz) @port 29, density at 15 ms ~6e12 cm^-3 assuming 40 cm plasma dia 
+
+    North LaB6 source: Turned off and pulled out
+    =================
+
+    Antenna (turned OFF, in position):
+    ===========================
+
+    Port 47 top with four rods along x-direction
+    rod 4: y=+4.5 cm, rod 3: y=1.5 cm
+    rod 2: y=-1.5 cm, rod 1: y=-4.5 cm
+
+    *Direction of Bx field should reverse between neighboring elements due to probe geometry.
+
+
+    Timing:
+    =====
+    South Lab6 source: 0-15 ms 
+    Breakdown time (discharge voltage pulse to 1 kA dischrge): ~17 ms
+    Gas puff: 0 to  ~32 ms (w.r.t.  south discharge voltage pulse)
+    Lang Sweep: 200 us pulse-width, 18 cycles every 1 ms starting at 0.7 ms
+    Scope trigger: load traces to see. Must be several milliseconds befoe plasma turned on
+
+    Bdot probe C13 (10 turn) on port 41, (drive 2): PULLED OUT 
+    Bdot probe C16 (10 turn) on port 36, (drive 3): PULLED OUT
+                        
+    Moving Lang probe, coated shaft, 4 tip on port 29 (drive 4):
+    ==================================================
+    Isat-tip: Top-right, 50 Ohm, -120 V bias w.r.t. chamber ground
+    Iswp-tip: Top-left, 3 Ohm, Reference chamber ground
+    Tip size: ~0.5 mm x ~0.5 mm (???) - rely on interferro. calib.
+
+
+    Channels:
+    ======
+
+    Chan1:  Isat, p39, G: 1
+    Chan2:  Isweep, p39
+    Chan3 : Vsweep, p39, G: 1/100 
+
+    50 Ohm termination on scope.
+    Isat channel has a low pass filter to kill noise.
+
+    Probe Movement:
+    - X range: {xmin} to {xmax} cm, {nx} points
+    - Y range: {ymin} to {ymax} cm, {ny} points
+    - Z range: {zmin} to {zmax} cm, {nz} points (part 1 was -12 to -4)
+    - {num_duplicate_shots} shots per position
+    - {num_run_repeats} full scan repeats
+    '''
+#-------------------------------------------------------------------------------------------------------------
 def outer_boundary(x, y, z):
     """Return True if position is within allowed range"""
     return (x_limits[0] <= x <= x_limits[1] and 
@@ -104,95 +180,35 @@ def motor_boundary_2D(x, y, z):
     return in_outer_boundary
 
 #-------------------------------------------------------------------------------------------------------------
-def get_experiment_description():
-
-    """Return overall experiment description"""
-    return f'''
-    Experiment: {exp_name}
-    Date: {date}
-    Operator: Jia Han
-    
-    Probe Movement:
-    - X range: {xmin} to {xmax} cm, {nx} points
-    - Y range: {ymin} to {ymax} cm, {ny} points
-    - Z range: {zmin} to {zmax} cm, {nz} points (part 1 was -12 to -4)
-    - {num_duplicate_shots} shots per position
-    - {num_run_repeats} full scan repeats
-    
-    Setup:
-    - Plasma condition
-        - Heater 2150 A
-        - Puff Helium backside pressure 40 Psi
-        - Puff voltage 81V for 31ms West+East
-        - Hydrogen 200 SCCM MFC is set to "400"
-        - Discharge 23 ms; bank charging 73 V; current 4.0 kA
-        - Pulsing 1/4.25 Hz; plasma breakdown ~9 ms
-        - Pressure ~0.155 mTorr
-        - Interferometer density 9e12=>8e12 @P20;  5e12=>4e12 @P29 (assume 40cm)
-    - Magnetic field
-        - Straight 1.2 kG
-        - Black (South) 1.2kG (673 A)
-        - Yellow 3120 A
-        - Purple 1092 A
-        - Black (North) 0 A
-    - Antenna (ZZ-#3 six wire mesh paddles wt 1/8inch gap)
-        - connected +-+-+- from south to north at 2.48GHz
-        - paddles are connected using delay lines to generate pi phase shift at 2.48 GHz
-        - tip of mesh is approx 31 cm past wall (x = approx -19)
-        - LMX2572 signal generator set to 2.48 GHz, setpoint "30" in TICS software
-        - LMX2572 output goes to the RF switch, then to a ($200) DC block then to a -6dB attenuator on the input of the amplifier
-        - The amplifier is floating at the plasma potential because there is a direct connection to the mesh launcher
-        - The output of the amplifier goes through a directional coupler, then to a 25 foot coax.
-        - The coax has a measured attenuation of ?dB at 1.1 GHz  - probably 2.4 dB based on 2.5 GHz measurement
-        - The -20dB signal from the directional coupler goes to a -6dB attenuator, then to a ($200) DC block, then a 6 dB attenuator, then to channel 2 of the scope
-        - The rf switch is enabled by a Keysight Function generator triggered by Stanford
-        - Each RF burst is 30ns long starting at t = T_0 ms;
-        - Keysight setting: Freq 6.25kHz, 44 cycles
-    - Probe
-        - Dipole probe DP-JL-2CEW-1 (2 pairs of tips, Y and Z direction)
-        - we are connected to the "+y" whisker
-        - then a ($200) dc block and limiter
-        - then x100 0.15-2.5GHz amplifier, followed by a second ($200) limiter
-        - then to channel 3 of the scope
-
-        note: the ($200) DC blocks described above break both ground and signal connections and introduce only a few degrees of phase at 3 GHz
-
-    - Scope descriptions: See scope_group.attrs['description']
-    - Channel descriptions: See channel_group.attrs['description']
-
-    Notes:
-    wave is launched with respect to plasma 1kA as T=0
-    '''
-#-------------------------------------------------------------------------------------------------------------
+# Scope and motor IP addresses
 scope_ips = {
-    'FastScope': '192.168.7.63' # LeCroy WavePro 404HD 4GHz 20GS/s
+    'LPScope': '192.168.7.66' # LeCroy WavePro 404HD 4GHz 20GS/s
 }
 
 motor_ips = { # For 3D X:163, Y:165, Z:164
-    'x': '192.168.7.163',  # X-axis motor 163
-    'y': '192.168.7.165',   # Y-axis motor 165
-    'z': '192.168.7.164'   # Z-axis motor 164
+    'x': '192.168.7.166',
+    'y': '192.168.7.167',   
 }
 
 def get_channel_description(tr):
     """Channel description"""
     descriptions = {
-        'FastScope_C1': 'N/A',
-        'FastScope_C2': 'RF signal at amplifier output',
-        'FastScope_C3': 'Probe signal',
-        'FastScope_C4': 'N/A'
+        'LPScope_C1': 'Isat, p39, G: 1',
+        'LPScope_C2': 'Isweep, p39',
+        'LPScope_C3': 'Vsweep, p39, G: 1/100 ',
+        'LPScope_C4': 'N/A'
     }
     return descriptions.get(tr, f'Channel {tr} - No description available')
 
 def get_scope_description(scope_name):
     """Return description for each scope"""
     descriptions = {
-        'FastScope': '''LeCroy WavePro 404HD 4GHz 20GS/s; triggering on channel 2 (RF signal)'''
+        'LPScope': '''LeCroy HDO4104'''
     }
     return descriptions.get(scope_name, f'Scope {scope_name} - No description available')
 
 external_delays = { # unit: milliseconds
-    'FastScope': 0
+    'LPScope': 0
 }
 
 #-------------------------------------------------------------------------------------------------------------
