@@ -15,6 +15,10 @@ The user should edit this file to:
 
 Created on Feb.14.2024
 @author: Jia Han
+
+TODO: this script is not optimized for speed. Need to:
+- Data_Run_2D.py and Acquire_Scope_Data_2D.py includes saving raw data to disk; this needs to be added here.
+- Parallelize the data acquisition
 """
 
 import datetime
