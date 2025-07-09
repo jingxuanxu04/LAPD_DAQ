@@ -248,69 +248,30 @@ class TriggerClient:
 #<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
 #===============================================================================================================================================
 
-def main():
-    parser = argparse.ArgumentParser(description='GPIO Trigger Client with Motor Control')
-    parser.add_argument('--server-ip', default='192.168.7.38', help='Trigger server IP address')
-    parser.add_argument('--server-port', type=int, default=5000, help='Trigger server port')
-    parser.add_argument('--motor-ip', default='192.168.7.99', help='Motor controller IP address')
-    parser.add_argument('--mode', choices=['test', 'tungsten', 'custom'], default='tungsten',
-                       help='Operation mode: test, tungsten, or custom')
-    parser.add_argument('--num-drops', type=int, default=5, help='Number of tungsten drops')
-    parser.add_argument('--max-balls', type=int, default=700, help='Maximum ball count before stopping')
-    parser.add_argument('--timeout', type=float, default=15, help='Trigger detection timeout')
-    
-    args = parser.parse_args()
+def main(ip_addr="192.168.7.38"):
     
     # Initialize client
-    client = TriggerClient(args.server_ip, args.server_port)
+    client = TriggerClient(ip_addr)
     
     try:
         # Test connection to server
-        print(f"Connecting to trigger server at {args.server_ip}:{args.server_port}")
+        print(f"Connecting to trigger server at ", ip_addr)
         client.get_status()
         print("✓ Server connection established")
+
+        # Test mode - basic trigger functionality
+        print("\n=== Test Mode ===")
         
-        if args.mode == 'test':
-            # Test mode - basic trigger functionality
-            print("\n=== Test Mode ===")
-            
-            # Test trigger send/receive
-            print("Testing trigger functionality...")
-            client.send_trigger()
-            print("Trigger sent successfully")
-            
-            if client.wait_for_trigger(timeout=5):
-                print("✓ Trigger detection working")
-            else:
-                print("✗ Trigger detection failed")
+        # Test trigger send/receive
+        print("Testing trigger functionality...")
+        client.send_trigger()
+        print("Trigger sent successfully")
+        
+        if client.wait_for_trigger(timeout=5):
+            print("✓ Trigger detection working")
+        else:
+            print("✗ Trigger detection failed")
                 
-        elif args.mode == 'tungsten':
-            # Tungsten drop mode
-            print("\n=== Tungsten Drop Mode ===")
-            completed = client.run_tungsten_drop_sequence(
-                motor_ip=args.motor_ip,
-                num_drops=args.num_drops,
-                max_balls=args.max_balls,
-                timeout=args.timeout
-            )
-            print(f"Tungsten drop sequence completed: {completed} drops")
-            
-        elif args.mode == 'custom':
-            # Custom operation mode - example with user-defined function
-            print("\n=== Custom Mode ===")
-            
-            def custom_operation(iteration):
-                """Example custom operation between triggers"""
-                print(f"Custom operation {iteration+1}")
-                time.sleep(0.1)  # Simulate some work
-                
-            completed = client.trigger_loop(
-                operation_func=custom_operation,
-                iterations=10,
-                delay=0.5,
-                timeout=10
-            )
-            print(f"Custom trigger loop completed: {completed} iterations")
             
     except KeyboardInterrupt:
         print("\nOperation interrupted by user")
