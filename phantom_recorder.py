@@ -8,91 +8,6 @@ import h5py
 from pathlib import Path
 from pyphantom import Phantom, utils, cine
 
-def check_phantom_prerequisites():
-    """Check if Phantom camera prerequisites are met before initialization.
-    
-    Returns:
-        tuple: (success: bool, message: str)
-    """
-    try:
-        # Check if pyphantom library is properly installed
-        import pyphantom
-        
-        # Try to access some basic phantom utilities
-        # This will fail early if there are library issues
-        try:
-            # Test basic phantom utilities without full initialization
-            phantom_version = getattr(pyphantom, '__version__', 'unknown')
-            print(f"PyPhantom library version: {phantom_version}")
-            
-            return True, "Prerequisites check passed"
-            
-        except Exception as e:
-            return False, f"PyPhantom library issue: {str(e)}"
-            
-    except ImportError as e:
-        return False, f"PyPhantom library not found: {str(e)}"
-    except Exception as e:
-        return False, f"Unexpected error during prerequisites check: {str(e)}"
-
-def print_troubleshooting_guide():
-    """Print comprehensive troubleshooting guide for Phantom camera issues."""
-    print("\n" + "="*60)
-    print("PHANTOM CAMERA TROUBLESHOOTING GUIDE")
-    print("="*60)
-    print()
-    print("Common causes of 'Requested parameter is missing' error:")
-    print()
-    print("1. CAMERA HARDWARE:")
-    print("   - Camera is not powered on")
-    print("   - Camera is not fully booted (wait 2-3 minutes after power on)")
-    print("   - Ethernet cable is not connected or faulty")
-    print("   - Camera IP address is not accessible from this computer")
-    print()
-    print("2. SOFTWARE CONFLICTS:")
-    print("   - Phantom Camera Control (PCC) software is running")
-    print("   - Another Python script is using the camera")
-    print("   - Previous camera connection was not properly closed")
-    print()
-    print("3. DRIVER/SDK ISSUES:")
-    print("   - Phantom SDK is not properly installed")
-    print("   - PyPhantom library is outdated or corrupted")
-    print("   - Windows drivers are missing or outdated")
-    print()
-    print("4. NETWORK CONFIGURATION:")
-    print("   - Camera and computer are on different subnets")
-    print("   - Firewall is blocking camera communication")
-    print("   - Network adapter settings are incorrect")
-    print()
-    print("TROUBLESHOOTING STEPS:")
-    print()
-    print("Step 1: Check Hardware")
-    print("   - Verify camera power LED is on")
-    print("   - Check Ethernet cable connection")
-    print("   - Ping camera IP address from command prompt")
-    print()
-    print("Step 2: Close Conflicting Software")
-    print("   - Close Phantom Camera Control (PCC)")
-    print("   - Close any other camera applications")
-    print("   - Restart Python if previous scripts crashed")
-    print()
-    print("Step 3: Restart Camera")
-    print("   - Power cycle the camera")
-    print("   - Wait 2-3 minutes for full boot")
-    print("   - Try connecting again")
-    print()
-    print("Step 4: Check Network")
-    print("   - Verify camera IP address is accessible")
-    print("   - Check network adapter settings")
-    print("   - Temporarily disable firewall for testing")
-    print()
-    print("Step 5: Reinstall Software (if needed)")
-    print("   - Reinstall Phantom SDK")
-    print("   - Update PyPhantom library: pip install --upgrade pyphantom")
-    print("   - Update camera firmware if available")
-    print()
-    print("="*60)
-
 class PhantomRecorder:
     def __init__(self, config):
         """Initialize the Phantom camera recorder with configuration settings.
@@ -110,74 +25,21 @@ class PhantomRecorder:
                 - hdf5_file_path (str): Path to existing HDF5 file from multi_scope_acquisition (required if save_format includes 'hdf5')
         """
         self.config = config
-        
-        # Initialize Phantom camera with better error handling
-        try:
-            print("Initializing Phantom camera connection...")
-            self.ph = Phantom()
-            print(f"Phantom library initialized successfully")
-        except ValueError as e:
-            if "Requested parameter is missing" in str(e):
-                raise RuntimeError(
-                    "Failed to initialize Phantom camera. This error typically indicates:\n"
-                    "1. Camera is not connected or powered on\n"
-                    "2. Camera drivers are not properly installed\n"
-                    "3. Another application is using the camera\n"
-                    "4. Camera configuration files are missing or corrupted\n\n"
-                    "Troubleshooting steps:\n"
-                    "- Ensure camera is connected via Ethernet and powered on\n"
-                    "- Close any other applications using the camera (PCC, etc.)\n"
-                    "- Restart the camera and wait for full boot\n"
-                    "- Check network connectivity to camera\n"
-                    "- Reinstall Phantom SDK if necessary\n\n"
-                    f"Original error: {str(e)}"
-                )
-            else:
-                raise RuntimeError(f"Failed to initialize Phantom camera: {str(e)}")
-        except Exception as e:
-            raise RuntimeError(f"Unexpected error initializing Phantom camera: {str(e)}")
+        self.ph = Phantom()
         
         # Verify camera connection
-        try:
-            camera_count = self.ph.camera_count
-            print(f"Found {camera_count} Phantom camera(s)")
-            
-            if camera_count == 0:
-                raise RuntimeError(
-                    "No Phantom camera discovered. Please check:\n"
-                    "1. Camera is powered on and fully booted\n"
-                    "2. Ethernet connection is working\n"
-                    "3. Camera IP address is accessible\n"
-                    "4. No firewall blocking camera communication\n"
-                    "5. Camera is not in use by another application"
-                )
-        except Exception as e:
-            raise RuntimeError(f"Failed to check camera count: {str(e)}")
+        if self.ph.camera_count == 0:
+            raise RuntimeError("No Phantom camera discovered")
             
         # Connect to first available camera
-        try:
-            print("Connecting to camera...")
-            self.cam = self.ph.Camera(0)
-            print("Camera connection established")
-        except Exception as e:
-            raise RuntimeError(f"Failed to connect to camera: {str(e)}")
-        
-        # Configure camera settings
-        try:
-            self._configure_camera()
-            print("Camera configured successfully")
-        except Exception as e:
-            raise RuntimeError(f"Failed to configure camera: {str(e)}")
+        self.cam = self.ph.Camera(0)
+        self._configure_camera()
         
         # Initialize HDF5 integration if needed
         if self.config.get('save_format', 'cine') in ['hdf5', 'both']:
             if 'hdf5_file_path' not in self.config:
                 raise ValueError("hdf5_file_path is required when save_format includes 'hdf5'")
-            try:
-                self._initialize_hdf5_integration()
-                print("HDF5 integration initialized")
-            except Exception as e:
-                raise RuntimeError(f"Failed to initialize HDF5 integration: {str(e)}")
+            self._initialize_hdf5_integration()
         
     def _configure_camera(self):
         """Apply configuration settings to the camera."""
@@ -581,17 +443,6 @@ def main(num_shots=2, exposure_us=50, fps=5000, resolution=(256, 256),
     print("=" * 45)
     
     try:
-        # Check prerequisites before attempting initialization
-        print("\nChecking Phantom camera prerequisites...")
-        prereq_success, prereq_message = check_phantom_prerequisites()
-        
-        if not prereq_success:
-            print(f"Prerequisites check failed: {prereq_message}")
-            print("\nPlease resolve the issues above before running the camera test.")
-            return
-        
-        print(f"✓ {prereq_message}")
-        
         # Create recorder instance
         print("\nInitializing Phantom camera...")
         recorder = PhantomRecorder(config)
@@ -670,16 +521,6 @@ def main(num_shots=2, exposure_us=50, fps=5000, resolution=(256, 256),
     except Exception as e:
         print(f"\n=== Error during recording ===")
         print(f"Error: {e}")
-        
-        # Show troubleshooting guide for common camera errors
-        if any(error_msg in str(e).lower() for error_msg in [
-            'requested parameter is missing',
-            'failed to initialize phantom camera',
-            'no phantom camera discovered',
-            'failed to connect to camera'
-        ]):
-            print_troubleshooting_guide()
-        
         import traceback
         traceback.print_exc()
     finally:
@@ -699,12 +540,12 @@ def main(num_shots=2, exposure_us=50, fps=5000, resolution=(256, 256),
 #===============================================================================================================================================
 
 if __name__ == '__main__':
-    main(num_shots=1,  # Reduced to 1 shot for initial testing
-         exposure_us=100,  # Increased exposure for better reliability
-         fps=1000,  # Reduced frame rate for testing
-         resolution=(256, 256),  # Keep resolution small for testing
-         pre_trigger_frames=-50,  # Reduced frame count for testing
-         post_trigger_frames=100,  # Reduced frame count for testing
-         save_format='cine',  # Start with cine only for testing
-         base_path=r"C:\temp\phantom_test",  # More accessible path
-         experiment_name='phantom_test') 
+    main(num_shots=2, 
+         exposure_us=50, 
+         fps=5000, 
+         resolution=(256, 256),
+         pre_trigger_frames=-100, 
+         post_trigger_frames=200,
+         save_format='both', 
+         base_path=r"E:\Shadow data\Energetic_Electron_Ring\fast cam\test", 
+         experiment_name=None) 
