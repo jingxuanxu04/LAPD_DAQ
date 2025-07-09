@@ -46,8 +46,8 @@ int setup_gpio_output_pin(int pin) {
         return -1;
     }
     gpioSetMode(pin, PI_OUTPUT);
-    gpioWrite(pin, PI_LOW); // Set initial state to LOW
-    printf("GPIO pin %d configured for output and set to LOW.\n", pin);
+    gpioWrite(pin, PI_HIGH);
+    printf("GPIO pin %d configured for inverted output.\n", pin);
     return 0;
 }
 
@@ -89,8 +89,8 @@ void send_gpio_pulse(int pin) {
         fprintf(stderr, "pigpio not initialized. Call initialize_pigpio() first.\n");
         return;
     }
-    gpioWrite(pin, PI_HIGH);  // Set pin HIGH
-    gpioDelay(1000);            // Wait for 1 ms
-    gpioWrite(pin, PI_LOW);   // Set pin LOW
-    printf("Trigger pulse sent on GPIO pin %d.\n", pin);
+    gpioWrite(pin, PI_LOW);  
+    gpioDelay(1000);            // Trigger pulse duration
+    gpioWrite(pin, PI_HIGH);   
+    // printf("Trigger pulse sent on GPIO pin %d.\n", pin);
 }

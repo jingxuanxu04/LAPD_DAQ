@@ -1,10 +1,13 @@
 '''
 Client interface for communicating with the trigger server on Raspberry Pi
+Handles motor control operations based on server trigger responses
 '''
 
 import socket
 import time
 import select
+import argparse
+from Motor_Control_1D import Motor_Control
 
 class TriggerClient:
     def __init__(self, host, port=5000):
@@ -162,33 +165,159 @@ class TriggerClient:
         else:
             raise RuntimeError(f"Unexpected test response: {response}")
 
+    def run_tungsten_drop_sequence(self, motor_ip, num_drops=5, max_balls=700, timeout=15):
+        """
+        Run tungsten ball dropping sequence with trigger control
+        
+        Args:
+            motor_ip (str): IP address of the motor controller
+            num_drops (int): Number of drops to perform
+            max_balls (int): Maximum number of balls before stopping
+            timeout (float): Timeout for trigger detection
+            
+        Returns:
+            int: Number of successful drops completed
+        """
+        print(f"Starting tungsten drop sequence: {num_drops} drops")
+        print(f"Motor IP: {motor_ip}")
+        print(f"Max balls limit: {max_balls}")
+        print(f"Trigger timeout: {timeout}s")
+        
+        try:
+            # Initialize motor control
+            mc_w = Motor_Control(server_ip_addr=motor_ip, stop_switched=False, name="w_dropper")
+            spt = mc_w.steps_per_rev()
+            one_drop = int(spt/12) + 1
+            
+            completed_drops = 0
+            
+            for i in range(num_drops):
+                try:
+                    # Check current position and ball count
+                    cur_step = mc_w.current_step()
+                    ball_count = int(cur_step/one_drop)
+                    print(f"\nDrop {i+1}/{num_drops} - Ball count: {ball_count}")
+                    
+                    # Check if we've reached the ball limit
+                    if ball_count >= max_balls:
+                        print(f'Ball limit reached ({max_balls}). Stopping sequence.')
+                        break
+                    
+                    # Move motor to drop position
+                    print("Moving motor to drop position... ", end='')
+                    mc_w.turn_to(cur_step + one_drop)
+                    print("done")
+                    
+                    # Send trigger to server
+                    print("Sending trigger... ", end='')
+                    self.send_trigger()
+                    print(f"sent at {time.strftime('%H:%M:%S', time.localtime())}")
+                    
+                    # Wait for trigger detection
+                    print("Waiting for trigger detection... ", end='')
+                    if self.wait_for_trigger(timeout=timeout):
+                        print(f"detected at {time.strftime('%H:%M:%S', time.localtime())}")
+                        completed_drops += 1
+                        time.sleep(0.5)  # Brief pause after successful trigger
+                    else:
+                        print("TIMEOUT - No trigger detected")
+                        print("Check trigger connections and try again")
+                        break
+                    
+                    # Verify motor moved correctly
+                    if mc_w.current_step() == cur_step:
+                        print('ERROR: Motor position did not change after drop command')
+                        print('Check motor operation before continuing')
+                        break
+                    
+                    # Delay between drops
+                    time.sleep(1)
+                    
+                except Exception as e:
+                    print(f"Error during drop {i+1}: {e}")
+                    break
+            
+            print(f"\nSequence completed: {completed_drops}/{num_drops} successful drops")
+            return completed_drops
+            
+        except Exception as e:
+            print(f"Failed to initialize motor control: {e}")
+            return 0
+
 #===============================================================================================================================================
 #<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
 #===============================================================================================================================================
-if __name__ == '__main__':
-    # Example custom operation function
-    def custom_operation(iteration):
-        """Example operation between triggers"""
-        time.sleep(0.05)  # Simulate some work
-        
+
+def main():
+    parser = argparse.ArgumentParser(description='GPIO Trigger Client with Motor Control')
+    parser.add_argument('--server-ip', default='192.168.7.38', help='Trigger server IP address')
+    parser.add_argument('--server-port', type=int, default=5000, help='Trigger server port')
+    parser.add_argument('--motor-ip', default='192.168.7.99', help='Motor controller IP address')
+    parser.add_argument('--mode', choices=['test', 'tungsten', 'custom'], default='tungsten',
+                       help='Operation mode: test, tungsten, or custom')
+    parser.add_argument('--num-drops', type=int, default=5, help='Number of tungsten drops')
+    parser.add_argument('--max-balls', type=int, default=700, help='Maximum ball count before stopping')
+    parser.add_argument('--timeout', type=float, default=15, help='Trigger detection timeout')
+    
+    args = parser.parse_args()
+    
     # Initialize client
-    client = TriggerClient('192.168.7.38')  # Use server's default IP
+    client = TriggerClient(args.server_ip, args.server_port)
     
     try:
-        # Test connection
-        client.get_status()  # Will raise error if not ready
-        print("Server ready")
+        # Test connection to server
+        print(f"Connecting to trigger server at {args.server_ip}:{args.server_port}")
+        client.get_status()
+        print("✓ Server connection established")
         
-        # Run trigger loop with custom operation
-        completed = client.trigger_loop(
-            operation_func=custom_operation,
-            iterations=1000,
-            delay=0.1,
-            timeout=120
-        )
-        print(f"\nCompleted {completed} iterations")
-        
+        if args.mode == 'test':
+            # Test mode - basic trigger functionality
+            print("\n=== Test Mode ===")
+            
+            # Test trigger send/receive
+            print("Testing trigger functionality...")
+            client.send_trigger()
+            print("Trigger sent successfully")
+            
+            if client.wait_for_trigger(timeout=5):
+                print("✓ Trigger detection working")
+            else:
+                print("✗ Trigger detection failed")
+                
+        elif args.mode == 'tungsten':
+            # Tungsten drop mode
+            print("\n=== Tungsten Drop Mode ===")
+            completed = client.run_tungsten_drop_sequence(
+                motor_ip=args.motor_ip,
+                num_drops=args.num_drops,
+                max_balls=args.max_balls,
+                timeout=args.timeout
+            )
+            print(f"Tungsten drop sequence completed: {completed} drops")
+            
+        elif args.mode == 'custom':
+            # Custom operation mode - example with user-defined function
+            print("\n=== Custom Mode ===")
+            
+            def custom_operation(iteration):
+                """Example custom operation between triggers"""
+                print(f"Custom operation {iteration+1}")
+                time.sleep(0.1)  # Simulate some work
+                
+            completed = client.trigger_loop(
+                operation_func=custom_operation,
+                iterations=10,
+                delay=0.5,
+                timeout=10
+            )
+            print(f"Custom trigger loop completed: {completed} iterations")
+            
     except KeyboardInterrupt:
         print("\nOperation interrupted by user")
     except Exception as e:
         print(f"\nError: {str(e)}")
+        import traceback
+        traceback.print_exc()
+
+if __name__ == '__main__':
+    main()

@@ -68,25 +68,6 @@ def send_trigger_pulse(pin):
     """
     gpio_interface.send_trigger_pulse(pin)
 
-def test_gpio_loopback(trig_out_pin=18, trig_in_pin=25):
-    """
-    Test sending a trigger pulse and waiting for GPIO input.
-    """
-    try:
-        initialize_pigpio()
-        setup_gpio_output_pin(trig_out_pin)
-        setup_gpio_pin(trig_in_pin)
-
-        print(f"Sending a trigger pulse on GPIO pin {trig_out_pin}...")
-        send_trigger_pulse(trig_out_pin)
-
-        print(f"Waiting for GPIO pin {trig_in_pin} to go HIGH. Press Ctrl+C to stop...")
-        wait_for_gpio_high(trig_in_pin)
-        print(f"GPIO pin {trig_in_pin} detected HIGH signal!")
-    except KeyboardInterrupt:
-        print("\nKeyboardInterrupt: Stopping test.")
-    finally:
-        terminate_pigpio()
 
 if __name__ == "__main__":
     test_gpio_loopback(23,24)

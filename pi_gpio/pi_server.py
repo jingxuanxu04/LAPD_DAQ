@@ -1,9 +1,6 @@
 '''
 Setup a simple TCP server to send trigger pulses when requested
 Runs on Raspberry Pi
-- Run normal server mode: python pi_server.py
-- Run self-test mode: python pi_server.py --test
-- Run custom test parameters: python pi_server.py --test --iterations <N> --delay <T>
 '''
 
 import socket
@@ -38,7 +35,7 @@ class TriggerServer:
                              trig_out_pin=25, trig_in_pin=27)
         server.start()  # Starts listening for trigger requests
     '''
-    def __init__(self, host=IP_ADDR, port=PORT, trig_out_pin=25, trig_in_pin=27):
+    def __init__(self, trig_out_pin, trig_in_pin, host=IP_ADDR, port=PORT):
         self.host = host
         self.port = port
         self.trig_out_pin = trig_out_pin
@@ -105,18 +102,18 @@ class TriggerServer:
             # GPIO operations
             self.gpio_lib.wait_for_gpio_high.argtypes = [ctypes.c_int, ctypes.c_int]
             self.gpio_lib.wait_for_gpio_high.restype = ctypes.c_bool
-            self.gpio_lib.send_trigger_pulse.argtypes = [ctypes.c_int]
-            self.gpio_lib.send_trigger_pulse.restype = None
+            self.gpio_lib.send_gpio_pulse.argtypes = [ctypes.c_int]
+            self.gpio_lib.send_gpio_pulse.restype = None
         except AttributeError as e:
             raise RuntimeError(f"Failed to setup GPIO functions: {str(e)}")
     
     def send_trigger(self):
         """Send a trigger pulse using C function"""
         try:
-            self.gpio_lib.send_trigger_pulse(self.trig_out_pin)
-            return True
+            self.gpio_lib.send_gpio_pulse(self.trig_out_pin)
         except Exception as e:
             raise RuntimeError(f"Failed to send trigger: {str(e)}")
+
     
     def wait_for_trigger(self, timeout=1):
         """Wait for rising edge using C function"""
@@ -266,7 +263,7 @@ class TriggerServer:
                 
                 try:
                     # Send trigger
-                    self.gpio_lib.send_trigger_pulse(pin)
+                    self.gpio_lib.send_gpio_pulse(pin)
                     success_count += 1
                     print("✓ Trigger sent")
                 except Exception as e:
@@ -350,19 +347,33 @@ class TriggerServer:
 #===============================================================================================================================================
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='GPIO Trigger Server')
+    parser.add_argument('--host', default=IP_ADDR, help='Host IP address')
+    parser.add_argument('--port', type=int, default=PORT, help='Port number')
+    parser.add_argument('--trig-out', type=int, default=23, help='Trigger output pin')
+    parser.add_argument('--trig-in', type=int, default=25, help='Trigger input pin')
+    
+    args = parser.parse_args()
+    
     try:
-        server = TriggerServer()
-    except Exception as e:
-        print(f"Failed to initialize server: {str(e)}")
-        sys.exit(1)
+        # Initialize the server with GPIO pins only
+        server = TriggerServer(trig_out_pin=args.trig_out, trig_in_pin=args.trig_in, 
+                             host=args.host, port=args.port)
+        print(f"GPIO Trigger Server initialized")
+        print(f"Monitoring trigger input on pin {server.trig_in_pin}")
+        print(f"Sending trigger output on pin {server.trig_out_pin}")
+        print(f"Listening on {server.host}:{server.port}")
+        print("Press Ctrl+C to stop.")
         
-    try:
-        # Start server
+        # Start the server (no motor control logic here)
         server.start()
+        
     except KeyboardInterrupt:
-        print("\nOperation interrupted by user")
+        print("\nKeyboardInterrupt: Stopping server.")
     except Exception as e:
-        print(f"Error: {str(e)}")
-        sys.exit(1)
+        print(f"An error occurred: {e}")
     finally:
-        server.cleanup()
+        if 'server' in locals():
+            server.cleanup()
+        print("GPIO cleanup complete.")
+
