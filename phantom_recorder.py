@@ -1,3 +1,20 @@
+'''
+TODO: fix error
+=== Error during recording ===
+Error: Requested parameter is missing
+Traceback (most recent call last):
+  File "c:\Users\daq\Desktop\LAPD_DAQ\phantom_recorder.py", line 462, in main
+    async_recorder = PhantomRecorder(async_config)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "c:\Users\daq\Desktop\LAPD_DAQ\phantom_recorder.py", line 26, in __init__
+    self.ph = Phantom()
+              ^^^^^^^^^
+  File "C:\Users\daq\AppData\Local\Programs\Python\Python311\Lib\site-packages\pyphantom\phantom.py", line 34, in __init__
+    utils._generate_phantom_keys()
+  File "C:\Users\daq\AppData\Local\Programs\Python\Python311\Lib\site-packages\pyphantom\utils.py", line 344, in _generate_phantom_keys
+ValueError: Requested parameter is missing
+'''
+
 import time
 import datetime
 import os
@@ -393,12 +410,7 @@ def main(num_shots=2, exposure_us=50, fps=5000, resolution=(256, 256),
     
     # Test configuration
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    if base_path is None:
-        base_path = r"E:\Shadow data\Energetic_Electron_Ring\fast cam\test"
-    
-    if experiment_name is None:
-        experiment_name = f"phantom_test_{timestamp}"
+
     
     # Create test HDF5 filename
     test_hdf5_filename = f"{experiment_name}.hdf5"
@@ -429,13 +441,12 @@ def main(num_shots=2, exposure_us=50, fps=5000, resolution=(256, 256),
         'post_trigger_frames': post_trigger_frames,
         'resolution': resolution,
         'num_shots': num_shots,
-        'save_format': save_format,
+        'save_format': 'cine',
         'hdf5_file_path': test_hdf5_path
     }
     
     print("=== Phantom Camera Test Configuration ===")
     print(f"Experiment: {config['name']}")
-    print(f"HDF5 file: {test_hdf5_path}")
     print(f"Cine files: {base_path}")
     print(f"Resolution: {config['resolution']}")
     print(f"Frame rate: {config['fps']} fps")
@@ -488,7 +499,6 @@ def main(num_shots=2, exposure_us=50, fps=5000, resolution=(256, 256),
             async_recorder.cleanup()
         
         print(f"\n=== Recording Complete ===")
-        print(f"HDF5 file saved: {test_hdf5_path}")
         print(f"Cine files saved in: {base_path}")
         
         # Display file information
@@ -520,8 +530,6 @@ def main(num_shots=2, exposure_us=50, fps=5000, resolution=(256, 256),
                     cine_size = os.path.getsize(cine_path) / (1024 * 1024)  # MB
                     print(f"  {cine_file} ({cine_size:.1f} MB)")
         
-        # Test reading the HDF5 data
-        test_hdf5_data(test_hdf5_path)
         
     except KeyboardInterrupt:
         print("\n=== Recording interrupted by user ===")
@@ -554,5 +562,5 @@ if __name__ == '__main__':
          pre_trigger_frames=-100, 
          post_trigger_frames=200,
          save_format='both', 
-         base_path=r"E:\Shadow data\Energetic_Electron_Ring\fast cam\test", 
-         experiment_name=None) 
+         base_path=r"E:\Shadow data\Energetic_Electron_Ring\test", 
+         experiment_name='test-01') 
