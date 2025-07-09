@@ -362,6 +362,42 @@ class MultiScopeAcquisition:
             active_scopes.remove(name)
         
         return all_data
+    
+    def arm_scopes_for_trigger(self, active_scopes):
+        """Arm all scopes for trigger without waiting for completion (for parallel operation)"""
+        print("Arming scopes for trigger... ", end='')
+        for name in active_scopes:
+            scope = self.scopes[name]
+            scope.set_trigger_mode('SINGLE')
+        print("armed")
+    
+    def acquire_shot_after_trigger(self, active_scopes, shot_num):
+        """Acquire data from all active scopes after trigger has occurred (for parallel operation)"""
+        all_data = {}
+        failed_scopes = []
+        
+        for name in active_scopes:
+            print(f"Reading data from {name}...")
+            scope = self.scopes[name]
+            
+            if active_scopes[name] == 0:
+                traces, data, headers = acquire_from_scope(scope, name)
+            elif active_scopes[name] == 1:
+                traces, data, headers = acquire_from_scope_sequence(scope, name)
+            else:
+                raise ValueError(f"Invalid active_scopes value for {name}: {active_scopes[name]}")
+
+            if traces:
+                all_data[name] = (traces, data, headers)
+            else:
+                print(f"Warning: No valid data from {name} for shot {shot_num}")
+                failed_scopes.append(name)
+        
+        # Remove failed scopes from active list
+        for name in failed_scopes:
+            active_scopes.remove(name)
+        
+        return all_data
 
     def save_time_arrays(self, scope_name, time_array, is_sequence):
         """Save time array for a scope to HDF5 file
@@ -602,13 +638,11 @@ def single_shot_acquisition(pos, needs_movement, nz, msa, mc, save_path, scope_i
     else:
         print(f'Shot = {shot_num}', end='')
     
-    # Start triggering all scopes as soon as probe is in position
-    for name in active_scopes:
-        scope = msa.scopes[name]
-        scope.set_trigger_mode('SINGLE')
+    # Arm scopes for trigger as soon as probe is in position
+    msa.arm_scopes_for_trigger(active_scopes)
 
     # Acquire data from all scopes at this position
-    all_data = msa.acquire_shot(active_scopes, shot_num)
+    all_data = msa.acquire_shot_after_trigger(active_scopes, shot_num)
     
     if all_data:
         if not needs_movement:
@@ -740,13 +774,11 @@ def single_shot_acquisition_45(pos, motors, msa, save_path, scope_ips, active_sc
                     shot_group.attrs['acquisition_time'] = time.ctime()
             return
     
-    # Start triggering all scopes as soon as probes are in position
-    for name in active_scopes:
-        scope = msa.scopes[name]
-        scope.set_trigger_mode('SINGLE')
+    # Arm scopes for trigger as soon as probes are in position
+    msa.arm_scopes_for_trigger(active_scopes)
 
     # Acquire data from all scopes at this position
-    all_data = msa.acquire_shot(active_scopes, shot_num)
+    all_data = msa.acquire_shot_after_trigger(active_scopes, shot_num)
     
     if all_data:
         msa.update_hdf5(all_data, shot_num, positions)
