@@ -15,12 +15,12 @@ class PhantomRecorder:
         Args:
             config (dict): Configuration dictionary containing:
                 - save_path (str): Base path to save recorded cines
+                - name (str): Experiment name for file naming
                 - exposure_us (int): Exposure time in microseconds
                 - fps (int): Frames per second
                 - pre_trigger_frames (int): Number of frames to save before trigger
                 - post_trigger_frames (int): Number of frames to save after trigger
                 - resolution (tuple): Resolution as (width, height)
-                - num_shots (int): Number of shots to record
                 - save_format (str): 'cine', 'hdf5', or 'both' (default: 'cine')
                 - hdf5_file_path (str): Path to existing HDF5 file from multi_scope_acquisition (required if save_format includes 'hdf5')
         """
@@ -29,6 +29,7 @@ class PhantomRecorder:
         
         # Verify camera connection
         if self.ph.camera_count == 0:
+            self.ph.close()
             raise RuntimeError("No Phantom camera discovered")
             
         # Connect to first available camera
@@ -87,16 +88,7 @@ class PhantomRecorder:
                 f['FastCam'].attrs['camera_type'] = 'Phantom'
                 f['FastCam'].attrs['synchronized_with_scopes'] = True
         
-    def record_cine(self):
-        """Record a single cine file, waiting for trigger (traditional blocking method)."""
-        print("Waiting for trigger... ", end='\r')
-        
-        # Use the new async methods for consistency
-        self.start_recording_async()
-        timestamp = self.wait_for_recording_completion()
-        return timestamp
-    
-    def start_recording_async(self):
+    def start_recording(self):
         """Start recording without waiting for completion (for parallel arming)."""
         print("Arming camera for trigger... ", end='')
         
@@ -111,6 +103,7 @@ class PhantomRecorder:
         # Wait for recording to complete
         while not self.cam.partition_recorded(1):
             time.sleep(0.1)
+        
         print("Camera recording complete")
         return time.time()
         
@@ -119,7 +112,7 @@ class PhantomRecorder:
         
         Args:
             shot_number (int): Current shot number for filename (0-based)
-            timestamp (float): Recording timestamp
+            timestamp (float): Camera shot timestamp saved in HDF5 file
         """
         # Create Cine object
         rec_cine = cine.Cine.from_camera(self.cam, 1)
@@ -132,7 +125,7 @@ class PhantomRecorder:
         
         if save_format in ['cine', 'both']:
             # Save as .cine file
-            filename = f"{self.config['name']}_shot{shot_number+1:03d}_{timestamp}.cine"
+            filename = f"{self.config['name']}_shot{shot_number+1:03d}.cine"
             full_path = os.path.join(self.config['save_path'], filename)
             
             print(f"Saving to {filename}")
@@ -249,52 +242,13 @@ class PhantomRecorder:
             shot_group.attrs['time_interval'] = time_interval
             
         print(f"HDF5 save complete for {shot_name}")
-        
-    def record_sequence(self):
-        """Record the specified number of shots using traditional blocking method."""
-        try:
-            for shot in range(self.config['num_shots']):
-                print(f"\nRecording shot {shot + 1}/{self.config['num_shots']}")
-                timestamp = self.record_cine()
-                self.save_cine(shot, timestamp)
-                
-        finally:
-            self.cleanup()
-    
-    def record_sequence_async(self):
-        """Record the specified number of shots using async arming method."""
-        try:
-            for shot in range(self.config['num_shots']):
-                print(f"\nRecording shot {shot + 1}/{self.config['num_shots']} (async)")
-                
-                # Start recording (non-blocking)
-                self.start_recording_async()
-                
-                # Wait for completion
-                timestamp = self.wait_for_recording_completion()
-                
-                # Save the data
-                self.save_cine(shot, timestamp)
-                
-        finally:
-            self.cleanup()
-    
-    def record_single_shot(self, shot_number):
-        """Record a single shot with specified shot number.
-        
-        Args:
-            shot_number (int): Shot number (1-based) to match multi_scope_acquisition
-        """
-        print(f"Recording shot {shot_number}")
-        timestamp = self.record_cine()
-        self.save_cine(shot_number - 1, timestamp)  # Convert to 0-based for internal use
-    
-
-        
+                    
     def cleanup(self):
         """Clean up camera resources."""
-        self.cam.close()
-        self.ph.close()
+        if hasattr(self, 'cam'):
+            self.cam.close()
+        if hasattr(self, 'ph'):
+            self.ph.close()
 
 def test_hdf5_data(hdf5_file_path):
     """
@@ -425,66 +379,27 @@ def main(num_shots=2, exposure_us=50, fps=5000, resolution=(256, 256),
         'pre_trigger_frames': pre_trigger_frames,
         'post_trigger_frames': post_trigger_frames,
         'resolution': resolution,
-        'num_shots': num_shots,
         'save_format': 'cine',
         'hdf5_file_path': test_hdf5_path
     }
-    
-    print("=== Phantom Camera Test Configuration ===")
-    print(f"Experiment: {config['name']}")
-    print(f"Cine files: {base_path}")
-    print(f"Resolution: {config['resolution']}")
-    print(f"Frame rate: {config['fps']} fps")
-    print(f"Exposure: {config['exposure_us']} μs")
-    print(f"Frames: {config['pre_trigger_frames']} to +{config['post_trigger_frames']}")
-    print(f"Total frames per shot: {abs(config['pre_trigger_frames']) + config['post_trigger_frames']}")
-    print(f"Number of shots: {config['num_shots']}")
-    print(f"Save format: {config['save_format']}")
-    print("=" * 45)
+
     
     try:
         # Create recorder instance
         print("\nInitializing Phantom camera...")
         recorder = PhantomRecorder(config)
+
+        print(f"\nStarting test recording of {num_shots} shots...")        
         
-        print(f"\nStarting test recording of {config['num_shots']} shots...")
-        print("Press Ctrl+C to stop early if needed")
-        
-        # Test traditional recording method
-        print("\n=== Testing Traditional Recording ===")
-        recorder.record_sequence()
-        
-        # Test async arming functionality with a fresh recorder instance
-        print("\n=== Testing Async Arming ===")
-        print("Testing start_recording_async() and wait_for_recording_completion()...")
-        
-        # Create a new recorder for async testing to avoid conflicts with cleaned up recorder
-        async_config = config.copy()
-        async_config['num_shots'] = 1  # Just one shot for async test
-        async_recorder = PhantomRecorder(async_config)
-        
-        try:
-            # Test async arming
-            async_recorder.start_recording_async()
-            print("Camera armed successfully")
-            
-            # Simulate waiting for trigger (in real use, external trigger would fire)
-            print("Waiting for external trigger (simulated)...")
-            time.sleep(2)  # Simulate trigger delay
-            
-            # Test completion
-            timestamp = async_recorder.wait_for_recording_completion()
-            print(f"Recording completed at timestamp: {timestamp}")
-            
-            # Save the test shot
-            async_recorder.save_cine(0, timestamp)  # Use 0 for single async test shot
-            print("Async test completed successfully")
-            
-        finally:
-            async_recorder.cleanup()
-        
-        print(f"\n=== Recording Complete ===")
-        print(f"Cine files saved in: {base_path}")
+        for n in range(num_shots):
+            print(f"====Starting recording {n}====")
+            recorder.start_recording()
+            timestamp = recorder.wait_for_recording_completion()
+            print(f"\n=== Recording Complete ===")
+            recorder.save_cine(n, timestamp)
+            print(f"Cine files saved in: {base_path}")
+
+        recorder.cleanup()
         
         # Display file information
         if os.path.exists(test_hdf5_path):
@@ -533,7 +448,6 @@ def main(num_shots=2, exposure_us=50, fps=5000, resolution=(256, 256),
                 print(f"Error during cleanup: {e}")
     
     print(f"\nTest completed. Files saved in: {base_path}")
-    print("\nTo run with custom settings, modify the parameters in the if __name__ == '__main__' section")
 
 #===============================================================================================================================================
 # Main Test Loop
