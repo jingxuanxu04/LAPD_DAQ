@@ -255,26 +255,49 @@ def main(ip_addr="192.168.7.38"):
     
     try:
         # Test connection to server
-        print(f"Connecting to trigger server at ", ip_addr)
+        print(f"Connecting to trigger server at {ip_addr}")
         client.get_status()
         print("✓ Server connection established")
 
-        # Test mode - basic trigger functionality
-        print("\n=== Test Mode ===")
+        # Test mode - listen for triggers
+        print("\n=== Trigger Listening Mode ===")
+        print("Listening for triggers from server...")
+        print("Press Ctrl+C to stop or wait 5 minutes for automatic timeout")
         
-        # Test trigger send/receive
-        print("Testing trigger functionality...")
-        client.send_trigger()
-        print("Trigger sent successfully")
+        # Set 5-minute timeout
+        start_time = time.time()
+        timeout_duration = 5 * 60  # 5 minutes in seconds
+        trigger_count = 0
         
-        if client.wait_for_trigger(timeout=5):
-            print("✓ Trigger detection working")
-        else:
-            print("✗ Trigger detection failed")
-                
+        while True:
+            # Check if 5 minutes have passed
+            elapsed_time = time.time() - start_time
+            if elapsed_time >= timeout_duration:
+                print(f"\n5-minute timeout reached. Stopping...")
+                break
             
+            # Calculate remaining time for this iteration
+            remaining_time = timeout_duration - elapsed_time
+            wait_timeout = min(2.0, remaining_time)  # Wait up to 2 seconds per iteration
+            
+            # Listen for trigger
+            if client.wait_for_trigger(timeout=wait_timeout):
+                trigger_count += 1
+                timestamp = time.strftime('%H:%M:%S', time.localtime())
+                print(f"[{timestamp}] Trigger received (#{trigger_count})")
+            
+            # Brief pause to prevent overwhelming the server
+            time.sleep(0.1)
+        
+        print(f"\nTest completed. Total triggers received: {trigger_count}")
+        print(f"Runtime: {elapsed_time:.1f} seconds")
+                
     except KeyboardInterrupt:
-        print("\nOperation interrupted by user")
+        elapsed_time = time.time() - start_time if 'start_time' in locals() else 0
+        trigger_count = trigger_count if 'trigger_count' in locals() else 0
+        print(f"\nOperation interrupted by user")
+        print(f"Total triggers received: {trigger_count}")
+        print(f"Runtime: {elapsed_time:.1f} seconds")
     except Exception as e:
         print(f"\nError: {str(e)}")
         import traceback
