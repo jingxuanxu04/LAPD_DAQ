@@ -363,10 +363,6 @@ class MultiScopeAcquisition:
                 print(f"Error acquiring from {name}: {e}")
                 failed_scopes.append(name)
         
-        # Remove failed scopes from active list
-        for name in failed_scopes:
-            active_scopes.remove(name)
-        
         return all_data
     
     def arm_scopes_for_trigger(self, active_scopes):
