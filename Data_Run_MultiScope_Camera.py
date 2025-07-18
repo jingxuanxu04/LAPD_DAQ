@@ -7,21 +7,6 @@ This combines the functionality of:
 - multi_scope_acquisition.py for multiple scope data
 - phantom_recorder.py for high-speed camera data
 
-NEW FEATURE: Parallel Arming
-When both scopes and camera are enabled, the system uses parallel arming for truly simultaneous operation:
-1. Camera is armed first (non-blocking)
-2. Scopes are armed simultaneously (non-blocking)
-3. Both wait for the same external trigger signal
-4. Scope data is acquired and stored in memory
-5. Camera data is saved to disk after scope data is processed
-
-This ensures:
-- True simultaneity (both triggered at the same time)
-- No timing delays between instruments
-- Scope data stored in memory first, then HDF5 written after camera processing
-- Windows-compatible implementation
-- Backward compatibility with existing Data_Run.py and Data_Run_45deg.py
-
 The user should edit this file to:
     1) Set scope IP addresses
     2) Set camera configuration parameters
@@ -41,11 +26,7 @@ from multi_scope_acquisition import MultiScopeAcquisition
 from phantom_recorder import PhantomRecorder
 import time
 import sys
-import logging
 import h5py
-
-logging.basicConfig(filename='acquisition.log', level=logging.WARNING, 
-                   format='%(asctime)s %(levelname)s %(message)s')
 
 ############################################################################################################################
 '''
@@ -53,7 +34,7 @@ User: Set experiment name and path
 '''
 exp_name = 'multiscope_camera_test'  # experiment name
 date = datetime.date.today()
-path = f"C:\\data\\MultiScope_Camera"
+path = f"E:\Shadow data\Energetic_Electron_Ring\test"
 save_path = f"{path}\\{exp_name}_{date}.hdf5"
 
 #-------------------------------------------------------------------------------------------------------------
@@ -67,13 +48,11 @@ num_shots = 10  # Total number of shots to acquire
 User: Set scope configuration
 '''
 scope_ips = {
-    'FastScope': '192.168.7.63',  # LeCroy WavePro 404HD 4GHz 20GS/s
-    'LPScope': '192.168.7.66'     # LeCroy HDO4104
+    'testScope': '192.168.7.65',
 }
 
 external_delays = { # unit: milliseconds
-    'FastScope': 0,
-    'LPScope': 0
+    'testScope': 0,
 }
 
 #-------------------------------------------------------------------------------------------------------------
@@ -87,8 +66,8 @@ camera_config = {
     'fps': 10000,
     'pre_trigger_frames': -500,  # 500 frames before trigger
     'post_trigger_frames': 1000,  # 1000 frames after trigger
-    'resolution': (512, 512),
-    'save_format': 'hdf5'  # 'cine', 'hdf5', or 'both'
+    'resolution': (256, 256),
+    'save_format': 'both'  # 'cine', 'hdf5', or 'both'
 }
 
 # Set to None to disable camera recording
@@ -136,46 +115,25 @@ def get_channel_description(tr):
     """Channel description for all scopes"""
     descriptions = {
         # FastScope channels
-        'FastScope_C1': 'RF signal input',
-        'FastScope_C2': 'RF signal at amplifier output', 
-        'FastScope_C3': 'Probe signal',
-        'FastScope_C4': 'Trigger signal',
-        
-        # LPScope channels
-        'LPScope_C1': 'Isat, probe tip 1',
-        'LPScope_C2': 'Isweep, probe tip 2',
-        'LPScope_C3': 'Vsweep, probe tip 3',
-        'LPScope_C4': 'Reference signal'
+        'testScope_C1': 'RF signal input',
+        'testScope_C2': 'RF signal at amplifier output', 
+        'testScope_C3': 'Probe signal',
+        'testScope_C4': 'Trigger signal',
     }
     return descriptions.get(tr, f'Channel {tr} - No description available')
 
 def get_scope_description(scope_name):
     """Return description for each scope"""
     descriptions = {
-        'FastScope': 'LeCroy WavePro 404HD 4GHz 20GS/s; RF and probe diagnostics',
-        'LPScope': 'LeCroy HDO4104; Langmuir probe measurements'
+        'testScope': 'LeCroy WavePro 404HD 4GHz 20GS/s; RF and probe diagnostics',
     }
     return descriptions.get(scope_name, f'Scope {scope_name} - No description available')
 
-#-------------------------------------------------------------------------------------------------------------
-def get_positions():
-    """Generate a simple positions array for stationary shots.
-    Returns:
-        positions: Array of tuples (shot_num, x, y, z) with fixed position
-    """
-    # Create positions array for stationary acquisition
-    positions = np.zeros(num_shots, dtype=[('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4'), ('z', '>f4')])
-    
-    # All shots at the same position (0, 0, 0)
-    for i in range(num_shots):
-        positions[i] = (i + 1, 0.0, 0.0, 0.0)
-    
-    return positions
 
 #===============================================================================================================================================
 # Enhanced acquisition function with camera integration
 #===============================================================================================================================================
-def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, camera_config=None):
+def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, cam_config=None):
     """Run the main acquisition sequence with integrated camera recording
     
     Args:
@@ -192,15 +150,11 @@ def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, came
         try:
             print("Initializing Phantom camera...")
             # Set up configuration for HDF5 integration
-            config = camera_config.copy()
-            config['hdf5_file_path'] = save_path
-            config['num_shots'] = 1  # Single shot mode for integration
+
+            cam_config['hdf5_file_path'] = save_path
+            cam_config['num_shots'] = 1  # Single shot mode for integration
             
-            # Default to HDF5 format for integration
-            if 'save_format' not in config:
-                config['save_format'] = 'hdf5'
-            
-            camera_recorder = PhantomRecorder(config)
+            camera_recorder = PhantomRecorder(cam_config)
             print("✓ Camera initialized successfully")
         except Exception as e:
             print(f"⚠ Camera initialization failed: {e}")
@@ -211,11 +165,10 @@ def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, came
     
     try:
         # Initialize multi-scope acquisition (no motor control)
-        with MultiScopeAcquisition(scope_ips, save_path, external_delays, nz=None, is_45deg=False) as msa:
+        with MultiScopeAcquisition(scope_ips, save_path, nz=None, is_45deg=False) as msa:
             
             # Initialize HDF5 file structure
             print("Initializing HDF5 file...")
-            positions = get_positions()
             
             # Initialize HDF5 file with simple structure
             with h5py.File(save_path, 'a') as f:
@@ -223,7 +176,6 @@ def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, came
                 f.attrs['description'] = get_experiment_description()
                 f.attrs['creation_time'] = time.ctime()
                 f.attrs['num_shots'] = num_shots
-                f.attrs['stationary_acquisition'] = True
                 
                 # Add Python scripts used to create the file
                 script_contents = msa.get_script_contents()
@@ -234,10 +186,9 @@ def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, came
                     if scope_name not in f:
                         f.create_group(scope_name)
                 
-                # Create Control group (no position data needed for stationary acquisition)
+                # Create Control group
                 if '/Control' not in f:
                     ctl_grp = f.create_group('/Control')
-                    ctl_grp.attrs['acquisition_type'] = 'stationary'
                     ctl_grp.attrs['num_shots'] = num_shots
 
             # First shot: Initialize scopes and save time arrays
@@ -253,58 +204,26 @@ def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, came
                 acquisition_loop_start_time = time.time()
                 
                 print(f'Shot {shot_num}/{num_shots} - ', end='')
-                
+
+                # Arm scopes for trigger
+                for name in active_scopes:
+                    scope = msa.scopes[name]
+                    scope.set_trigger_mode('SINGLE')
+
                 if camera_recorder:
-                    # Parallel arming: both camera and scopes armed simultaneously
-                    try:
-                        print("parallel arming... ", end='')
-                        
-                        # Start camera recording (non-blocking)
-                        camera_recorder.start_recording_async()
-                        
-                        # Arm scopes for trigger (non-blocking)
-                        msa.arm_scopes_for_trigger(active_scopes)
-                        
-                        print("waiting for trigger... ", end='')
-                        
-                        # Wait for camera completion
-                        camera_timestamp = camera_recorder.wait_for_recording_completion()
-                        
-                        # Acquire scope data after trigger
-                        all_data = msa.acquire_shot_after_trigger(active_scopes, shot_num)
-                        
-                        print("✓", end='')
-                        
-                        # Save camera data (done after scope data is acquired and stored in memory)
-                        try:
-                            print(" saving camera... ", end='')
-                            camera_recorder.save_cine(shot_num - 1, camera_timestamp)
-                            print("✓", end='')
-                        except Exception as e:
-                            print(f"✗ Camera save error: {e}", end='')
-                        
-                    except Exception as e:
-                        print(f"✗ Parallel acquisition error: {e}", end='')
-                        # Fallback to scope-only acquisition
-                        for name in active_scopes:
-                            scope = msa.scopes[name]
-                            scope.set_trigger_mode('SINGLE')
-                        all_data = msa.acquire_shot(active_scopes, shot_num)
-                        
-                else:
-                    # Scope-only acquisition (original method)
-                    print("scope-only... ", end='')
-                    for name in active_scopes:
-                        scope = msa.scopes[name]
-                        scope.set_trigger_mode('SINGLE')
-                    all_data = msa.acquire_shot(active_scopes, shot_num)
-                    print("✓", end='')
+                    camera_recorder.start_recording()
                 
+                all_data = msa.acquire_shot(active_scopes, shot_num)
+
+                if camera_recorder:
+                    timestamp = camera_recorder.wait_for_recording_completion()
+                    print(f"\n=== Recording Complete ===")
+                    camera_recorder.save_cine(shot_num - 1, timestamp)
+                    print(f"Files saved']")
+
                 # Store scope data in memory first, then write to HDF5
                 if all_data:
-                    # No position data for stationary acquisition
-                    positions_dict = {'x': None, 'y': None, 'z': None}
-                    msa.update_hdf5(all_data, shot_num, positions_dict)
+                    msa.update_hdf5(all_data, shot_num, positions=None)
                 else:
                     print(f"Warning: No valid data acquired at shot {shot_num}")
 

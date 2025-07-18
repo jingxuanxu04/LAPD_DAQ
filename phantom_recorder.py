@@ -321,7 +321,7 @@ def main(num_shots=2, exposure_us=50, fps=5000, resolution=(256, 256),
             timestamp = recorder.wait_for_recording_completion()
             print(f"\n=== Recording Complete ===")
             recorder.save_cine(n, timestamp)
-            print(f"Cine files saved in: {base_path}")
+            print(f"Files saved")
 
         recorder.cleanup()
         
@@ -385,5 +385,5 @@ if __name__ == '__main__':
          pre_trigger_frames=-100, 
          post_trigger_frames=200,
          save_format='both', 
-         base_path=r"E:\Shadow data\Energetic_Electron_Ring\fast cam\test", 
-         experiment_name=None) 
+         base_path=r"E:\Shadow data\Energetic_Electron_Ring\test", 
+         experiment_name="test") 

@@ -124,7 +124,7 @@ def acquire_from_scope_sequence(scope, scope_name):
     return active_traces, data, headers
 
 class MultiScopeAcquisition:
-    def __init__(self, scope_ips, save_path, external_delays, nz=None, is_45deg=False):
+    def __init__(self, scope_ips, save_path, nz=None, is_45deg=False):
         """
         Args:
             scope_ips: dict of scope names and IP addresses
@@ -135,7 +135,6 @@ class MultiScopeAcquisition:
         """
         self.scope_ips = scope_ips
         self.save_path = save_path
-        self.external_delays = external_delays if external_delays else {}
         self.nz = nz
         self.is_45deg = is_45deg
         
@@ -477,21 +476,21 @@ class MultiScopeAcquisition:
                     data_ds.attrs['dtype'] = str(trace_data.dtype)
                     header_ds.attrs['description'] = f'Binary header data for {tr}'
             
-            # Update position array if we have valid position data
-            if self.is_45deg:
-                # For 45-degree probes, update each probe's position separately
-                for probe, pos in positions.items():
-                    if pos is not None:  # Only update if we have valid position data
-                        pos_arr = f[f'/Control/Positions/{probe}/positions_array']
-                        pos_arr[shot_num-1] = (shot_num, pos)
-            else:
-                # For regular XY/XYZ acquisition
-                pos_arr = f['/Control/Positions/positions_array']
-                if all(p is not None for p in positions.values()):
-                    if self.nz is None:
-                        pos_arr[shot_num-1] = (shot_num, positions['x'], positions['y'])
-                    else:
-                        pos_arr[shot_num-1] = (shot_num, positions['x'], positions['y'], positions['z'])
+            if positions is not None: # Update position array if we have valid position data
+                if self.is_45deg:
+                    # For 45-degree probes, update each probe's position separately
+                    for probe, pos in positions.items():
+                        if pos is not None:  # Only update if we have valid position data
+                            pos_arr = f[f'/Control/Positions/{probe}/positions_array']
+                            pos_arr[shot_num-1] = (shot_num, pos)
+                else:
+                    # For regular XY/XYZ acquisition
+                    pos_arr = f['/Control/Positions/positions_array']
+                    if all(p is not None for p in positions.values()):
+                        if self.nz is None:
+                            pos_arr[shot_num-1] = (shot_num, positions['x'], positions['y'])
+                        else:
+                            pos_arr[shot_num-1] = (shot_num, positions['x'], positions['y'], positions['z'])
 
 
     def update_plots(self, all_data, shot_num):
@@ -801,7 +800,7 @@ def run_acquisition(save_path, scope_ips, motor_ips, external_delays=None, nz=No
     print('Starting acquisition loop at', time.ctime())
     
     # Initialize multi-scope acquisition
-    with MultiScopeAcquisition(scope_ips, save_path, external_delays, nz, is_45deg) as msa:
+    with MultiScopeAcquisition(scope_ips, save_path, nz, is_45deg) as msa:
         try:
             # Initialize HDF5 file structure
             print("Initializing HDF5 file...")
