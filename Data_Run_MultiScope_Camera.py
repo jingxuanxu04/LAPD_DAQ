@@ -67,7 +67,7 @@ camera_config = {
     'pre_trigger_frames': -500,  # 500 frames before trigger
     'post_trigger_frames': 1000,  # 1000 frames after trigger
     'resolution': (256, 256),
-    'save_format': 'both'  # 'cine', 'hdf5', or 'both'
+    'hdf5_file_path': None  # Will be set to save_path during initialization
 }
 
 # Set to None to disable camera recording
@@ -106,7 +106,7 @@ def get_experiment_description():
     Notes:
     - All data synchronized and saved to unified HDF5 file
     - Scope data in respective scope groups (e.g., FastScope/, LPScope/)
-    - Camera data in FastCam/ group
+    - Camera metadata in /Control/FastCam/ group
     - Configuration data in Control/ group
     '''
 
@@ -159,7 +159,6 @@ def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, cam_
             print("Initializing Phantom camera...")
             # Set up configuration for HDF5 integration
             cam_config['hdf5_file_path'] = save_path
-            cam_config['num_shots'] = 1  # Single shot mode for integration
             
             camera_recorder = PhantomRecorder(cam_config)
             print("✓ Camera initialized successfully")
@@ -222,7 +221,7 @@ def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, cam_
                         timestamp = camera_recorder.wait_for_recording_completion()
                         print(f"\n=== Recording Complete ===")
                         camera_recorder.save_cine(shot_num - 1, timestamp)
-                        print(f"Files saved']")
+                        print(f"Files saved")
 
                     # Store scope data in memory first, then write to HDF5
                     if all_data:
@@ -288,6 +287,7 @@ def main():
         print(f'  Resolution: {camera_config["resolution"]}')
         print(f'  Frame rate: {camera_config["fps"]} fps')
         print(f'  Frames: {camera_config["pre_trigger_frames"]} to +{camera_config["post_trigger_frames"]}')
+        print(f'  HDF5 metadata: Yes')  # Always saved when camera is enabled
     
     print(f'Total shots: {num_shots}')
     print(f'Acquisition type: Stationary (no probe movement)')
