@@ -77,7 +77,6 @@ class PhantomRecorder:
                 config_group.attrs['resolution'] = self.config['resolution']
                 config_group.attrs['pre_trigger_frames'] = self.config['pre_trigger_frames']
                 config_group.attrs['post_trigger_frames'] = self.config['post_trigger_frames']
-                config_group.attrs['total_frames'] = abs(self.config['pre_trigger_frames']) + self.config['post_trigger_frames']
                 config_group.attrs['configuration_time'] = time.ctime()
                 
                 # Create extensible 1D arrays for shot data
@@ -132,45 +131,30 @@ class PhantomRecorder:
         return time.time()
         
     def save_cine(self, shot_number, timestamp):
-        """Save the recorded cine file and optionally update HDF5 metadata.
+        """Save the recorded cine file with frame range and trigger timestamp.
         
         Args:
-            shot_number (int): Current shot number for filename (0-based)
-            timestamp (float): Camera shot timestamp
+            shot_number (int): Current shot number for filename
         """
         # Create Cine object
         rec_cine = cine.Cine.from_camera(self.cam, 1)
+
+        filename = f"{self.config['name']}_shot{shot_number:03d}.cine"
+        full_path = os.path.join(self.config['save_path'], filename)
         
-        # Set frame range
+        # Set frame range and save
         frame_range = utils.FrameRange(self.config['pre_trigger_frames'], self.config['post_trigger_frames'])
         rec_cine.save_range = frame_range
         
-        # Generate cine filename with proper naming convention
-        cine_filename = f"{self.config['name']}_shot{shot_number+1:03d}.cine"
-        cine_full_path = os.path.join(self.config['save_path'], cine_filename)
+        # Save and monitor progress
+        print(f"Saving to {filename}")
+        rec_cine.save_non_blocking(filename=full_path)
         
-        # Always save cine file
-        print(f"Saving to {cine_filename}")
-        try:
-            rec_cine.save_non_blocking(filename=cine_full_path)
+        while rec_cine.save_percentage < 100:
+            print(f"Saving: {rec_cine.save_percentage}%", end='\r')
+            time.sleep(0.1)
             
-            while rec_cine.save_percentage < 100:
-                print(f"Saving: {rec_cine.save_percentage}%", end='\r')
-                time.sleep(0.05)
-                
-            print(f"Save complete: {cine_filename}")
-        except KeyboardInterrupt:
-            print(f"\nSave interrupted for {cine_filename}")
-            raise
-        
-        # Optionally update HDF5 metadata
-        if self.config.get('hdf5_file_path') is not None:
-            try:
-                self._update_hdf5_metadata(shot_number, cine_filename, timestamp)
-            except KeyboardInterrupt:
-                print("\nHDF5 metadata update interrupted")
-                raise
-        
+        print(f"Save complete: {full_path}")
         rec_cine.close()
         
     def _update_hdf5_metadata(self, shot_number, cine_filename, timestamp):
