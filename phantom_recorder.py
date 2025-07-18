@@ -93,7 +93,7 @@ class PhantomRecorder:
                 cine_filenames = fastcam_group.create_dataset('cine file name', 
                                                             shape=(0,), 
                                                             maxshape=(None,),
-                                                            dtype='U100',  # 100 character strings
+                                                            dtype=h5py.string_dtype(encoding='utf-8'),  # Variable-length UTF-8 strings
                                                             chunks=True)
                 cine_filenames.attrs['description'] = 'Cine filenames for each shot'
                 
