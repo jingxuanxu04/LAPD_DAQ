@@ -15,10 +15,10 @@ def stop_triggering(scope, retry=500):
             current_mode = scope.set_trigger_mode("")
             if current_mode[0:4] == 'STOP':
                 return True
-            time.sleep(0.01)
+            time.sleep(0.005)  # Reduced from 0.01 to 0.005 for faster response
         except KeyboardInterrupt:
-            print('Keyboard interrupted')
-            break
+            print('Keyboard interrupted in stop_triggering')
+            raise  # Re-raise to propagate the interrupt
         retry_count += 1
 
     print('Scope did not enter STOP state')
@@ -157,22 +157,21 @@ class MultiScopeAcquisition:
 
     def cleanup(self):
         """Clean up resources"""
+        print("Cleaning up scope resources...")
+        
         # Close all scope connections
-        for scope in self.scopes.values():
+        for name, scope in self.scopes.items():
             try:
+                print(f"Closing scope {name}...")
                 scope.__exit__(None, None, None)
             except Exception as e:
-                print(f"Error closing scope: {e}")
+                print(f"Error closing scope {name}: {e}")
         
-        # # Close all figures
-        # for fig in self.figures.values():
-        #     try:
-        #         plt.close(fig)
-        #     except Exception as e:
-        #         print(f"Error closing figure: {e}")
+
         
         self.scopes.clear()
-        # self.figures.clear()
+
+        print("Scope cleanup complete")
 
     def __enter__(self):
         return self
@@ -340,20 +339,28 @@ class MultiScopeAcquisition:
         failed_scopes = []
         
         for name in active_scopes:
-            print(f"Acquiring data from {name}...")
-            scope = self.scopes[name]
-            
-            if active_scopes[name] == 0:
-                traces, data, headers = acquire_from_scope(scope, name)
-            elif active_scopes[name] == 1:
-                traces, data, headers = acquire_from_scope_sequence(scope, name)
-            else:
-                raise ValueError(f"Invalid active_scopes value for {name}: {active_scopes[name]}")
+            try:
+                print(f"Acquiring data from {name}...")
+                scope = self.scopes[name]
+                
+                if active_scopes[name] == 0:
+                    traces, data, headers = acquire_from_scope(scope, name)
+                elif active_scopes[name] == 1:
+                    traces, data, headers = acquire_from_scope_sequence(scope, name)
+                else:
+                    raise ValueError(f"Invalid active_scopes value for {name}: {active_scopes[name]}")
 
-            if traces:
-                all_data[name] = (traces, data, headers)
-            else:
-                print(f"Warning: No valid data from {name} for shot {shot_num}")
+                if traces:
+                    all_data[name] = (traces, data, headers)
+                else:
+                    print(f"Warning: No valid data from {name} for shot {shot_num}")
+                    failed_scopes.append(name)
+                    
+            except KeyboardInterrupt:
+                print(f"\nScope acquisition interrupted for {name}")
+                raise  # Re-raise to propagate the interrupt
+            except Exception as e:
+                print(f"Error acquiring from {name}: {e}")
                 failed_scopes.append(name)
         
         # Remove failed scopes from active list
@@ -376,20 +383,28 @@ class MultiScopeAcquisition:
         failed_scopes = []
         
         for name in active_scopes:
-            print(f"Reading data from {name}...")
-            scope = self.scopes[name]
-            
-            if active_scopes[name] == 0:
-                traces, data, headers = acquire_from_scope(scope, name)
-            elif active_scopes[name] == 1:
-                traces, data, headers = acquire_from_scope_sequence(scope, name)
-            else:
-                raise ValueError(f"Invalid active_scopes value for {name}: {active_scopes[name]}")
+            try:
+                print(f"Reading data from {name}...")
+                scope = self.scopes[name]
+                
+                if active_scopes[name] == 0:
+                    traces, data, headers = acquire_from_scope(scope, name)
+                elif active_scopes[name] == 1:
+                    traces, data, headers = acquire_from_scope_sequence(scope, name)
+                else:
+                    raise ValueError(f"Invalid active_scopes value for {name}: {active_scopes[name]}")
 
-            if traces:
-                all_data[name] = (traces, data, headers)
-            else:
-                print(f"Warning: No valid data from {name} for shot {shot_num}")
+                if traces:
+                    all_data[name] = (traces, data, headers)
+                else:
+                    print(f"Warning: No valid data from {name} for shot {shot_num}")
+                    failed_scopes.append(name)
+                    
+            except KeyboardInterrupt:
+                print(f"\nScope data reading interrupted for {name}")
+                raise  # Re-raise to propagate the interrupt
+            except Exception as e:
+                print(f"Error reading from {name}: {e}")
                 failed_scopes.append(name)
         
         # Remove failed scopes from active list

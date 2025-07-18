@@ -34,8 +34,8 @@ User: Set experiment name and path
 '''
 exp_name = 'multiscope_camera_test'  # experiment name
 date = datetime.date.today()
-path = f"E:\Shadow data\Energetic_Electron_Ring\test"
-save_path = f"{path}\\{exp_name}_{date}.hdf5"
+base_path = r"E:\Shadow data\Energetic_Electron_Ring\test"
+save_path = os.path.join(base_path, f"{exp_name}_{date}.hdf5")
 
 #-------------------------------------------------------------------------------------------------------------
 '''
@@ -61,7 +61,7 @@ User: Set camera configuration
 '''
 camera_config = {
     'name': exp_name,
-    'save_path': path,  # Path for backup .cine files (if save_format includes 'cine')
+    'save_path': base_path,  # Directory path for .cine files
     'exposure_us': 30,
     'fps': 10000,
     'pre_trigger_frames': -500,  # 500 frames before trigger
@@ -144,13 +144,20 @@ def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, cam_
     """
     print('Starting multi-scope and camera acquisition at', time.ctime())
     
+    # Create HDF5 file first to ensure it exists for camera initialization
+    print("Creating HDF5 file...")
+    with h5py.File(save_path, 'w') as f:
+        # Add basic experiment description and creation time
+        f.attrs['description'] = get_experiment_description()
+        f.attrs['creation_time'] = time.ctime()
+        f.attrs['num_shots'] = num_shots
+    
     # Initialize camera recorder if configured
     camera_recorder = None
-    if camera_config is not None:
+    if cam_config is not None:
         try:
             print("Initializing Phantom camera...")
             # Set up configuration for HDF5 integration
-
             cam_config['hdf5_file_path'] = save_path
             cam_config['num_shots'] = 1  # Single shot mode for integration
             
@@ -167,16 +174,10 @@ def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, cam_
         # Initialize multi-scope acquisition (no motor control)
         with MultiScopeAcquisition(scope_ips, save_path, nz=None, is_45deg=False) as msa:
             
-            # Initialize HDF5 file structure
-            print("Initializing HDF5 file...")
+            # Initialize HDF5 file structure (append mode since file already exists)
+            print("Initializing HDF5 file structure...")
             
-            # Initialize HDF5 file with simple structure
             with h5py.File(save_path, 'a') as f:
-                # Add experiment description and creation time
-                f.attrs['description'] = get_experiment_description()
-                f.attrs['creation_time'] = time.ctime()
-                f.attrs['num_shots'] = num_shots
-                
                 # Add Python scripts used to create the file
                 script_contents = msa.get_script_contents()
                 f.attrs['source_code'] = str(script_contents)
@@ -201,37 +202,43 @@ def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, cam_
             
             # Main acquisition loop with parallel arming
             for shot_num in range(1, num_shots + 1):
-                acquisition_loop_start_time = time.time()
-                
-                print(f'Shot {shot_num}/{num_shots} - ', end='')
+                try:
+                    acquisition_loop_start_time = time.time()
+                    
+                    print(f'Shot {shot_num}/{num_shots} - ', end='')
 
-                # Arm scopes for trigger
-                for name in active_scopes:
-                    scope = msa.scopes[name]
-                    scope.set_trigger_mode('SINGLE')
+                    # Arm scopes for trigger using dedicated parallel arming function
+                    msa.arm_scopes_for_trigger(active_scopes)
 
-                if camera_recorder:
-                    camera_recorder.start_recording()
-                
-                all_data = msa.acquire_shot(active_scopes, shot_num)
+                    if camera_recorder:
+                        camera_recorder.start_recording()
+                    
+                    # Check for KeyboardInterrupt before scope acquisition
+                    time.sleep(0.001)  # Small delay to allow interrupt handling
+                    
+                    all_data = msa.acquire_shot_after_trigger(active_scopes, shot_num)
 
-                if camera_recorder:
-                    timestamp = camera_recorder.wait_for_recording_completion()
-                    print(f"\n=== Recording Complete ===")
-                    camera_recorder.save_cine(shot_num - 1, timestamp)
-                    print(f"Files saved']")
+                    if camera_recorder:
+                        timestamp = camera_recorder.wait_for_recording_completion()
+                        print(f"\n=== Recording Complete ===")
+                        camera_recorder.save_cine(shot_num - 1, timestamp)
+                        print(f"Files saved']")
 
-                # Store scope data in memory first, then write to HDF5
-                if all_data:
-                    msa.update_hdf5(all_data, shot_num, positions=None)
-                else:
-                    print(f"Warning: No valid data acquired at shot {shot_num}")
+                    # Store scope data in memory first, then write to HDF5
+                    if all_data:
+                        msa.update_hdf5(all_data, shot_num, positions=None)
+                    else:
+                        print(f"Warning: No valid data acquired at shot {shot_num}")
 
-                # Calculate and display remaining time
-                time_per_shot = (time.time() - acquisition_loop_start_time)
-                remaining_shots = num_shots - shot_num
-                remaining_time = remaining_shots * time_per_shot
-                print(f' | Remaining: {remaining_time/60:.1f}min ({remaining_time:.1f}s)')
+                    # Calculate and display remaining time
+                    time_per_shot = (time.time() - acquisition_loop_start_time)
+                    remaining_shots = num_shots - shot_num
+                    remaining_time = remaining_shots * time_per_shot
+                    print(f' | Remaining: {remaining_time/60:.1f}min ({remaining_time:.1f}s)')
+                    
+                except KeyboardInterrupt:
+                    print(f'\n______Shot {shot_num} interrupted by Ctrl-C______')
+                    raise  # Re-raise to propagate to outer exception handler
 
     except KeyboardInterrupt:
         print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
@@ -242,17 +249,19 @@ def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, cam_
         if camera_recorder:
             try:
                 camera_recorder.cleanup()
-                print("Camera resources cleaned up")
+                print("Camera resources cleaned up successfully")
             except Exception as e:
                 print(f"Error cleaning up camera: {e}")
+        
+        # Note: MultiScopeAcquisition cleanup is handled by the context manager (__exit__)
 
 #===============================================================================================================================================
 # Main Data Run sequence
 #===============================================================================================================================================
 def main():
     # Create save directory if it doesn't exist
-    if not os.path.exists(path):
-        os.makedirs(path)
+    if not os.path.exists(base_path):
+        os.makedirs(base_path)
         
     # Check if file already exists
     if os.path.exists(save_path):
@@ -271,7 +280,8 @@ def main():
     
     print('=== Multi-Scope and Camera Data Acquisition ===')
     print(f'Experiment: {exp_name}')
-    print(f'Save path: {save_path}')
+    print(f'Base path: {base_path}')
+    print(f'HDF5 file: {save_path}')
     print(f'Scopes: {list(scope_ips.keys())}')
     print(f'Camera: {"Enabled" if camera_config else "Disabled"}')
     if camera_config:
@@ -289,9 +299,15 @@ def main():
         run_acquisition_with_camera(save_path, scope_ips, external_delays, camera_config)
         
     except KeyboardInterrupt:
-        print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
+        print('\n' + '='*60)
+        print('______Acquisition INTERRUPTED by Ctrl-C______', '  at', time.ctime())
+        print('Cleaning up resources...')
+        print('='*60)
     except Exception as e:
-        print(f'\n______Halted due to error: {str(e)}______', '  at', time.ctime())
+        print('\n' + '='*60)
+        print(f'______Acquisition FAILED due to error: {str(e)}______', '  at', time.ctime())
+        print('Cleaning up resources...')
+        print('='*60)
         import traceback
         traceback.print_exc()
     finally:

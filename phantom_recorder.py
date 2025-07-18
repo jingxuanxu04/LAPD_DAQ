@@ -55,9 +55,6 @@ class PhantomRecorder:
         """Initialize HDF5 integration with existing multi_scope_acquisition file."""
         self.hdf5_path = self.config['hdf5_file_path']
         
-        if not os.path.exists(self.hdf5_path):
-            raise FileNotFoundError(f"HDF5 file not found: {self.hdf5_path}")
-        
         # Add camera configuration to the existing HDF5 file
         with h5py.File(self.hdf5_path, 'a') as f:
             # Create FastCam group under /Control if it doesn't exist
@@ -79,7 +76,7 @@ class PhantomRecorder:
                 fastcam_group.attrs['total_frames'] = abs(self.config['pre_trigger_frames']) + self.config['post_trigger_frames']
                 fastcam_group.attrs['configuration_time'] = time.ctime()
                 
-                print(f"FastCam configuration added to HDF5: {self.hdf5_path}")
+                print(f"FastCam configuration added to HDF5")
             
             # Create FastCam group at root level for shot data
             if 'FastCam' not in f:
@@ -101,8 +98,12 @@ class PhantomRecorder:
         print("Waiting for camera trigger... ", end='\r')
         
         # Wait for recording to complete
-        while not self.cam.partition_recorded(1):
-            time.sleep(0.1)
+        try:
+            while not self.cam.partition_recorded(1):
+                time.sleep(0.05)  # Reduced from 0.1 to 0.05 for faster response
+        except KeyboardInterrupt:
+            print("\nCamera recording interrupted by user")
+            raise  # Re-raise to propagate the interrupt
         
         print("Camera recording complete")
         return time.time()
@@ -129,17 +130,25 @@ class PhantomRecorder:
             full_path = os.path.join(self.config['save_path'], filename)
             
             print(f"Saving to {filename}")
-            rec_cine.save_non_blocking(filename=full_path)
-            
-            while rec_cine.save_percentage < 100:
-                print(f"Saving: {rec_cine.save_percentage}%", end='\r')
-                time.sleep(0.1)
+            try:
+                rec_cine.save_non_blocking(filename=full_path)
                 
-            print(f"Save complete: {full_path}")
+                while rec_cine.save_percentage < 100:
+                    print(f"Saving: {rec_cine.save_percentage}%", end='\r')
+                    time.sleep(0.05)  # Reduced from 0.1 to 0.05 for faster response
+                    
+                print(f"Save complete: {full_path}")
+            except KeyboardInterrupt:
+                print(f"\nSave interrupted for {filename}")
+                raise  # Re-raise to propagate the interrupt
         
         if save_format in ['hdf5', 'both']:
             # Save to HDF5
-            self._save_to_hdf5(rec_cine, shot_number, timestamp)
+            try:
+                self._save_to_hdf5(rec_cine, shot_number, timestamp)
+            except KeyboardInterrupt:
+                print("\nHDF5 save interrupted")
+                raise  # Re-raise to propagate the interrupt
         
         rec_cine.close()
         
@@ -221,7 +230,9 @@ class PhantomRecorder:
                     
                     if frame_idx % 100 == 0:
                         print(f"Frame {frame_idx}/{total_frames}", end='\r')
-                        
+                except KeyboardInterrupt:
+                    print(f"\nHDF5 save interrupted for {shot_name}")
+                    raise  # Re-raise to propagate the interrupt
                 except Exception as e:
                     print(f"Error reading frame {frame_idx}: {e}")
                     # Fill with zeros if frame read fails
@@ -245,10 +256,23 @@ class PhantomRecorder:
                     
     def cleanup(self):
         """Clean up camera resources."""
-        if hasattr(self, 'cam'):
-            self.cam.close()
-        if hasattr(self, 'ph'):
-            self.ph.close()
+        print("Cleaning up camera resources...")
+        
+        try:
+            if hasattr(self, 'cam'):
+                print("Closing camera connection...")
+                self.cam.close()
+        except Exception as e:
+            print(f"Error closing camera: {e}")
+            
+        try:
+            if hasattr(self, 'ph'):
+                print("Closing Phantom interface...")
+                self.ph.close()
+        except Exception as e:
+            print(f"Error closing Phantom interface: {e}")
+            
+        print("Camera cleanup complete")
             
 
 def main(num_shots=2, exposure_us=50, fps=5000, resolution=(256, 256), 
@@ -303,7 +327,7 @@ def main(num_shots=2, exposure_us=50, fps=5000, resolution=(256, 256),
         'pre_trigger_frames': pre_trigger_frames,
         'post_trigger_frames': post_trigger_frames,
         'resolution': resolution,
-        'save_format': 'cine',
+        'save_format': save_format,
         'hdf5_file_path': test_hdf5_path
     }
 
