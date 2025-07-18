@@ -1,5 +1,8 @@
 '''
 Setup a simple TCP server to send trigger pulses when requested
+Created 2024-12 by J. Han
+Modified 2025-07-17 by PP
+
 Runs on Raspberry Pi
 - Run normal server mode: python pi_server.py
 - Run self-test mode: python pi_server.py --test

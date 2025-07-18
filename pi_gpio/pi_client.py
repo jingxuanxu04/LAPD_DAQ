@@ -1,5 +1,8 @@
 '''
 Client interface for communicating with the GPIO trigger server on Raspberry Pi.
+Created 2024-12
+Modified 2025-07-17
+Author: J. Han
 
 This module provides a TriggerClient class for network communication with the Pi server,
 plus utility functions for motor control operations. The client can:
@@ -12,6 +15,8 @@ Usage:
     client = TriggerClient()
     client.send_trigger()
     client.wait_for_trigger(timeout=5)
+
+TODO: tungsten drop sequence needs separate set zero, and keep track of ball count.
 '''
 
 import socket

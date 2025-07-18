@@ -1,3 +1,20 @@
+/*
+Created 2024-12 by J. Han
+Modified 2025-07-17 by PP
+
+This module provides a C interface for the pigpio library.
+It is used to detect GPIO input and send GPIO output on selected GPIO pins.
+
+Usage:
+    #include "gpio_detect.h"
+    initialize_pigpio();
+    setup_gpio_pin(17);
+    wait_for_gpio_high(17, 1000000);
+    send_gpio_pulse(17);
+    terminate_pigpio();
+
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <pigpio.h>
