@@ -9,11 +9,11 @@ static int pigpio_initialized = 0;
 int initialize_pigpio() {
     if (!pigpio_initialized) {
         if (gpioInitialise() < 0) {
-            fprintf(stderr, "Failed to initialize pigpio.\n");
+            fprintf(stderr, "CCC Failed to initialize pigpio.\n");
             return -1;
         }
         pigpio_initialized = 1;
-        printf("pigpio library initialized.\n");
+        fprintf(stderr, "CCC pigpio library initialized.\n");
     }
     return 0;
 }
@@ -23,74 +23,76 @@ void terminate_pigpio() {
     if (pigpio_initialized) {
         gpioTerminate();
         pigpio_initialized = 0;
-        printf("pigpio library terminated.\n");
+        fprintf(stderr, "CCC pigpio library terminated.\n");
     }
 }
 
 // Setup GPIO pin for input
-int setup_gpio_pin(int pin) {
+int setup_gpio_pin(int gpio_num) {
     if (!pigpio_initialized) {
-        fprintf(stderr, "pigpio not initialized. Call initialize_pigpio() first.\n");
+        fprintf(stderr, "CCC pigpio not initialized. Call initialize_pigpio() first.\n");
         return -1;
     }
-    gpioSetMode(pin, PI_INPUT);
-    gpioSetPullUpDown(pin, PI_PUD_DOWN);
-    printf("GPIO pin %d configured for input with pull-down resistor.\n", pin);
+    gpioSetMode(gpio_num, PI_INPUT);
+    gpioSetPullUpDown(gpio_num, PI_PUD_DOWN);
+    fprintf(stderr, "CCC GPIO# %d configured for input with pull-down resistor.\n", gpio_num);
     return 0;
 }
 
 // Setup GPIO pin for output
-int setup_gpio_output_pin(int pin) {
+int setup_gpio_output_pin(int gpio_num) {
     if (!pigpio_initialized) {
-        fprintf(stderr, "pigpio not initialized. Call initialize_pigpio() first.\n");
+        fprintf(stderr, "CCC pigpio not initialized. Call initialize_pigpio() first.\n");
         return -1;
     }
-    gpioSetMode(pin, PI_OUTPUT);
-    gpioWrite(pin, PI_HIGH);
-    printf("GPIO pin %d configured for inverted output.\n", pin);
+    gpioSetMode(gpio_num, PI_OUTPUT);
+    gpioWrite(gpio_num, PI_HIGH);
+    fprintf(stderr, "CCC GPIO# %d configured for inverted output and set to HIGH.\n", gpio_num);
     return 0;
 }
 
+
 // Improved wait_for_gpio_high with hardware timing
-void wait_for_gpio_high(int pin, int timeout_us) {
+int wait_for_gpio_high(int gpio_num, int timeout_us) {
     if (!pigpio_initialized) {
-        fprintf(stderr, "pigpio not initialized. Call initialize_pigpio() first.\n");
-        return;
+        fprintf(stderr, "CCC pigpio not initialized. Call initialize_pigpio() first.\n");
+        return 0;
     }
     
     uint32_t start_tick = gpioTick();
     uint32_t current_tick;
     
     // Use hardware timer for precise edge detection
-    gpioSetWatchdog(pin, timeout_us/1000); // Set watchdog in ms
+    //pp gpioSetWatchdog(gpio_num, timeout_us/1000); // Set watchdog in ms; timeout=0 disables watchdog
     
+    fprintf(stderr, "CCC busy-wait...");
     while (1) {
-        if (gpioRead(pin) == PI_HIGH) {
-            gpioSetWatchdog(pin, 0); // Disable watchdog
-            printf("GPIO pin %d detected HIGH.\n", pin);
-            return;
+        if (gpioRead(gpio_num) == PI_HIGH) {
+            //pp gpioSetWatchdog(gpio_num, 0); // timeout=0 disables watchdog
+            fprintf(stderr, "CCC GPIO# %d detected HIGH...", gpio_num);
+            return 1;
         }
         
         current_tick = gpioTick();
         if (timeout_us > 0 && (current_tick - start_tick) > timeout_us) {
-            gpioSetWatchdog(pin, 0); // Disable watchdog
-            fprintf(stderr, "Timeout waiting for GPIO pin %d\n", pin);
-            return;
+            //pp gpioSetWatchdog(gpio_num, 0); // timeout=0 disables watchdog
+            fprintf(stderr, "CCC Timeout...");
+            return 0;
         }
         
         // Use minimal sleep to reduce CPU load while maintaining low latency
-        gpioDelay(1); // 1 microsecond delay
+        gpioDelay(100); // 100 microsecond delay
     }
 }
 
 // Send a trigger pulse on GPIO pin
-void send_gpio_pulse(int pin) {
+void send_gpio_pulse(int gpio_num) {
     if (!pigpio_initialized) {
-        fprintf(stderr, "pigpio not initialized. Call initialize_pigpio() first.\n");
+        fprintf(stderr, "CCC pigpio not initialized. Call initialize_pigpio() first.\n");
         return;
     }
-    gpioWrite(pin, PI_LOW);  
-    gpioDelay(1000);            // Trigger pulse duration
-    gpioWrite(pin, PI_HIGH);   
-    // printf("Trigger pulse sent on GPIO pin %d.\n", pin);
+    gpioWrite(gpio_num, PI_LOW);
+    gpioDelay(1000);            // Wait for 1 ms
+    gpioWrite(gpio_num, PI_HIGH);
+    fprintf(stderr, "CCC Trigger pulse sent on GPIO# %d.\n", gpio_num);
 }

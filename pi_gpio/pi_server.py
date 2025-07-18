@@ -1,6 +1,17 @@
 '''
 Setup a simple TCP server to send trigger pulses when requested
 Runs on Raspberry Pi
+- Run normal server mode: python pi_server.py
+- Run self-test mode: python pi_server.py --test
+- Run custom test parameters: python pi_server.py --test --iterations <N> --delay <T>
+NOTE:
+    GPIO 0 and 1 are reserved for I2C and are not available for general use. 
+    GPIO 2 and 3 also have fixed internal pull-up resistors and are not 
+       recommended for general use unless the I2C functionality is disabled. 
+    GPIO 14 and 15 are typically used for serial communication and are not
+       available for general GPIO use unless serial is disabled. 
+    GPIO 34-39 are specifically designed as input-only and do not have internal 
+       pull-up or pull-down resistors, making them unsuitable for output. 
 '''
 
 import socket
@@ -12,7 +23,10 @@ import ctypes
 import os.path
 
 IP_ADDR = '192.168.7.38'
-PORT = 5000
+IP_ADDR = '127.0.0.1'
+PORT    = 54321
+TRIG_OUT_GPIO_NUM = 23
+TRIG_IN_GPIO_NUM  = 25
 
 class TriggerServer:
     '''
@@ -24,55 +38,56 @@ class TriggerServer:
     Attributes:
         host (str): IP address to bind the server to
         port (int): Port number to listen on
-        trig_out_pin (int): GPIO pin number for trigger output
-        trig_in_pin (int): GPIO pin number for trigger input detection
+        trig_out_gpio_num (int): GPIO number for trigger output
+        trig_in_gpio_num (int): GPIO number for trigger input detection
         running (bool): Server run state
         gpio_lib: Loaded C library for GPIO control
         sock: TCP socket for network communication
 
     Example:
         server = TriggerServer(host='192.168.1.100', port=5000, 
-                             trig_out_pin=25, trig_in_pin=27)
+                             trig_out_gpio_num=25, trig_in_gpio_num=27)
         server.start()  # Starts listening for trigger requests
     '''
-    def __init__(self, trig_out_pin, trig_in_pin, host=IP_ADDR, port=PORT):
+    def __init__(self, trig_out_gpio_num, trig_in_gpio_num, host=IP_ADDR, port=PORT):
         self.host = host
         self.port = port
-        self.trig_out_pin = trig_out_pin
-        self.trig_in_pin = trig_in_pin
+        self.trig_out_gpio_num = trig_out_gpio_num
+        self.trig_in_gpio_num  = trig_in_gpio_num
         self.running = True
         
         # Check if GPIO library exists
-        gpio_lib_path = "/home/generalpi/pi_gpio/gpio_detect.so"
+        gpio_lib_path = "./gpio_detect.so" #  WAS "/home/generalpi/pi_gpio/gpio_detect.so"
         if not os.path.exists(gpio_lib_path):
-            raise FileNotFoundError(f"GPIO library not found at {gpio_lib_path}")
+            raise FileNotFoundError(f'compiled "gpio_detect.c" library not found at {gpio_lib_path}')
             
         try:
             # Load the GPIO C library
             self.gpio_lib = ctypes.CDLL(gpio_lib_path)
         except OSError as e:
-            raise RuntimeError(f"Failed to load GPIO library: {str(e)}")
+            raise RuntimeError(f'Failed to load compiled "gpio_detect.c" library: {str(e)}')
             
         self._setup_gpio_functions()
         
-        try:
-            # Initialize GPIO
-            if self.gpio_lib.initialize_pigpio() < 0:
-                raise RuntimeError("Failed to initialize pigpio")
-                
-            # Setup pins
-            if self.gpio_lib.setup_gpio_output_pin(self.trig_out_pin) < 0:
-                raise RuntimeError(f"Failed to setup output pin {self.trig_out_pin}")
-            if self.gpio_lib.setup_gpio_pin(self.trig_in_pin) < 0:
-                raise RuntimeError(f"Failed to setup input pin {self.trig_in_pin}")
+        # Initialize GPIO
+        if self.gpio_lib.initialize_pigpio() < 0:
+            raise RuntimeError("Failed to initialize pigpio")
             
-            # Setup socket
-            try:
-                self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                self.sock.bind((self.host, self.port))
-            except socket.error as e:
-                raise RuntimeError(f"Socket error: {str(e)}")
+        # Setup pins
+        if self.gpio_lib.setup_gpio_output_pin(self.trig_out_gpio_num) < 0:
+            raise RuntimeError(f"Failed to setup output GPIO# {self.trig_out_gpio_num}")
+        if self.gpio_lib.setup_gpio_pin(self.trig_in_gpio_num) < 0:
+            raise RuntimeError(f"Failed to setup input GPIO# {self.trig_in_gpio_num}")
+        
+        # Setup socket
+        try:
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        except socket.error as e:
+            raise RuntimeError(f"Socket error: {str(e)}")
+
+        try:
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.sock.bind((self.host, self.port))
                 
             # Setup signal handlers
             signal.signal(signal.SIGINT, self.signal_handler)
@@ -81,7 +96,7 @@ class TriggerServer:
         except Exception as e:
             # Clean up if initialization fails
             if hasattr(self, 'gpio_lib'):
-                self.gpio_lib.terminate_pigpio()
+                self.gpio_lib.terminate_pigpio()    #probably never gets here
             if hasattr(self, 'sock'):
                 self.sock.close()
             raise
@@ -110,16 +125,24 @@ class TriggerServer:
     def send_trigger(self):
         """Send a trigger pulse using C function"""
         try:
-            self.gpio_lib.send_gpio_pulse(self.trig_out_pin)
+            self.gpio_lib.send_gpio_pulse(self.trig_out_gpio_num)
+            print(F'>>> sent trigger on GPIO# {self.trig_out_gpio_num}', flush=True)
+            return True
         except Exception as e:
             raise RuntimeError(f"Failed to send trigger: {str(e)}")
-
     
     def wait_for_trigger(self, timeout=1):
         """Wait for rising edge using C function"""
         try:
-            return self.gpio_lib.wait_for_gpio_high(self.trig_in_pin, int(timeout * 1000000))  # Convert to microseconds
+            print(f'>>> waiting for trigger on GPIO# {self.trig_in_gpio_num}...', end='', flush=True)
+            wait_status = self.gpio_lib.wait_for_gpio_high(self.trig_in_gpio_num, int(timeout * 1000000))  # Convert to microseconds
+            if wait_status:
+                print('>>> got it', flush=True)
+            else:
+                print('>>> failed', flush=True)
+            return wait_status
         except Exception as e:
+            print('failed', flush=True)
             raise RuntimeError(f"Failed to wait for trigger: {str(e)}")
     
     def handle_command(self, command):
@@ -127,6 +150,7 @@ class TriggerServer:
             return 'ERR EMPTY_COMMAND'
             
         try:
+            print(f'>>> got command {command}', flush=True)
             cmd_parts = command.upper().split()
             cmd = cmd_parts[0]
             
@@ -138,29 +162,29 @@ class TriggerServer:
             elif cmd == 'TEST_INPUT':
                 # Parse test parameters
                 if len(cmd_parts) < 2:
-                    return 'ERR MISSING_PIN'
+                    return 'ERR MISSING_GPIO_NUM'
                 try:
-                    pin = int(cmd_parts[1])
+                    gpio_num = int(cmd_parts[1])
                     iterations = int(cmd_parts[2]) if len(cmd_parts) > 2 else 5
                     delay = float(cmd_parts[3]) if len(cmd_parts) > 3 else 0.1
                 except ValueError:
                     return 'ERR INVALID_PARAMETERS'
                     
-                success = self.test_gpio_input(pin, iterations, delay)
+                success = self.test_gpio_input(gpio_num, iterations, delay)
                 return 'TEST_PASS' if success else 'TEST_FAIL'
                 
             elif cmd == 'TEST_OUTPUT':
                 # Parse test parameters
                 if len(cmd_parts) < 2:
-                    return 'ERR MISSING_PIN'
+                    return 'ERR MISSING_GPIO_NUM'
                 try:
-                    pin = int(cmd_parts[1])
+                    gpio_num = int(cmd_parts[1])
                     iterations = int(cmd_parts[2]) if len(cmd_parts) > 2 else 5
                     delay = float(cmd_parts[3]) if len(cmd_parts) > 3 else 0.1
                 except ValueError:
                     return 'ERR INVALID_PARAMETERS'
                     
-                success = self.test_gpio_output(pin, iterations, delay)
+                success = self.test_gpio_output(gpio_num, iterations, delay)
                 return 'TEST_PASS' if success else 'TEST_FAIL'
                 
             elif cmd == 'WAIT_TRIG':
@@ -178,17 +202,17 @@ class TriggerServer:
         except Exception as e:
             return f'ERR {str(e)}'
     
-    def test_gpio_input(self, pin, iterations=10, delay=0.1):
+    def test_gpio_input(self, gpio_num, iterations=10, delay=0.1):
         """
-        Test GPIO input detection on specified pin.
+        Test GPIO input detection on specified gpio_num.
         
         This test verifies the GPIO input detection by:
-        1. Waiting for signal on the specified input pin
+        1. Waiting for signal on the specified input gpio_num
         2. Reporting detection success/failure
         3. Repeating for specified iterations
         
         Args:
-            pin (int): GPIO pin number to test for input
+            gpio_num (int): GPIO number to test for input
             iterations (int): Number of detection cycles to run (default: 10)
             delay (float): Delay between attempts in seconds (default: 0.1)
                 - Should account for external signal timing
@@ -197,14 +221,14 @@ class TriggerServer:
             bool: True if all signals were detected, False otherwise
         """
         print(f"\nStarting GPIO input test:")
-        print(f"Input Pin: {pin}")
+        print(f"Input gpio_num: {gpio_num}")
         print(f"Iterations: {iterations}")
         print(f"Delay: {delay}s")
         
         try:
             # Setup pin for input
-            if self.gpio_lib.setup_gpio_pin(pin) < 0:
-                raise RuntimeError(f"Failed to setup input pin {pin}")
+            if self.gpio_lib.setup_gpio_pin(gpio_num) < 0:
+                raise RuntimeError(f"Failed to setup input gpio_num {gpio_num}")
             
             success_count = 0
             for i in range(iterations):
@@ -212,34 +236,34 @@ class TriggerServer:
                 
                 try:
                     # Wait for signal
-                    if self.gpio_lib.wait_for_gpio_high(pin, int(1000000)):  # 1s timeout
+                    if self.gpio_lib.wait_for_gpio_high(gpio_num, int(1000000)):  # 1s timeout
                         success_count += 1
-                        print("✓ Signal detected")
+                        print("✓ Signal detected", flush=True)
                     else:
-                        print("✗ No signal detected")
+                        print("✗ No signal detected", flush=True)
                 except Exception as e:
-                    print(f"✗ Error during detection: {str(e)}")
+                    print(f"✗ Error during detection: {str(e)}", flush=True)
                 
                 time.sleep(delay)
             
-            print(f"\nTest complete: {success_count}/{iterations} successful")
+            print(f"\nTest complete: {success_count}/{iterations} successful", flush=True)
             return success_count == iterations
             
         except Exception as e:
-            print(f"\nTest failed: {str(e)}")
+            print(f"\nTest failed: {str(e)}", flush=True)
             return False
     
-    def test_gpio_output(self, pin, iterations=10, delay=0.1):
+    def test_gpio_output(self, gpio_num, iterations=10, delay=0.1):
         """
-        Test GPIO output triggering on specified pin.
+        Test GPIO output triggering on specified gpio_num.
         
         This test verifies the GPIO output by:
-        1. Sending trigger pulses on specified output pin
+        1. Sending trigger pulses on specified output gpio_num
         2. Reporting trigger sent
         3. Repeating for specified iterations
         
         Args:
-            pin (int): GPIO pin number to test for output
+            gpio_num (int): GPIO number to test for output
             iterations (int): Number of trigger cycles to run (default: 10)
             delay (float): Delay between triggers in seconds (default: 0.1)
                 - Must be longer than trigger pulse width (1ms)
@@ -248,14 +272,14 @@ class TriggerServer:
             bool: True if all triggers were sent successfully, False otherwise
         """
         print(f"\nStarting GPIO output test:")
-        print(f"Output Pin: {pin}")
+        print(f"Output gpio_num: {gpio_num}")
         print(f"Iterations: {iterations}")
         print(f"Delay: {delay}s")
         
         try:
-            # Setup pin for output
-            if self.gpio_lib.setup_gpio_output_pin(pin) < 0:
-                raise RuntimeError(f"Failed to setup output pin {pin}")
+            # Setup gpio_num for output
+            if self.gpio_lib.setup_gpio_output_pin(gpio_num) < 0:
+                raise RuntimeError(f"Failed to setup output gpio_num {gpio_num}")
             
             success_count = 0
             for i in range(iterations):
@@ -263,30 +287,30 @@ class TriggerServer:
                 
                 try:
                     # Send trigger
-                    self.gpio_lib.send_gpio_pulse(pin)
+                    self.gpio_lib.send_gpio_pulse(gpio_num)
                     success_count += 1
-                    print("✓ Trigger sent")
+                    print("✓ Trigger sent", flush=True)
                 except Exception as e:
-                    print(f"✗ Failed to send trigger: {e}")
+                    print(f"✗ Failed to send trigger: {e}", flush=True)
                 
                 time.sleep(delay)
             
-            print(f"\nTest complete: {success_count}/{iterations} successful")
+            print(f"\nTest complete: {success_count}/{iterations} successful", flush=True)
             return success_count == iterations
             
         except Exception as e:
-            print(f"\nTest failed: {str(e)}")
+            print(f"\nTest failed: {str(e)}", flush=True)
             return False
     
     def start(self):
         try:
             self.sock.listen(1)
-            print(f"Server listening on {self.host}:{self.port}")
+            print(f"Server listening on {self.host}:{self.port}", flush=True)
             
             while self.running:
                 try:
                     conn, addr = self.sock.accept()
-                    print(f"Connected by {addr}")
+                    print(f"\nsocket connection from {addr}", flush=True)
                     
                     while self.running:
                         try:
@@ -299,18 +323,18 @@ class TriggerServer:
                             conn.send(f"{response}\n".encode('ascii'))
                             
                         except socket.error as e:
-                            print(f"Socket error while handling client: {str(e)}")
+                            print(f"Socket error while handling client: {str(e)}", flush=True)
                             break
                         except Exception as e:
-                            print(f"Error handling command: {str(e)}")
+                            print(f"Error handling command: {str(e)}", flush=True)
                             
                 except KeyboardInterrupt:
-                    print("\nReceived keyboard interrupt...")
+                    print("\nReceived keyboard interrupt...", flush=True)
                     break
                 except socket.error as e:
-                    print(f"Socket error: {str(e)}")
+                    print(f"Socket error: {str(e)}", flush=True)
                 except Exception as e:
-                    print(f"Error: {str(e)}")
+                    print(f"Error: {str(e)}", flush=True)
                 finally:
                     if 'conn' in locals():
                         try:
@@ -319,17 +343,17 @@ class TriggerServer:
                             pass
                             
         except Exception as e:
-            print(f"Fatal error: {str(e)}")
+            print(f"Fatal error: {str(e)}", flush=True)
             self.cleanup()
     
     def signal_handler(self, signum, frame):
-        print("\nShutting down server...")
+        print("\nShutting down server...", flush=True)
         self.running = False
         self.cleanup()
         sys.exit(0)
         
     def cleanup(self):
-        print("Cleaning up resources...")
+        print("Cleaning up resources...", flush=True)
         try:
             self.gpio_lib.terminate_pigpio()
         except:
@@ -340,40 +364,33 @@ class TriggerServer:
         except:
             pass
             
-        print("Server stopped")
+        print("Server stopped", flush=True)
 
 #===============================================================================================================================================
 #<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
 #===============================================================================================================================================
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='GPIO Trigger Server')
-    parser.add_argument('--host', default=IP_ADDR, help='Host IP address')
-    parser.add_argument('--port', type=int, default=PORT, help='Port number')
-    parser.add_argument('--trig-out', type=int, default=23, help='Trigger output pin')
-    parser.add_argument('--trig-in', type=int, default=25, help='Trigger input pin')
-    
-    args = parser.parse_args()
-    
     try:
-        # Initialize the server with GPIO pins only
-        server = TriggerServer(trig_out_pin=args.trig_out, trig_in_pin=args.trig_in, 
-                             host=args.host, port=args.port)
-        print(f"GPIO Trigger Server initialized")
-        print(f"Monitoring trigger input on pin {server.trig_in_pin}")
-        print(f"Sending trigger output on pin {server.trig_out_pin}")
-        print(f"Listening on {server.host}:{server.port}")
-        print("Press Ctrl+C to stop.")
-        
-        # Start the server (no motor control logic here)
-        server.start()
-        
-    except KeyboardInterrupt:
-        print("\nKeyboardInterrupt: Stopping server.")
+        server = TriggerServer(trig_out_gpio_num=TRIG_OUT_GPIO_NUM, trig_in_gpio_num=TRIG_IN_GPIO_NUM, 
+                             host=IP_ADDR, port=PORT)
     except Exception as e:
-        print(f"An error occurred: {e}")
-    finally:
-        if 'server' in locals():
-            server.cleanup()
-        print("GPIO cleanup complete.")
+        print(f"Failed to initialize server: {str(e)}")
+        sys.exit(1)
 
+    print(f"GPIO Trigger Server initialized")
+    print(f"Monitoring trigger input on GPIO# {server.trig_in_gpio_num}")
+    print(f"Sending trigger output on GPIO# {server.trig_out_gpio_num}")
+    print(f"Listening on {server.host}:{server.port}")
+    print("Press Ctrl+C to stop.")
+        
+    try:
+        # Start server
+        server.start()
+    except KeyboardInterrupt:
+        print("\nOperation interrupted by user")
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        sys.exit(1)
+    finally:
+        server.cleanup()
