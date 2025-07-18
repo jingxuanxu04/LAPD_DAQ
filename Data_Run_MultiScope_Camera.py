@@ -206,28 +206,20 @@ def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, cam_
                     
                     print(f'Shot {shot_num}/{num_shots} - ', end='')
 
-                    # Arm scopes for trigger using dedicated parallel arming function
-                    msa.arm_scopes_for_trigger(active_scopes)
+                    msa.arm_scopes_for_trigger(active_scopes) # Arm scopes for trigger
 
                     if camera_recorder:
                         camera_recorder.start_recording()
-                    
-                    # Check for KeyboardInterrupt before scope acquisition
-                    time.sleep(0.001)  # Small delay to allow interrupt handling
-                    
-                    all_data = msa.acquire_shot_after_trigger(active_scopes, shot_num)
-
-                    if camera_recorder:
                         timestamp = camera_recorder.wait_for_recording_completion()
                         print(f"\n=== Recording Complete ===")
-                        camera_recorder.save_cine(shot_num - 1, timestamp)
-                        print(f"Files saved")
+                    
+                    all_data = msa.acquire_shot(active_scopes, shot_num) # Acquire data from scopes
 
-                    # Store scope data in memory first, then write to HDF5
-                    if all_data:
-                        msa.update_hdf5(all_data, shot_num, positions=None)
-                    else:
-                        print(f"Warning: No valid data acquired at shot {shot_num}")
+                    if camera_recorder:
+                        camera_recorder.save_cine(shot_num - 1, timestamp)
+                        print(f"Cine file saved")
+
+                    msa.update_hdf5(all_data, shot_num, positions=None) # Save scope data to HDF5
 
                     # Calculate and display remaining time
                     time_per_shot = (time.time() - acquisition_loop_start_time)

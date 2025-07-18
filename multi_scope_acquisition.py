@@ -14,8 +14,9 @@ def stop_triggering(scope, retry=500):
         try:
             current_mode = scope.set_trigger_mode("")
             if current_mode[0:4] == 'STOP':
+                print('Scope entered STOP state')
                 return True
-            time.sleep(0.005)  # Reduced from 0.01 to 0.005 for faster response
+            time.sleep(0.005)
         except KeyboardInterrupt:
             print('Keyboard interrupted in stop_triggering')
             raise  # Re-raise to propagate the interrupt
@@ -30,10 +31,8 @@ def init_acquire_from_scope(scope, scope_name):
         scope: LeCroy_Scope instance
         scope_name: Name of the scope
     Returns:
-        tuple: (traces, data, headers, time_array)
-            - traces: List of trace names that have valid data
-            - data: Dict of trace data
-            - headers: Dict of trace headers
+        tuple: (is_sequence, time_array)
+            - is_sequence: 0 for RealTime mode, 1 for sequence mode
             - time_array: Time array for the scope
     """
     time_array = None
@@ -42,30 +41,33 @@ def init_acquire_from_scope(scope, scope_name):
     traces = scope.displayed_traces()
     
     for tr in traces:
-        if stop_triggering(scope) == True:
-            trace_bytes, header_bytes = scope.acquire_bytes(tr)
-            hdr = scope.translate_header_bytes(header_bytes)
-        else:
-            raise Exception('Scope did not enter STOP state')
+        try:
+            if stop_triggering(scope) == True:
+                trace_bytes, header_bytes = scope.acquire_bytes(tr)
+                hdr = scope.translate_header_bytes(header_bytes)
+            else:
+                raise Exception('Scope did not enter STOP state')
 
-        if hdr.subarray_count < 2: # Get number of segments
-            is_sequence = 0 # in RealTime mode
-        else:
-            is_sequence = 1 # in sequence mode
+            if hdr.subarray_count < 2: # Get number of segments
+                is_sequence = 0 # in RealTime mode
+            else:
+                is_sequence = 1 # in sequence mode
 
-
-        # Get time array from first valid trace
-        if time_array is None:
-            time_array = scope.time_array(tr)
-
-        # except Exception as e:
-        #     if "timeout" in str(e).lower():
-        #         print(f"Timeout acquiring {tr} from {scope_name} after {TIMEOUT}s")
-        #     elif "NSamples = 0" in str(e):
-        #         print(f"Skipping {tr} from {scope_name}: Channel is displayed but not active")
-        #     else:
-        #         print(f"Error acquiring {tr} from {scope_name}: {e}")
-        #     continue
+            # Get time array from first valid trace
+            if time_array is None:
+                time_array = scope.time_array(tr)
+                
+            # Successfully got data from at least one trace, break out of loop
+            break
+                
+        except Exception as e:
+            print(f"Error initializing {tr} from {scope_name}: {e}")
+            continue
+    
+    # Check if we got valid data
+    if is_sequence is None or time_array is None:
+        print(f"Warning: Could not get valid data from any trace on {scope_name}")
+        return None, None
     
     return is_sequence, time_array
 
@@ -310,12 +312,12 @@ class MultiScopeAcquisition:
                 # Get initial data and time arrays
                 is_sequence, time_array = init_acquire_from_scope(scope, name)
 
-                if is_sequence != None:  # Only save if we got valid data
+                if is_sequence is not None and time_array is not None:  # Only save if we got valid data
                     self.save_time_arrays(name, time_array, is_sequence)
                     active_scopes[name] = is_sequence
                     print(f"Successfully initialized {name}")
                 else:
-                    print(f"Warning: Could not initialize {name} - no traces returned")
+                    print(f"Warning: Could not initialize {name} - no valid data returned")
                     self.cleanup_scope(name)
                     
             except Exception as e:
@@ -373,41 +375,6 @@ class MultiScopeAcquisition:
             scope.set_trigger_mode('SINGLE')
         print("armed")
     
-    def acquire_shot_after_trigger(self, active_scopes, shot_num):
-        """Acquire data from all active scopes after trigger has occurred (for parallel operation)"""
-        all_data = {}
-        failed_scopes = []
-        
-        for name in active_scopes:
-            try:
-                print(f"Reading data from {name}...")
-                scope = self.scopes[name]
-                
-                if active_scopes[name] == 0:
-                    traces, data, headers = acquire_from_scope(scope, name)
-                elif active_scopes[name] == 1:
-                    traces, data, headers = acquire_from_scope_sequence(scope, name)
-                else:
-                    raise ValueError(f"Invalid active_scopes value for {name}: {active_scopes[name]}")
-
-                if traces:
-                    all_data[name] = (traces, data, headers)
-                else:
-                    print(f"Warning: No valid data from {name} for shot {shot_num}")
-                    failed_scopes.append(name)
-                    
-            except KeyboardInterrupt:
-                print(f"\nScope data reading interrupted for {name}")
-                raise  # Re-raise to propagate the interrupt
-            except Exception as e:
-                print(f"Error reading from {name}: {e}")
-                failed_scopes.append(name)
-        
-        # Remove failed scopes from active list
-        for name in failed_scopes:
-            active_scopes.remove(name)
-        
-        return all_data
 
     def save_time_arrays(self, scope_name, time_array, is_sequence):
         """Save time array for a scope to HDF5 file
