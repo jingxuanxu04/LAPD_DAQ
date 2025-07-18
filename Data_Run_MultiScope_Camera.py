@@ -41,7 +41,7 @@ save_path = os.path.join(base_path, f"{exp_name}_{date}.hdf5")
 '''
 User: Set acquisition parameters
 '''
-num_shots = 10  # Total number of shots to acquire
+num_shots = 5  # Total number of shots to acquire
 
 #-------------------------------------------------------------------------------------------------------------
 '''
@@ -310,22 +310,7 @@ def main():
         if os.path.isfile(save_path):
             size = os.stat(save_path).st_size/(1024*1024)
             print(f'Wrote file "{save_path}", {size:.1f} MB')
-            
-            # Show final HDF5 structure
-            print('\nFinal HDF5 structure:')
-            try:
-                with h5py.File(save_path, 'r') as f:
-                    def print_structure(name, obj):
-                        indent = "  " * name.count('/')
-                        if isinstance(obj, h5py.Group):
-                            print(f"{indent}{name}/")
-                        else:
-                            shape_str = f"{obj.shape}" if hasattr(obj, 'shape') else ""
-                            print(f"{indent}{name} {shape_str}")
-                    
-                    f.visititems(print_structure)
-            except Exception as e:
-                print(f"Could not display HDF5 structure: {e}")
+
         else:
             print(f'File "{save_path}" was not created')
 

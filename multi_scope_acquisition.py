@@ -14,7 +14,6 @@ def stop_triggering(scope, retry=500):
         try:
             current_mode = scope.set_trigger_mode("")
             if current_mode[0:4] == 'STOP':
-                print('Scope entered STOP state')
                 return True
             time.sleep(0.005)
         except KeyboardInterrupt:
