@@ -114,11 +114,11 @@ class PhantomRecorder:
         
         # Clear previous recordings and start new recording
         self.cam.record(cine=1, delete_all=True)
-        print("armed")
+        print("✓")
         
     def wait_for_recording_completion(self):
         """Wait for recording to complete and return timestamp."""
-        print("Waiting for camera trigger... ")
+        print("Waiting for camera trigger... ", end='')
         
         # Wait for recording to complete
         try:
@@ -128,7 +128,7 @@ class PhantomRecorder:
             print("\nCamera recording interrupted by user")
             raise  # Re-raise to propagate the interrupt
         
-        print("Camera recording complete")
+        print("✓")
         return time.time()
         
     def save_cine(self, shot_number, timestamp):
@@ -157,15 +157,23 @@ class PhantomRecorder:
             print(f"Adjusted frame range to: ({frame_range.first_image}, {frame_range.last_image})")
         
         # Save and monitor progress
-        print(f"Saving to {filename}")
+        print(f"Saving cine file to {filename}")
         rec_cine.save_non_blocking(filename=full_path, range=frame_range)
+
+        return rec_cine
+    
+    def wait_for_save_completion(self, rec_cine):
+        if rec_cine.save_percentage == 100:
+            print("Cine file saving complete")
+            rec_cine.close()
+            return
         
         while rec_cine.save_percentage < 100:
-            print(f"Saving: {rec_cine.save_percentage}%", end='\r')
+            print(f"Cine file saving: {rec_cine.save_percentage}%", end='\r')
             time.sleep(0.1)
-            
-        print(f"Save complete: {full_path}")
+        print("Cine file saving complete")
         rec_cine.close()
+        return
         
     def _update_hdf5_metadata(self, shot_number, cine_filename, timestamp):
         """Update HDF5 metadata arrays with shot information.
@@ -225,6 +233,7 @@ def main(num_shots=2, exposure_us=50, fps=5000, resolution=(256, 256),
     """
     Main function for testing PhantomRecorder with simplified configuration.
     Creates a new HDF5 file and records N shots for testing purposes.
+    Uses non-blocking save operations and waits for completion between shots.
     
     Args:
         num_shots (int): Number of shots to record
@@ -290,7 +299,8 @@ def main(num_shots=2, exposure_us=50, fps=5000, resolution=(256, 256),
         for n in range(num_shots):
             recorder.start_recording(n)
             timestamp = recorder.wait_for_recording_completion()
-            recorder.save_cine(n, timestamp)
+            rec_cine = recorder.save_cine(n, timestamp)
+            recorder.wait_for_save_completion(rec_cine)
             print(f"Shot {n+1} saved")
 
         recorder.cleanup()
