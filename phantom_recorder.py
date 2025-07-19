@@ -49,7 +49,8 @@ class PhantomRecorder:
         self.cam.resolution = self.config['resolution']
         self.cam.exposure = self.config['exposure_us']
         self.cam.frame_rate = self.config['fps']
-        
+        self.cam.post_trigger_frames = self.config['post_trigger_frames']
+
         # Ensure save directory exists
         Path(self.config['save_path']).mkdir(parents=True, exist_ok=True)
         
@@ -107,7 +108,7 @@ class PhantomRecorder:
                 
                 print(f"FastCam configuration and data arrays created in /Control/FastCam")
         
-    def start_recording(self):
+    def start_recording(self, shot_num):
         """Start recording without waiting for completion (for parallel arming)."""
         print("Arming camera for trigger... ", end='')
         
@@ -117,12 +118,12 @@ class PhantomRecorder:
         
     def wait_for_recording_completion(self):
         """Wait for recording to complete and return timestamp."""
-        print("Waiting for camera trigger... ", end='\r')
+        print("Waiting for camera trigger... ")
         
         # Wait for recording to complete
         try:
             while not self.cam.partition_recorded(1):
-                time.sleep(0.05)  # Reduced from 0.1 to 0.05 for faster response
+                time.sleep(0.1)
         except KeyboardInterrupt:
             print("\nCamera recording interrupted by user")
             raise  # Re-raise to propagate the interrupt
@@ -143,8 +144,10 @@ class PhantomRecorder:
         full_path = os.path.join(self.config['save_path'], filename)
         
         # Set frame range and save
+        print("DEBUG recorder range:", rec_cine.recorded_range)
         frame_range = utils.FrameRange(self.config['pre_trigger_frames'], self.config['post_trigger_frames'])
         rec_cine.save_range = frame_range
+        print("DEBUG save range:", rec_cine.save_range)
         
         # Save and monitor progress
         print(f"Saving to {filename}")
@@ -278,10 +281,8 @@ def main(num_shots=2, exposure_us=50, fps=5000, resolution=(256, 256),
         print(f"\nStarting test recording of {num_shots} shots...")        
         
         for n in range(num_shots):
-            print(f"====Starting recording {n+1}====")
-            recorder.start_recording()
+            recorder.start_recording(n)
             timestamp = recorder.wait_for_recording_completion()
-            print(f"\n=== Recording Complete ===")
             recorder.save_cine(n, timestamp)
             print(f"Shot {n+1} saved")
 
@@ -291,22 +292,7 @@ def main(num_shots=2, exposure_us=50, fps=5000, resolution=(256, 256),
         if test_hdf5_path and os.path.exists(test_hdf5_path):
             hdf5_size = os.path.getsize(test_hdf5_path) / (1024 * 1024)  # MB
             print(f"HDF5 file size: {hdf5_size:.1f} MB")
-            
-            # Show HDF5 structure
-            print("\nHDF5 file structure:")
-            with h5py.File(test_hdf5_path, 'r') as f:
-                def print_structure(name, obj):
-                    indent = "  " * (name.count('/') - 1)
-                    if isinstance(obj, h5py.Group):
-                        print(f"{indent}{name.split('/')[-1]}/")
-                    else:
-                        shape_str = f"{obj.shape}" if hasattr(obj, 'shape') else ""
-                        dtype_str = f"{obj.dtype}" if hasattr(obj, 'dtype') else ""
-                        print(f"{indent}{name.split('/')[-1]} {shape_str} {dtype_str}")
-                
-                f.visititems(print_structure)
 
-        
         # List cine files
         cine_files = [f for f in os.listdir(base_path) if f.endswith('.cine') and config['name'] in f]
         if cine_files:

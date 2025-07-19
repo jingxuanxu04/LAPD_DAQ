@@ -209,16 +209,14 @@ def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, cam_
                     msa.arm_scopes_for_trigger(active_scopes) # Arm scopes for trigger
 
                     if camera_recorder:
-                        camera_recorder.start_recording()
+                        camera_recorder.start_recording(shot_num)
                         timestamp = camera_recorder.wait_for_recording_completion()
                         print(f"\n=== Recording Complete ===")
-                    
-                    all_data = msa.acquire_shot(active_scopes, shot_num) # Acquire data from scopes
 
-                    if camera_recorder:
-                        camera_recorder.save_cine(shot_num - 1, timestamp)
+                        camera_recorder.save_cine(shot_num, timestamp)
                         print(f"Cine file saved")
 
+                    all_data = msa.acquire_shot(active_scopes, shot_num) # Acquire data from scopes
                     msa.update_hdf5(all_data, shot_num, positions=None) # Save scope data to HDF5
 
                     # Calculate and display remaining time
