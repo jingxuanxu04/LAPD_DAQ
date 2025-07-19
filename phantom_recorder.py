@@ -49,7 +49,7 @@ class PhantomRecorder:
         self.cam.resolution = self.config['resolution']
         self.cam.exposure = self.config['exposure_us']
         self.cam.frame_rate = self.config['fps']
-        self.cam.post_trigger_frames = self.config['post_trigger_frames']
+        self.cam.post_trigger_frames = self.config['post_trigger_frames'] + 50 # Add 50 frames to the post-trigger frames to ensure we get all the frames
 
         # Ensure save directory exists
         Path(self.config['save_path']).mkdir(parents=True, exist_ok=True)
@@ -144,14 +144,21 @@ class PhantomRecorder:
         full_path = os.path.join(self.config['save_path'], filename)
         
         # Set frame range and save
-        print("DEBUG recorder range:", rec_cine.recorded_range)
         frame_range = utils.FrameRange(self.config['pre_trigger_frames'], self.config['post_trigger_frames'])
-        rec_cine.save_range = frame_range
-        print("DEBUG save range:", rec_cine.save_range)
+        range = rec_cine.range
+        # Check if requested frame range is within actual recording range
+        if frame_range.first_image < range.first_image or frame_range.last_image > range.last_image:
+            print(f"Warning: Requested frame range ({frame_range.first_image}, {frame_range.last_image}) outside recorded range ({range.first_image}, {range.last_image})")
+            # Adjust frame range to fit within recorded range
+            frame_range = utils.FrameRange(
+                max(frame_range.first_image, range.first_image),
+                min(frame_range.last_image, range.last_image)
+            )
+            print(f"Adjusted frame range to: ({frame_range.first_image}, {frame_range.last_image})")
         
         # Save and monitor progress
         print(f"Saving to {filename}")
-        rec_cine.save_non_blocking(filename=full_path)
+        rec_cine.save_non_blocking(filename=full_path, range=frame_range)
         
         while rec_cine.save_percentage < 100:
             print(f"Saving: {rec_cine.save_percentage}%", end='\r')
