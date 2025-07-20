@@ -46,7 +46,7 @@ class TriggerClient:
         self.port = port
         self.BUF_SIZE = BUFFER_SIZE
         
-    def send_command(self, command, receive=True, retries=3):
+    def send_command(self, command, receive=True, retries=30):
         """
         Send command to Pi with error handling and retries.
         
@@ -211,94 +211,107 @@ class TriggerClient:
         else:
             raise RuntimeError(f"Unexpected test response: {response}")
 
-def run_tungsten_drop_sequence(motor_ip, client, num_drops=5, max_balls=700, timeout=15):
-    """
-    Run tungsten ball dropping sequence with GPIO trigger synchronization.
-    
-    This function integrates motor control with the GPIO trigger system:
-    1. Moves motor to drop position
-    2. Sends trigger pulse via Pi server
-    3. Waits for trigger detection confirmation
-    4. Repeats for specified number of drops
-    
-    Args:
-        motor_ip (str): IP address of the motor controller
-        client (TriggerClient): Initialized client for Pi communication
-        num_drops (int): Number of drops to perform
-        max_balls (int): Maximum number of balls before stopping
-        timeout (float): Timeout for trigger detection (seconds)
+class TungstenDropper:
+    '''
+    This class is used for loading tungsten balls into the dropper using motor.
+    '''
+    def __init__(self, motor_ip, timeout=15):
+        from Motor_Control_1D import Motor_Control
+        self.mc_w = Motor_Control(server_ip_addr=motor_ip, stop_switched=False, name="w_dropper")
+        self.ball_count = 0
+        self.max_ball_count = 0
+        self.timeout = timeout
         
-    Returns:
-        int: Number of successful drops completed
-    """
-    from Motor_Control_1D import Motor_Control
+        self.spt = self.mc_w.steps_per_rev()
+        self.one_drop = int(self.spt/12) + 1    
+        
+    def update_ball_count(self):
+        """Update ball count based on current motor position."""
+        try:
+            self.ball_count = int(self.mc_w.current_step() / self.one_drop)
 
-    print(f"Starting tungsten drop sequence: {num_drops} drops")
-    print(f"Motor IP: {motor_ip}")
-    print(f"Max balls limit: {max_balls}")
-    print(f"Trigger timeout: {timeout}s")
+        except Exception as e:
+            raise RuntimeError(f"Error updating ball count: {e}")
+
+
+    def reset_ball_count(self):
+        try:
+            self.mc_w.set_zero
+            self.update_ball_count()
+            print(f"Ball count reset to {self.ball_count}")
+        except Exception as e:
+            print(f"Error resetting ball count: {e}")
+            return False
+        return True
     
+    def set_max_ball_count(self, max_balls):
+        self.max_ball_count = max_balls
+        print(f"Max ball count set to {self.max_ball_count}")
+    
+    
+    def load_ball(self):
+        try:
+            cur_step = self.mc_w.current_step()
+            self.mc_w.turn_to(cur_step + self.one_drop)
+
+            new_step = self.mc_w.current_step() # check if motor moved
+            if new_step == cur_step:
+                raise RuntimeError("Motor position did not change after dropper load command. Check what's going on.")
+            
+            # Update ball count after confirming motor moved
+            self.update_ball_count()            
+            print(f"Ball count: {self.ball_count}/{self.max_ball_count}")
+
+        except KeyboardInterrupt:
+            raise KeyboardInterrupt("Tungsten dropper interrupted by user")
+        except Exception as e:
+            raise RuntimeError(f"Error dropping ball: {e}")
+
+    
+    def rewind_motor(self, steps):
+        '''Sometimes when the motor is stuck, we need to rewind it.'''
+        try:
+            cur_step = self.mc_w.current_step()
+            self.mc_w.turn_to(cur_step - steps)
+            new_step = self.mc_w.current_step()
+            if new_step == cur_step:
+                raise RuntimeError("Motor position did not change after rewind command. Check what's going on.")
+        except KeyboardInterrupt:
+            raise KeyboardInterrupt("Tungsten dropper interrupted by user")
+        except Exception as e:
+            raise RuntimeError(f"Error rewinding motor: {e}")
+        return True
+    
+def test_dropper(num_drops=10, max_balls=700, timeout=15):  # Fixed: removed 'self' parameter
     try:
-        # Initialize motor control
-        mc_w = Motor_Control(server_ip_addr=motor_ip, stop_switched=False, name="w_dropper")
-        spt = mc_w.steps_per_rev()
-        one_drop = int(spt/12) + 1
-        
-        completed_drops = 0
+        print(f"Initializing TungstenDropper...")
+        dropper = TungstenDropper(motor_ip=MOTOR_IP, timeout=timeout)
+        dropper.set_max_ball_count(max_balls)
+
+        if not dropper.reset_ball_count():
+            print(f"ERROR: Failed to reset ball count")
+            return False
+
+        print(f"Starting drop sequence: {num_drops} drops")
         
         for i in range(num_drops):
             try:
-                # Check current position and ball count
-                cur_step = mc_w.current_step()
-                ball_count = int(cur_step/one_drop)
-                print(f"\nDrop {i+1}/{num_drops} - Ball count: {ball_count}")
-                
-                # Check if we've reached the ball limit
-                if ball_count >= max_balls:
-                    print(f'Ball limit reached ({max_balls}). Stopping sequence.')
-                    break
-                
-                # Move motor to drop position
-                print("Moving motor to drop position... ", end='')
-                mc_w.turn_to(cur_step + one_drop)
-                print("done")
-                
-                # Send trigger to server
-                print("Sending trigger... ", end='')
-                client.send_trigger()
-                print(f"sent at {time.strftime('%H:%M:%S', time.localtime())}")
-                
-                # Wait for trigger detection
-                print("Waiting for trigger detection... ", end='')
-                if client.wait_for_trigger(timeout=timeout):
-                    print(f"detected at {time.strftime('%H:%M:%S', time.localtime())}")
-                    completed_drops += 1
-                    time.sleep(0.5)  # Brief pause after successful trigger
-                else:
-                    print("TIMEOUT - No trigger detected")
-                    print("Check trigger connections and try again")
-                    break
-                
-                # Verify motor moved correctly
-                if mc_w.current_step() == cur_step:
-                    print('ERROR: Motor position did not change after drop command')
-                    print('Check motor operation before continuing')
-                    break
-                
-                # Delay between drops
+                dropped = dropper.load_ball()
                 time.sleep(1)
-                
-            except Exception as e:
-                print(f"Error during drop {i+1}: {e}")
+
+            except KeyboardInterrupt:
+                print("\nTungsten dropper interrupted by user")
                 break
-        
-        print(f"\nSequence completed: {completed_drops}/{num_drops} successful drops")
-        return completed_drops
+            except Exception as e:
+                print(f"ERROR: Failed to load ball {i+1}: {e}")
+                break
+                
+        print(f"\nTest completed: {dropper.ball_count} balls dropped")
+        return dropper.ball_count
         
     except Exception as e:
-        print(f"Failed to initialize motor control: {e}")
+        print(f"Failed to initialize TungstenDropper: {e}")
         return 0
-
 #===============================================================================================================================================
 #<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
 #===============================================================================================================================================
@@ -344,35 +357,12 @@ def test():
     except Exception as e:
         print(f"\nError: {str(e)}")
 
-def main(): # Main tungsten drop sequence operation.
 
-    client = TriggerClient(PI_HOST, PI_PORT) # Connect to Pi server
-    
-    try:
-        print(f"Testing connection to GPIO trigger server at {PI_HOST}:{PI_PORT}")
-        client.get_status()  # Will raise error if server not ready
-        print("✓ Server connection established")
-        
-        print("\nStarting tungsten drop sequence...")
-        print("Press Ctrl+C to stop early")
-        
-        completed = run_tungsten_drop_sequence(
-            motor_ip=MOTOR_IP,
-            client=client,
-            num_drops=10,        # Number of drops to perform
-            max_balls=700,       # Maximum ball count before stopping
-            timeout=15           # Timeout per trigger detection
-        )
-        
-        print(f"\nSequence completed: {completed} drops successful")
-        
-    except KeyboardInterrupt:
-        print("\nSequence interrupted by user")
-    except Exception as e:
-        print(f"\nError: {str(e)}")
 
 if __name__ == '__main__':
-
-    test()
-
-    # main()
+    
+    # Choose which function to run:
+    
+    test()           # Test basic trigger client functionality
+    
+    # test_dropper()   # Test TungstenDropper class functionality
