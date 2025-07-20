@@ -1,3 +1,9 @@
+'''
+TODO:
+- 45deg probe hdf5 file are getting the wrong file descriptions
+- MultiScope_Camera file is getting wrong position information in control group of HDF5 file
+'''
+
 import numpy as np
 import matplotlib.pyplot as plt
 from LeCroy_Scope import LeCroy_Scope, WAVEDESC_SIZE
@@ -167,12 +173,7 @@ class MultiScopeAcquisition:
                 scope.__exit__(None, None, None)
             except Exception as e:
                 print(f"Error closing scope {name}: {e}")
-        
-
-        
         self.scopes.clear()
-
-        print("Scope cleanup complete")
 
     def __enter__(self):
         return self
@@ -295,7 +296,7 @@ class MultiScopeAcquisition:
         """Initialize scopes and get time arrays on first acquisition"""
         active_scopes = {}
         for name, ip in self.scope_ips.items():
-            print(f"\nInitializing {name}...")
+            print(f"\nInitializing {name}...", end='')
             
             try:
                 # Create scope instance
@@ -341,7 +342,7 @@ class MultiScopeAcquisition:
         
         for name in active_scopes:
             try:
-                print(f"Acquiring data from {name}...")
+                print(f"Acquiring data from {name}...", end='')
                 scope = self.scopes[name]
                 
                 if active_scopes[name] == 0:
@@ -363,7 +364,7 @@ class MultiScopeAcquisition:
             except Exception as e:
                 print(f"Error acquiring from {name}: {e}")
                 failed_scopes.append(name)
-        
+        print("✓")
         return all_data
     
     def arm_scopes_for_trigger(self, active_scopes):
@@ -780,8 +781,9 @@ def run_acquisition(save_path, scope_ips, motor_ips, external_delays=None, nz=No
     with MultiScopeAcquisition(scope_ips, save_path, nz, is_45deg) as msa:
         try:
             # Initialize HDF5 file structure
-            print("Initializing HDF5 file...")
+            print("Initializing HDF5 file...", end='')
             positions = msa.initialize_hdf5()
+            print("✓")
             
             # Initialize motors based on acquisition type
             if is_45deg:

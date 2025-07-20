@@ -144,74 +144,49 @@ def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, cam_
     """
     print('Starting multi-scope and camera acquisition at', time.ctime())
     
-    # Create HDF5 file first to ensure it exists for camera initialization
-    print("Creating HDF5 file...")
-    with h5py.File(save_path, 'w') as f:
-        # Add basic experiment description and creation time
-        f.attrs['description'] = get_experiment_description()
-        f.attrs['creation_time'] = time.ctime()
-        f.attrs['num_shots'] = num_shots
-    
-    # Initialize camera recorder if configured
-    camera_recorder = None
-    if cam_config is not None:
-        try:
-            print("Initializing Phantom camera...")
-            # Set up configuration for HDF5 integration
-            cam_config['hdf5_file_path'] = save_path
-            
-            camera_recorder = PhantomRecorder(cam_config)
-            print("✓ Camera initialized successfully")
-        except Exception as e:
-            print(f"⚠ Camera initialization failed: {e}")
-            print("Continuing with scope-only acquisition...")
-            camera_recorder = None
-    else:
-        print("Camera recording disabled")
-    
     try:
         # Initialize multi-scope acquisition (no motor control)
         with MultiScopeAcquisition(scope_ips, save_path, nz=None, is_45deg=False) as msa:
             
             # Initialize HDF5 file structure (append mode since file already exists)
-            print("Initializing HDF5 file structure...")
-            
-            with h5py.File(save_path, 'a') as f:
-                # Add Python scripts used to create the file
-                script_contents = msa.get_script_contents()
-                f.attrs['source_code'] = str(script_contents)
-                
-                # Create scope groups with their descriptions
-                for scope_name in scope_ips:
-                    if scope_name not in f:
-                        f.create_group(scope_name)
-                
-                # Create Control group
-                if '/Control' not in f:
-                    ctl_grp = f.create_group('/Control')
-                    ctl_grp.attrs['num_shots'] = num_shots
+            print("Initializing HDF5 file structure...", end='')
+            positions = msa.initialize_hdf5()
+            print("✓")
 
-            # First shot: Initialize scopes and save time arrays
-            print("\nStarting initial scope acquisition...")
-            active_scopes = msa.initialize_scopes()
-            if not active_scopes:
-                raise RuntimeError("No valid data found from any scope. Aborting acquisition.")
+            if cam_config is not None: # Initialize camera recorder if configured
+                try:
+                    print("Initializing Phantom camera...", end='')
+                    # Set up configuration for HDF5 integration
+                    cam_config['hdf5_file_path'] = save_path
+                    
+                    camera_recorder = PhantomRecorder(cam_config)
+                    print("✓")
+                except Exception as e:
+                    print(f"⚠ Camera initialization failed: {e}")
+                    print("Continuing with scope-only acquisition...")
+                    camera_recorder = None
+            else:
+                print("Camera recording disabled")
+                camera_recorder = None
             
-            print(f"Active scopes: {list(active_scopes.keys())}")
-            
-            # Main acquisition loop with parallel arming
-            for shot_num in range(1, num_shots + 1):
+            # Main acquisition loop
+            for shot_num in range(1, num_shots + 1): 
                 try:
                     acquisition_loop_start_time = time.time()
-                    
-                    print(f'Shot {shot_num}/{num_shots} - ', end='')
+                    print(f"\n______Acquiring shot {shot_num}/{num_shots}______")
 
-                    msa.arm_scopes_for_trigger(active_scopes) # Arm scopes for trigger
+                    if shot_num == 1: # First shot: Initialize scopes and save time arrays
+                        print("\nStarting initial scope acquisition...")
+                        active_scopes = msa.initialize_scopes()
+                        if not active_scopes:
+                            raise RuntimeError("No valid data found from any scope. Aborting acquisition.")
+                        print(f"Active scopes: {list(active_scopes.keys())}")
+                    else:
+                        msa.arm_scopes_for_trigger(active_scopes) # Arm scopes for trigger
 
                     if camera_recorder:
-                        camera_recorder.start_recording()
+                        camera_recorder.start_recording(shot_num)
                         timestamp = camera_recorder.wait_for_recording_completion()
-                        print(f"\n=== Recording Complete ===")
                     
                     all_data = msa.acquire_shot(active_scopes, shot_num) # Acquire data from scopes
 
