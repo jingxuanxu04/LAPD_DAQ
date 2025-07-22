@@ -22,6 +22,8 @@ TODO: tungsten drop sequence needs separate set zero, and keep track of ball cou
 import socket
 import time
 import select
+import pickle
+import os
 
 # Configuration variables - modify these to match your setup
 PI_HOST = '127.0.0.1'      # Pi server IP address
@@ -214,16 +216,72 @@ class TriggerClient:
 class TungstenDropper:
     '''
     This class is used for loading tungsten balls into the dropper using motor.
+    Ball count and max ball count are automatically persisted to a pickle cache file.
     '''
-    def __init__(self, motor_ip, timeout=15):
+    def __init__(self, motor_ip, timeout=15, cache_file="tungsten_dropper_state.pkl"):
         from Motor_Control_1D import Motor_Control
         self.mc_w = Motor_Control(server_ip_addr=motor_ip, stop_switched=False, name="w_dropper")
-        self.ball_count = 0
-        self.max_ball_count = 0
         self.timeout = timeout
+        self.cache_file = cache_file
+        
+        # Initialize private variables
+        self._ball_count = 0
+        self._max_ball_count = 0
+        
+        # Load state from cache file if it exists
+        self._load_state()
         
         self.spt = self.mc_w.steps_per_rev()
         self.one_drop = int(self.spt/12) + 1    
+        
+    def _load_state(self):
+        """Load ball count and max ball count from cache file."""
+        try:
+            if os.path.exists(self.cache_file):
+                with open(self.cache_file, 'rb') as f:
+                    state = pickle.load(f)
+                    self._ball_count = state.get('ball_count', 0)
+                    self._max_ball_count = state.get('max_ball_count', 0)
+                    print(f"Loaded state from cache: ball_count={self._ball_count}, max_ball_count={self._max_ball_count}")
+            else:
+                print("No cache file found, starting with default values")
+        except Exception as e:
+            print(f"Error loading state from cache: {e}")
+            print("Starting with default values")
+    
+    def _save_state(self):
+        """Save ball count and max ball count to cache file."""
+        try:
+            state = {
+                'ball_count': self._ball_count,
+                'max_ball_count': self._max_ball_count
+            }
+            with open(self.cache_file, 'wb') as f:
+                pickle.dump(state, f)
+        except Exception as e:
+            print(f"Error saving state to cache: {e}")
+    
+    @property
+    def ball_count(self):
+        """Get current ball count."""
+        return self._ball_count
+    
+    @ball_count.setter
+    def ball_count(self, value):
+        """Set ball count and save to cache."""
+        self._ball_count = value
+        self._save_state()
+    
+    @property
+    def max_ball_count(self):
+        """Get maximum ball count."""
+        return self._max_ball_count
+    
+    @max_ball_count.setter
+    def max_ball_count(self, value):
+        """Set maximum ball count and save to cache."""
+        self._max_ball_count = value
+        self._save_state()
         
     def update_ball_count(self):
         """Update ball count based on current motor position."""
@@ -232,7 +290,6 @@ class TungstenDropper:
 
         except Exception as e:
             raise RuntimeError(f"Error updating ball count: {e}")
-
 
     def reset_ball_count(self):
         try:
@@ -248,26 +305,23 @@ class TungstenDropper:
         self.max_ball_count = max_balls
         print(f"Max ball count set to {self.max_ball_count}")
     
-    
     def load_ball(self):
         try:
             cur_step = self.mc_w.current_step()
             self.mc_w.turn_to(cur_step + self.one_drop)
-
+            time.sleep(0.5) # Wait for motor to rotate
             new_step = self.mc_w.current_step() # check if motor moved
             if new_step == cur_step:
                 raise RuntimeError("Motor position did not change after dropper load command. Check what's going on.")
             
             # Update ball count after confirming motor moved
-            self.update_ball_count()            
+            self.update_ball_count()
             print(f"Ball count: {self.ball_count}/{self.max_ball_count}")
-
         except KeyboardInterrupt:
             raise KeyboardInterrupt("Tungsten dropper interrupted by user")
         except Exception as e:
             raise RuntimeError(f"Error dropping ball: {e}")
 
-    
     def rewind_motor(self, steps):
         '''Sometimes when the motor is stuck, we need to rewind it.'''
         try:
@@ -296,7 +350,7 @@ def test_dropper(num_drops=10, max_balls=700, timeout=15):  # Fixed: removed 'se
         
         for i in range(num_drops):
             try:
-                dropped = dropper.load_ball()
+                dropper.load_ball()
                 time.sleep(1)
 
             except KeyboardInterrupt:
