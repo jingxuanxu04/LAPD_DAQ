@@ -28,6 +28,13 @@ import time
 import sys
 import h5py
 
+sys.path.append(r"E:\Shadow data\Energetic_Electron_Ring\pi_gpio")
+from pi_client import TungstenDropper, TriggerClient
+
+MOTOR_IP = '192.168.7.99'
+PI_HOST = '127.0.0.1'
+PI_PORT = 54321
+
 ############################################################################################################################
 '''
 User: Set experiment name and path
@@ -221,9 +228,98 @@ def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, cam_
                 print("Camera resources cleaned up successfully")
             except Exception as e:
                 print(f"Error cleaning up camera: {e}")
-        
-        # Note: MultiScopeAcquisition cleanup is handled by the context manager (__exit__)
 
+
+def run_acquisition_with_WDropper(save_path, scope_ips, cam_config=None):
+    """
+    main acquisition function with tungsten dropper
+    """
+    print('Starting acquisition at', time.ctime())
+    
+    try:
+        # Initialize multi-scope acquisition (no motor control)
+        with MultiScopeAcquisition(scope_ips, save_path, nz=None, is_45deg=False) as msa:
+            
+            # Initialize HDF5 file structure (append mode since file already exists)
+            print("Initializing HDF5 file structure...", end='')
+            positions = msa.initialize_hdf5()
+            print("✓")
+
+            # Initialize tungsten dropper
+            print("Initializing tungsten dropper...")
+            dropper = TungstenDropper(motor_ip=MOTOR_IP, timeout=15)
+            trigger_client = TriggerClient(PI_HOST, PI_PORT)
+
+            if cam_config is not None: # Initialize camera recorder if configured
+                try:
+                    print("Initializing Phantom camera...", end='')
+                    # Set up configuration for HDF5 integration
+                    cam_config['hdf5_file_path'] = save_path
+                    
+                    camera_recorder = PhantomRecorder(cam_config)
+                    print("✓")
+                except Exception as e:
+                    print(f"⚠ Camera initialization failed: {e}")
+                    print("Continuing with scope-only acquisition...")
+                    camera_recorder = None
+            else:
+                print("Camera recording disabled")
+                camera_recorder = None
+            
+            # Main acquisition loop
+            for shot_num in range(1, num_shots + 1): 
+                try:
+                    acquisition_loop_start_time = time.time()
+                    print(f"\n______Acquiring shot {shot_num}/{num_shots}______")
+                    dropper.load_ball()
+                    trigger_client.send_trigger()
+
+                    if shot_num == 1: # First shot: Initialize scopes and save time arrays
+                        print("\nStarting initial scope acquisition...")
+                        active_scopes = msa.initialize_scopes()
+                        if not active_scopes:
+                            raise RuntimeError("No valid data found from any scope. Aborting acquisition.")
+                        print(f"Active scopes: {list(active_scopes.keys())}")
+                    else:
+                        msa.arm_scopes_for_trigger(active_scopes) # Arm scopes for trigger
+
+                    if camera_recorder:
+                        camera_recorder.start_recording(shot_num)
+                        timestamp = camera_recorder.wait_for_recording_completion()
+                    
+                    all_data = msa.acquire_shot(active_scopes, shot_num) # Acquire data from scopes
+
+                    if camera_recorder:
+                        rec_cine = camera_recorder.save_cine(shot_num - 1, timestamp)
+
+                    msa.update_hdf5(all_data, shot_num, positions=None)
+                    print("Save scope data to HDF5")
+
+                    if camera_recorder:
+                        camera_recorder.wait_for_save_completion(rec_cine)
+
+                    # Calculate and display remaining time
+                    time_per_shot = (time.time() - acquisition_loop_start_time)
+                    remaining_shots = num_shots - shot_num
+                    remaining_time = remaining_shots * time_per_shot
+                    print(f' | Remaining: {remaining_time/60:.1f}min ({remaining_time:.1f}s)')
+                    
+                except KeyboardInterrupt:
+                    print(f'\n______Shot {shot_num} interrupted by Ctrl-C______')
+                    raise  # Re-raise to propagate to outer exception handler
+
+    except KeyboardInterrupt:
+        print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
+        raise
+
+    finally:
+        # Cleanup camera
+        if camera_recorder:
+            try:
+                camera_recorder.cleanup()
+                print("Camera resources cleaned up successfully")
+            except Exception as e:
+                print(f"Error cleaning up camera: {e}")
 #===============================================================================================================================================
 # Main Data Run sequence
 #===============================================================================================================================================

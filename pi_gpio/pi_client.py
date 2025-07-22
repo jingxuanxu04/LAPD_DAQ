@@ -366,9 +366,7 @@ def test_dropper(num_drops=10, max_balls=700, timeout=15):  # Fixed: removed 'se
     except Exception as e:
         print(f"Failed to initialize TungstenDropper: {e}")
         return 0
-#===============================================================================================================================================
-#<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
-#===============================================================================================================================================
+
 def test():
     """
     Test mode: Runs a trigger loop test with the Pi server.
@@ -411,12 +409,12 @@ def test():
     except Exception as e:
         print(f"\nError: {str(e)}")
 
-
+#===============================================================================================================================================
+#<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
+#===============================================================================================================================================
 
 if __name__ == '__main__':
     
-    # Choose which function to run:
-    
-    test()           # Test basic trigger client functionality
-    
-    # test_dropper()   # Test TungstenDropper class functionality
+    dropper = TungstenDropper(motor_ip=MOTOR_IP, timeout=15)
+    dropper.set_max_ball_count(100)
+    dropper.reset_ball_count()
