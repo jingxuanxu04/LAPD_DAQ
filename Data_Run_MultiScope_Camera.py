@@ -28,18 +28,19 @@ import time
 import sys
 import h5py
 
-sys.path.append(r"E:\Shadow data\Energetic_Electron_Ring\pi_gpio")
+sys.path.append(r"C:\Users\daq\Desktop\LAPD_DAQ\pi_gpio")
+
 from pi_client import TungstenDropper, TriggerClient
 
 MOTOR_IP = '192.168.7.99'
-PI_HOST = '127.0.0.1'
+PI_HOST = '192.168.7.38'
 PI_PORT = 54321
 
 ############################################################################################################################
 '''
 User: Set experiment name and path
 '''
-exp_name = 'multiscope_camera_test'  # experiment name
+exp_name = 'scope_cam_tungsten_test'  # experiment name
 date = datetime.date.today()
 base_path = r"E:\Shadow data\Energetic_Electron_Ring\test"
 save_path = os.path.join(base_path, f"{exp_name}_{date}.hdf5")
@@ -362,7 +363,7 @@ def main():
     t_start = time.time()
     
     try:
-        run_acquisition_with_camera(save_path, scope_ips, external_delays, camera_config)
+        run_acquisition_with_WDropper(save_path, scope_ips, camera_config)
         
     except KeyboardInterrupt:
         print('\n' + '='*60)

@@ -16,7 +16,7 @@ Usage:
     client.send_trigger()
     client.wait_for_trigger(timeout=5)
 
-TODO: tungsten drop sequence needs separate set zero, and keep track of ball count.
+TODO: both class needs proper exit/close
 '''
 
 import socket
@@ -24,11 +24,14 @@ import time
 import select
 import pickle
 import os
+import sys
+
+sys.path.insert(0,r"C:\Users\daq\Desktop\LAPD_DAQ")
 
 # Configuration variables - modify these to match your setup
-PI_HOST = '127.0.0.1'      # Pi server IP address
+PI_HOST = '192.168.7.38'      # Pi server IP address
 PI_PORT = 54321            # Pi server port (must match pi_server.py)
-MOTOR_IP = '192.168.7.38'  # Motor controller IP address
+MOTOR_IP = '192.168.7.99'  # Motor controller IP address
 BUFFER_SIZE = 1024         # Socket buffer size
 
 class TriggerClient:
@@ -220,7 +223,7 @@ class TungstenDropper:
     '''
     def __init__(self, motor_ip, timeout=15, cache_file="tungsten_dropper_state.pkl"):
         from Motor_Control_1D import Motor_Control
-        self.mc_w = Motor_Control(server_ip_addr=motor_ip, stop_switched=False, name="w_dropper")
+        self.mc_w = Motor_Control(server_ip_addr=motor_ip, stop_switch_mode=3)
         self.timeout = timeout
         self.cache_file = cache_file
         
@@ -418,3 +421,11 @@ if __name__ == '__main__':
     dropper = TungstenDropper(motor_ip=MOTOR_IP, timeout=15)
     dropper.set_max_ball_count(100)
     dropper.reset_ball_count()
+
+    client = TriggerClient(PI_HOST, PI_PORT)
+    # Test connection to Pi server
+    print(f"Connecting to GPIO trigger server at {PI_HOST}:{PI_PORT}")
+    client.get_status()  # Will raise error if server not ready
+    print("✓ Server connection established")
+    client.send_trigger()
+    print('Send trigger to test')
