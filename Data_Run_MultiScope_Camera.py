@@ -277,21 +277,23 @@ def run_acquisition_with_WDropper(save_path, scope_ips, cam_config=None):
                 try:
                     acquisition_loop_start_time = time.time()
                     print(f"\n______Acquiring shot {shot_num}/{num_shots}______")
-                    
-                    # Load tungsten ball and send trigger
-                    print("Loading tungsten ball...")
-                    dropper.load_ball()
-                    print("Sending trigger signal...")
-                    trigger_client.send_trigger()
 
                     if shot_num == 1: # First shot: Initialize scopes and save time arrays
                         print("\nStarting initial scope acquisition...")
+                        trigger_client.send_trigger()
+                        print("Trigger sent for getting scope time array")
                         active_scopes = msa.initialize_scopes()
                         if not active_scopes:
                             raise RuntimeError("No valid data found from any scope. Aborting acquisition.")
                         print(f"Active scopes: {list(active_scopes.keys())}")
                     else:
                         msa.arm_scopes_for_trigger(active_scopes) # Arm scopes for trigger
+
+                    # Load tungsten ball and send trigger
+                    print("Loading tungsten ball...")
+                    dropper.load_ball()
+                    print("Sending trigger signal...")
+                    trigger_client.send_trigger()
 
                     if camera_recorder:
                         camera_recorder.start_recording(shot_num)
