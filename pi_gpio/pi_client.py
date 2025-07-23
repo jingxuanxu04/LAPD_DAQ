@@ -26,7 +26,13 @@ import pickle
 import os
 import sys
 
-sys.path.insert(0,r"C:\Users\daq\Desktop\LAPD_DAQ")
+# Add paths for imports - works regardless of where the script is run from
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+
+# Add parent directory to path if it exists and isn't already in path
+if os.path.exists(parent_dir) and parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
 
 # Configuration variables - modify these to match your setup
 PI_HOST = '192.168.7.38'      # Pi server IP address
