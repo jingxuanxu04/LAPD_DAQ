@@ -214,6 +214,12 @@ def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, cam_
 
                     if camera_recorder:
                         camera_recorder.wait_for_save_completion(rec_cine)
+                        
+                        # Update HDF5 with camera metadata if HDF5 integration is enabled
+                        if hasattr(camera_recorder, 'hdf5_path'):
+                            filename = f"{camera_recorder.config['name']}_shot{shot_num-1:03d}.cine"
+                            camera_recorder._update_hdf5_metadata(shot_num - 1, filename, timestamp)
+                            print("Save camera metadata to HDF5")
 
                     # Calculate and display remaining time
                     time_per_shot = (time.time() - acquisition_loop_start_time)
@@ -317,6 +323,12 @@ def run_acquisition_with_WDropper(save_path, scope_ips, cam_config=None):
 
                     if camera_recorder:
                         camera_recorder.wait_for_save_completion(rec_cine)
+                        
+                        # Update HDF5 with camera metadata if HDF5 integration is enabled
+                        if hasattr(camera_recorder, 'hdf5_path'):
+                            filename = f"{camera_recorder.config['name']}_shot{shot_num-1:03d}.cine"
+                            camera_recorder._update_hdf5_metadata(shot_num - 1, filename, timestamp)
+                            print("Save camera metadata to HDF5")
 
                     # Calculate and display remaining time
                     time_per_shot = (time.time() - acquisition_loop_start_time)
