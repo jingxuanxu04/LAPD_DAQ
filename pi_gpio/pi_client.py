@@ -216,6 +216,18 @@ class TriggerClient:
         else:
             raise RuntimeError(f"Unexpected test response: {response}")
 
+    def __enter__(self):
+        """Context manager entry - no special processing after __init__()"""
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        """Context manager exit - no special processing"""
+        pass
+
+    def __del__(self):
+        """Destructor - no special processing"""
+        pass
+
 class TungstenDropper:
     '''
     This class is used for loading tungsten balls into the dropper using motor.
@@ -339,6 +351,18 @@ class TungstenDropper:
             raise RuntimeError(f"Error rewinding motor: {e}")
         return True
     
+    def __enter__(self):
+        """Context manager entry - no special processing after __init__()"""
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        """Context manager exit - no special processing"""
+        pass
+
+    def __del__(self):
+        """Destructor - no special processing"""
+        pass
+
 def test_dropper(num_drops=10, max_balls=700, timeout=15):  # Fixed: removed 'self' parameter
     try:
         print(f"Initializing TungstenDropper...")

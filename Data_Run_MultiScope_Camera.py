@@ -237,6 +237,10 @@ def run_acquisition_with_WDropper(save_path, scope_ips, cam_config=None):
     """
     print('Starting acquisition at', time.ctime())
     
+    dropper = None
+    trigger_client = None
+    camera_recorder = None
+    
     try:
         # Initialize multi-scope acquisition (no motor control)
         with MultiScopeAcquisition(scope_ips, save_path, nz=None, is_45deg=False) as msa:
@@ -250,15 +254,16 @@ def run_acquisition_with_WDropper(save_path, scope_ips, cam_config=None):
             print("Initializing tungsten dropper...")
             dropper = TungstenDropper(motor_ip=MOTOR_IP, timeout=15)
             trigger_client = TriggerClient(PI_HOST, PI_PORT)
+            trigger_client.get_status()  # Test connection
+            print("✓ Trigger client initialized")
 
             if cam_config is not None: # Initialize camera recorder if configured
                 try:
-                    print("Initializing Phantom camera...", end='')
+                    print("Initializing Phantom camera...")
                     # Set up configuration for HDF5 integration
                     cam_config['hdf5_file_path'] = save_path
-                    
                     camera_recorder = PhantomRecorder(cam_config)
-                    print("✓")
+
                 except Exception as e:
                     print(f"⚠ Camera initialization failed: {e}")
                     print("Continuing with scope-only acquisition...")
@@ -272,7 +277,11 @@ def run_acquisition_with_WDropper(save_path, scope_ips, cam_config=None):
                 try:
                     acquisition_loop_start_time = time.time()
                     print(f"\n______Acquiring shot {shot_num}/{num_shots}______")
+                    
+                    # Load tungsten ball and send trigger
+                    print("Loading tungsten ball...")
                     dropper.load_ball()
+                    print("Sending trigger signal...")
                     trigger_client.send_trigger()
 
                     if shot_num == 1: # First shot: Initialize scopes and save time arrays
@@ -314,13 +323,18 @@ def run_acquisition_with_WDropper(save_path, scope_ips, cam_config=None):
         raise
 
     finally:
+        # Cleanup all resources
+        print("\n=== Cleaning up resources ===")
+        
         # Cleanup camera
         if camera_recorder:
             try:
                 camera_recorder.cleanup()
-                print("Camera resources cleaned up successfully")
+                print("✓ Camera resources cleaned up successfully")
             except Exception as e:
-                print(f"Error cleaning up camera: {e}")
+                print(f"⚠ Error cleaning up camera: {e}")
+        
+        print("=== Resource cleanup completed ===")
 #===============================================================================================================================================
 # Main Data Run sequence
 #===============================================================================================================================================
@@ -368,16 +382,15 @@ def main():
     except KeyboardInterrupt:
         print('\n' + '='*60)
         print('______Acquisition INTERRUPTED by Ctrl-C______', '  at', time.ctime())
-        print('Cleaning up resources...')
         print('='*60)
     except Exception as e:
         print('\n' + '='*60)
         print(f'______Acquisition FAILED due to error: {str(e)}______', '  at', time.ctime())
-        print('Cleaning up resources...')
         print('='*60)
         import traceback
         traceback.print_exc()
     finally:
+        print('\n' + '='*50)
         print('Data run finished at', datetime.datetime.now())
         print('Time taken: %.2f minutes' % ((time.time()-t_start)/60))
         
@@ -385,9 +398,9 @@ def main():
         if os.path.isfile(save_path):
             size = os.stat(save_path).st_size/(1024*1024)
             print(f'Wrote file "{save_path}", {size:.1f} MB')
-
         else:
             print(f'File "{save_path}" was not created')
+        print('='*50)
 
 #===============================================================================================================================================
 if __name__ == '__main__':

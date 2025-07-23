@@ -211,20 +211,37 @@ class PhantomRecorder:
         print("Cleaning up camera resources...")
         
         try:
-            if hasattr(self, 'cam'):
+            if hasattr(self, 'cam') and self.cam is not None:
                 print("Closing camera connection...")
                 self.cam.close()
+                self.cam = None
         except Exception as e:
             print(f"Error closing camera: {e}")
             
         try:
-            if hasattr(self, 'ph'):
+            if hasattr(self, 'ph') and self.ph is not None:
                 print("Closing Phantom interface...")
                 self.ph.close()
+                self.ph = None
         except Exception as e:
             print(f"Error closing Phantom interface: {e}")
             
         print("Camera cleanup complete")
+
+    def __enter__(self):
+        """Context manager entry"""
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        """Context manager exit with automatic cleanup"""
+        self.cleanup()
+
+    def __del__(self):
+        """Destructor with cleanup"""
+        try:
+            self.cleanup()
+        except Exception:
+            pass  # Suppress exceptions in destructor
             
 
 def main(num_shots=2, exposure_us=50, fps=5000, resolution=(256, 256), 
