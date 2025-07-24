@@ -162,11 +162,11 @@ def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, cam_
     
     try:
         # Initialize multi-scope acquisition (no motor control)
-        with MultiScopeAcquisition(scope_ips, save_path, nz=None, is_45deg=False) as msa:
+        with MultiScopeAcquisition(scope_ips, save_path) as msa:
             
             # Initialize HDF5 file structure (append mode since file already exists)
             print("Initializing HDF5 file structure...", end='')
-            positions = msa.initialize_hdf5()
+            msa.initialize_hdf5_base()
             print("✓")
 
             if cam_config is not None: # Initialize camera recorder if configured
@@ -209,7 +209,8 @@ def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, cam_
                     if camera_recorder:
                         rec_cine = camera_recorder.save_cine(shot_num, timestamp)
 
-                    msa.update_hdf5(all_data, shot_num, positions=None)
+                    # Update scope data in HDF5
+                    msa.update_scope_hdf5(all_data, shot_num)
                     print("Save scope data to HDF5")
 
                     if camera_recorder:
@@ -257,11 +258,11 @@ def run_acquisition_with_WDropper(save_path, scope_ips, cam_config=None):
     
     try:
         # Initialize multi-scope acquisition (no motor control)
-        with MultiScopeAcquisition(scope_ips, save_path, nz=None, is_45deg=False) as msa:
+        with MultiScopeAcquisition(scope_ips, save_path) as msa:
             
             # Initialize HDF5 file structure (append mode since file already exists)
             print("Initializing HDF5 file structure...", end='')
-            positions = msa.initialize_hdf5()
+            msa.initialize_hdf5_base()
             print("✓")
 
             # Initialize tungsten dropper
@@ -318,7 +319,8 @@ def run_acquisition_with_WDropper(save_path, scope_ips, cam_config=None):
                     if camera_recorder:
                         rec_cine = camera_recorder.save_cine(shot_num, timestamp)
 
-                    msa.update_hdf5(all_data, shot_num, positions=None)
+                    # Update scope data in HDF5
+                    msa.update_scope_hdf5(all_data, shot_num)
                     print("Save scope data to HDF5")
 
                     if camera_recorder:
@@ -355,6 +357,8 @@ def run_acquisition_with_WDropper(save_path, scope_ips, cam_config=None):
                 print("✓ Camera resources cleaned up successfully")
             except Exception as e:
                 print(f"⚠ Error cleaning up camera: {e}")
+        
+
         
         print("=== Resource cleanup completed ===")
 #===============================================================================================================================================

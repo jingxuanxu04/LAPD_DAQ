@@ -28,6 +28,7 @@ from multi_scope_acquisition import run_acquisition
 import time
 import sys
 import logging
+from motion.position_manager import load_config
 
 logging.basicConfig(filename='motor.log', level=logging.WARNING, 
                    format='%(asctime)s %(levelname)s %(message)s')
@@ -45,42 +46,37 @@ save_path = f"{path}\\{exp_name}_{date}.hdf5"
 '''
 User: Set probe position array (units in cm)
 '''
-# Probe position parameters
-xmin = -15
-xmax = 15
-nx = 31
+# Load probe position and acquisition parameters from config.txt
+config = load_config('motion/config.txt')
 
-ymin = -20
-ymax = 20
-ny = 41
+xmin = config['xmin']
+xmax = config['xmax']
+nx = config['nx']
+ymin = config['ymin']
+ymax = config['ymax']
+ny = config['ny']
+zmin = config['zmin']
+zmax = config['zmax']
+nz = config['nz']
+num_duplicate_shots = config['num_duplicate_shots']
+num_run_repeats = config['num_run_repeats']
 
-# Set z parameters to None if not using XYZ drive
-zmin = None
-zmax = None
-nz = None
-
-num_duplicate_shots = 11      # number of duplicate shots recorded at each location
-num_run_repeats = 1          # number of times to repeat sequentially over all locations
 #-------------------------------------------------------------------------------------------------------------
 '''
 User: Set probe movement boundaries (unit: cm)
 '''
-# Motor limit swtich distance with respect to (0,0)
-xm_limits = (-57, 40)
-ym_limits = (-64, 61)
-zm_limits = (-24, 9) # 3D drive only
-
-# For 3D drive only; probe limit
-x_limits = (-40, 200)  # (min, max) in cm
-y_limits = (-40, 40)
-z_limits = (-15, 15)
+# Load boundaries from config.txt
+xm_limits = config['xm_limits']
+ym_limits = config['ym_limits']
+zm_limits = config['zm_limits']
+x_limits = config['x_limits']
+y_limits = config['y_limits']
+z_limits = config['z_limits']
 #-------------------------------------------------------------------------------------------------------------
 
 def get_experiment_description():
-
     """Return overall experiment description"""
     return f'''
-    
     Isat and Langmuir sweep ylines. 6K Compumotor is broken. Using Jia's Python world to rescue. Instead of SIS, data from Oscilloscope is directly recorded.
 
     LAPD B field:
@@ -150,38 +146,6 @@ def get_experiment_description():
     - {num_duplicate_shots} shots per position
     - {num_run_repeats} full scan repeats
     '''
-#-------------------------------------------------------------------------------------------------------------
-def outer_boundary(x, y, z):
-    """Return True if position is within allowed range"""
-    return (x_limits[0] <= x <= x_limits[1] and 
-            y_limits[0] <= y <= y_limits[1] and 
-            z_limits[0] <= z <= z_limits[1])
-
-def obstacle_boundary(x, y, z):
-    """Return True if position is NOT in obstacle"""
-    # Check large box obstacle (30x6x11 cm box from x=-50 to -20)
-    buffer = 0.2  # Small buffer to ensure paths don't get too close
-    in_obstacle = ( -60 <= x <= -17 and 
-                    -2.5 <= y <= 5 and 
-                    -6.5 <= z <= 9)
-    
-    return not in_obstacle
-
-def motor_boundary(x, y, z):
-    """Return True if position is within allowed range"""
-    # Check outer boundary
-    in_outer_boundary = (xm_limits[0] <= x <= xm_limits[1] and 
-                        ym_limits[0] <= y <= ym_limits[1] and 
-                        zm_limits[0] <= z <= zm_limits[1])
-    return in_outer_boundary
-
-def motor_boundary_2D(x, y, z):
-    """Return True if position is within allowed range"""
-    # Check outer boundary
-    in_outer_boundary = (xm_limits[0] <= x <= xm_limits[1] and 
-                        ym_limits[0] <= y <= ym_limits[1] and
-                        -999 <= z <= 999)
-    return in_outer_boundary
 
 #-------------------------------------------------------------------------------------------------------------
 # Scope and motor IP addresses
@@ -215,75 +179,6 @@ external_delays = { # unit: milliseconds
     'LPScope': 0
 }
 
-#-------------------------------------------------------------------------------------------------------------
-def get_positions_xy():
-    """Generate the positions array for probe movement.
-    Returns:
-        tuple: (positions, xpos, ypos)
-            - positions: Array of tuples (shot_num, x, y)
-            - xpos: Array of x positions
-            - ypos: Array of y positions
-    """
-    if nx == 0 or ny == 0:
-        sys.exit('Position array is empty.') 
-        
-    xpos = np.linspace(xmin, xmax, nx)
-    ypos = np.linspace(ymin, ymax, ny)
-
-    # Calculate total number of positions including duplicates and repeats
-    total_positions = nx * ny * num_duplicate_shots * num_run_repeats
-
-    # Allocate the positions array
-    positions = np.zeros(total_positions, 
-                        dtype=[('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4')])
-
-
-    # Create rectangular shape position array
-    index = 0
-    for repeat_cnt in range(num_run_repeats):
-        for y in ypos:
-            for x in xpos:
-                for dup_cnt in range(num_duplicate_shots):
-                    positions[index] = (index + 1, x, y)
-                    index += 1
-                    
-    return positions, xpos, ypos
-
-def get_positions_xyz():
-    """Generate the positions array for probe movement in 3D.
-    Returns:
-        tuple: (positions, xpos, ypos, zpos)
-            - positions: Array of tuples (shot_num, x, y, z)
-            - xpos: Array of x positions
-            - ypos: Array of y positions
-            - zpos: Array of z positions
-    """
-    if nx == 0 or ny == 0 or nz == 0:
-        sys.exit('Position array is empty.')
-        
-    xpos = np.linspace(xmin, xmax, nx)
-    ypos = np.linspace(ymin, ymax, ny) 
-    zpos = np.linspace(zmin, zmax, nz)
-
-    # Calculate total number of positions including duplicates and repeats
-    total_positions = nx * ny * nz * num_duplicate_shots * num_run_repeats
-
-    # Allocate the positions array
-    positions = np.zeros(total_positions,
-                        dtype=[('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4'), ('z', '>f4')])
-
-    # Create 3D rectangular shape position array
-    index = 0
-    for repeat_cnt in range(num_run_repeats):
-        for z in zpos:
-            for y in ypos:
-                for x in xpos:
-                    for dup_cnt in range(num_duplicate_shots):
-                        positions[index] = (index + 1, x, y, z)
-                        index += 1
-                    
-    return positions, xpos, ypos, zpos
-
 #===============================================================================================================================================
 # Main Data Run sequence
 #===============================================================================================================================================
@@ -311,8 +206,8 @@ def main():
     t_start = time.time()
     
     try:
-            run_acquisition(save_path, scope_ips, motor_ips, external_delays, nz)
-        
+        run_acquisition(save_path, scope_ips, motor_ips, external_delays, nz)
+    
     except KeyboardInterrupt:
         print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
     except Exception as e:
@@ -327,7 +222,6 @@ def main():
             print(f'Wrote file "{save_path}", {size:.1f} MB')
         else:
             print(f'File "{save_path}" was not created')
-
 
 #===============================================================================================================================================
 #<o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o> <o>
