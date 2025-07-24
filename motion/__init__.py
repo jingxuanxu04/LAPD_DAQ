@@ -29,7 +29,8 @@ from .position_manager import (
     motor_boundary_2D
 )
 
-from .Motor_Control import Motor_Control_2D, Motor_Control_3D, MC
+from .Motor_Control import Motor_Control_2D, Motor_Control_3D
+from .Motor_Control_1D import Motor_Control
 
 __all__ = [
     'PositionManager',
@@ -41,5 +42,9 @@ __all__ = [
     'outer_boundary',
     'obstacle_boundary',
     'motor_boundary',
-    'motor_boundary_2D'
+    'motor_boundary_2D',
+    'Motor_Control_2D',
+    'Motor_Control_3D', 
+    'MC',
+    'Motor_Control'
 ] 

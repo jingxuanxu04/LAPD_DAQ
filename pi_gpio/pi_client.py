@@ -240,7 +240,7 @@ class TungstenDropper:
     Ball count and max ball count are automatically persisted to a pickle cache file.
     '''
     def __init__(self, motor_ip, timeout=15, cache_file="tungsten_dropper_state.pkl"):
-        from Motor_Control_1D import Motor_Control
+        from motion import Motor_Control
         self.mc_w = Motor_Control(server_ip_addr=motor_ip, stop_switch_mode=3)
         self.timeout = timeout
         self.cache_file = cache_file
