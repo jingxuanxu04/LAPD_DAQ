@@ -1,0 +1,27 @@
+# Example config.txt for LAPD DAQ motion package
+# Copy this file to config.txt and edit values as needed
+
+# Position grid parameters
+nx = 31
+ny = 41
+nz = None
+xmin = -15
+xmax = 15
+ymin = -20
+ymax = 20
+zmin = None
+zmax = None
+
+# Acquisition parameters
+num_duplicate_shots = 11
+num_run_repeats = 1
+
+# Allowed boundaries for probe motion
+x_limits = (-40, 200)
+y_limits = (-40, 40)
+z_limits = (-15, 15)
+
+# Motor boundaries (for 2D/3D drives)
+xm_limits = (-57, 40)
+ym_limits = (-64, 61)
+zm_limits = (-24, 9) 
