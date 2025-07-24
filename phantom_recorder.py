@@ -179,11 +179,11 @@ class PhantomRecorder:
         """Update HDF5 metadata arrays with shot information.
         
         Args:
-            shot_number (int): Current shot number (0-based)
+            shot_number (int): Current shot number
             cine_filename (str): Filename of the saved cine file
             timestamp (float): Recording timestamp
         """
-        print(f"Updating HDF5 metadata for shot {shot_number+1}...")
+        print(f"Updating HDF5 metadata for shot {shot_number}...")
         
         with h5py.File(self.hdf5_path, 'a') as f:
             fastcam_group = f['/Control/FastCam']
@@ -199,12 +199,12 @@ class PhantomRecorder:
             cine_filenames.resize((current_size + 1,))
             timestamps.resize((current_size + 1,))
             
-            # Add metadata for this shot (shot number is 1-based)
-            shot_numbers[current_size] = shot_number + 1
+            # Add metadata for this shot
+            shot_numbers[current_size] = shot_number
             cine_filenames[current_size] = cine_filename
             timestamps[current_size] = timestamp
             
-            print(f"HDF5 metadata updated: shot {shot_number+1}, {cine_filename}, timestamp {timestamp}")
+            print(f"HDF5 metadata updated: shot {shot_number}, {cine_filename}, timestamp {timestamp}")
                     
     def cleanup(self):
         """Clean up camera resources."""
@@ -313,12 +313,12 @@ def main(num_shots=2, exposure_us=50, fps=5000, resolution=(256, 256),
 
         print(f"\nStarting test recording of {num_shots} shots...")        
         
-        for n in range(num_shots):
+        for n in range(0, num_shots):
             recorder.start_recording(n)
             timestamp = recorder.wait_for_recording_completion()
             rec_cine = recorder.save_cine(n, timestamp)
             recorder.wait_for_save_completion(rec_cine)
-            print(f"Shot {n+1} saved")
+            print(f"Shot {n} saved")
 
         recorder.cleanup()
         

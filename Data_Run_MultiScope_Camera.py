@@ -207,7 +207,7 @@ def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, cam_
                     all_data = msa.acquire_shot(active_scopes, shot_num) # Acquire data from scopes
 
                     if camera_recorder:
-                        rec_cine = camera_recorder.save_cine(shot_num - 1, timestamp)
+                        rec_cine = camera_recorder.save_cine(shot_num, timestamp)
 
                     msa.update_hdf5(all_data, shot_num, positions=None)
                     print("Save scope data to HDF5")
@@ -217,8 +217,8 @@ def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, cam_
                         
                         # Update HDF5 with camera metadata if HDF5 integration is enabled
                         if hasattr(camera_recorder, 'hdf5_path'):
-                            filename = f"{camera_recorder.config['name']}_shot{shot_num-1:03d}.cine"
-                            camera_recorder._update_hdf5_metadata(shot_num - 1, filename, timestamp)
+                            filename = f"{camera_recorder.config['name']}_shot{shot_num:03d}.cine"
+                            camera_recorder._update_hdf5_metadata(shot_num, filename, timestamp)
                             print("Save camera metadata to HDF5")
 
                     # Calculate and display remaining time
@@ -316,7 +316,7 @@ def run_acquisition_with_WDropper(save_path, scope_ips, cam_config=None):
                     all_data = msa.acquire_shot(active_scopes, shot_num) # Acquire data from scopes
 
                     if camera_recorder:
-                        rec_cine = camera_recorder.save_cine(shot_num - 1, timestamp)
+                        rec_cine = camera_recorder.save_cine(shot_num, timestamp)
 
                     msa.update_hdf5(all_data, shot_num, positions=None)
                     print("Save scope data to HDF5")
@@ -326,8 +326,8 @@ def run_acquisition_with_WDropper(save_path, scope_ips, cam_config=None):
                         
                         # Update HDF5 with camera metadata if HDF5 integration is enabled
                         if hasattr(camera_recorder, 'hdf5_path'):
-                            filename = f"{camera_recorder.config['name']}_shot{shot_num-1:03d}.cine"
-                            camera_recorder._update_hdf5_metadata(shot_num - 1, filename, timestamp)
+                            filename = f"{camera_recorder.config['name']}_shot{shot_num:03d}.cine"
+                            camera_recorder._update_hdf5_metadata(shot_num, filename, timestamp)
                             print("Save camera metadata to HDF5")
 
                     # Calculate and display remaining time
