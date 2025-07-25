@@ -1,7 +1,29 @@
 '''
-TODO:
-- 45deg probe hdf5 file are getting the wrong file descriptions
-- MultiScope_Camera file is getting wrong position information in control group of HDF5 file
+Multi-scope data acquisition called by Data_Run.py
+
+This module handles scope configuration, data acquisition, and HDF5 file management.
+Motion control and probe positioning functionality has been moved to the motion package.
+
+Key components:
+- MultiScopeAcquisition class: Manages multiple oscilloscopes, data acquisition and storage
+- Scope configuration and metadata loaded from experiment_config.txt
+- HDF5 file structure optimized for large datasets with compression
+- Parallel scope arming support for synchronized acquisition
+
+Dependencies:
+- LeCroy_Scope: Interface to LeCroy oscilloscopes
+- h5py: HDF5 file handling
+- numpy: Numerical operations
+- configparser: Configuration file parsing
+- motion package: All probe movement and positioning functionality
+
+Created on Feb.14.2024
+@author: Jia Han
+
+Updated July.2025
+- Separated motion control into dedicated motion package
+- Separate scope arming into a separate function
+- Change experiment description to read from experiment_config.txt
 '''
 
 import numpy as np

@@ -7,18 +7,13 @@ This combines the functionality of:
 - multi_scope_acquisition.py for multiple scope data
 - phantom_recorder.py for high-speed camera data
 
-The user should edit this file to:
-    1) Set scope IP addresses
-    2) Set camera configuration parameters
-    3) Set number of shots and external delays
-    4) Set the HDF5 filename and experiment description
-    5) Set descriptions for scopes and channels
-    6) Configure any other experiment-specific parameters
+Configuration and metadata:
+- Scope and channel descriptions, as well as experiment metadata, are now loaded from experiment_config.txt.
+- Edit experiment_config.txt to set experiment description, scope descriptions, and channel descriptions.
+- Use this script to set scope IP addresses, camera configuration, number of shots, delays, and file paths.
 
-Created on Dec.1.2024
-@author: Assistant based on Jia Han's Data_Run.py
-
-TODO: Warning: Could not load channel description from config: While reading from 'experiment_config.txt' [line 19]: option '' in section 'experiment' already exists
+Created July.2025
+@author: AI assistant based on Jia Han's Data_Run.py
 """
 
 import datetime

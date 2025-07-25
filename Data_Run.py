@@ -1,20 +1,19 @@
 # -*- coding: utf-8 -*-
 """
 Multi-scope data acquisition program with probe movement support.
-Run this program to acquire data from multiple scopes and save it in an HDF5 file.
-Result is plotted in real time.
+See multi_scope_acquisition.py for more details.
 
-The user should edit this file to:
-    1) Set scope IP addresses and motor IP addresses
-    2) Set probe position array and movement parameters
-    3) Set number of shots and external delays
-    4) Set the HDF5 filename and experiment description
-    5) Set descriptions for scopes and channels
-    6) Configure any other experiment-specific parameters
-    7) Set probe movement boundaries
+Configuration and metadata:
+- Edit experiment_config.txt to set experiment description, scope/channel descriptions, and probe movement/position parameters.
+- Use this script to set file paths, scope and motor IP addresses, and other run-specific parameters.
 
 Created on Feb.14.2024
 @author: Jia Han
+
+Update July.2025
+- Change experiment description to read from experiment_config.txt
+- Change probe position and movement to read from experiment_config.txt
+
 
 TODO: this script is not optimized for speed. Need to:
 - Data_Run_2D.py and Acquire_Scope_Data_2D.py includes saving raw data to disk; this needs to be added here.
@@ -100,20 +99,6 @@ scope_ips = {
 motor_ips = { # For 3D X:163, Y:165, Z:164
     'x': '192.168.7.166',
     'y': '192.168.7.167',   
-}
-
-def get_channel_description(tr):
-    """Channel description - DEPRECATED: Now loaded from experiment_config.txt"""
-    print("Warning: get_channel_description() is deprecated. Update experiment_config.txt instead.")
-    return f'Channel {tr} - Update experiment_config.txt [channels] section'
-
-def get_scope_description(scope_name):
-    """Return description for each scope - DEPRECATED: Now loaded from experiment_config.txt"""
-    print("Warning: get_scope_description() is deprecated. Update experiment_config.txt instead.")
-    return f'Scope {scope_name} - Update experiment_config.txt [scopes] section'
-
-external_delays = { # unit: milliseconds
-    'LPScope': 0
 }
 
 #===============================================================================================================================================
