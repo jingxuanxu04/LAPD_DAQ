@@ -17,6 +17,8 @@ The user should edit this file to:
 
 Created on Dec.1.2024
 @author: Assistant based on Jia Han's Data_Run.py
+
+TODO: Warning: Could not load channel description from config: While reading from 'experiment_config.txt' [line 19]: option '' in section 'experiment' already exists
 """
 
 import datetime
@@ -48,7 +50,7 @@ PI_PORT = 54321
 '''
 User: Set experiment name and path
 '''
-exp_name = 'scope_cam_tungsten_test'  # experiment name
+exp_name = 'scope_cam_tungsten_test_3'  # experiment name
 date = datetime.date.today()
 base_path = r"E:\Shadow data\Energetic_Electron_Ring\test"
 save_path = os.path.join(base_path, f"{exp_name}_{date}.hdf5")
