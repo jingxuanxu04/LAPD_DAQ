@@ -1,6 +1,58 @@
 # LAPD_DAQ
- Data acquisition script using Ethernet motor and LeCroy scope as digitizer on LAPD.
+Data acquisition script using Ethernet motor and LeCroy scope as digitizer on LAPD.
 Modified from Scope_DAQ used on process plasma chamber
+
+## Configuration
+
+All experiment settings are now configured through a single file: `experiment_config.txt`. This replaces the old system of hardcoded values in individual scripts.
+
+### Setting Up an Experiment
+
+1. **Copy the example config:**
+   ```bash
+   cp example_experiment_config.txt experiment_config.txt
+   ```
+
+2. **Edit the configuration sections:**
+
+   **`[experiment]`** - Main experiment description (multi-line text)
+   ```ini
+   [experiment]
+   description = """
+   Your detailed experiment description here...
+   Include plasma conditions, timing, probe setup, etc.
+   """
+   ```
+
+   **`[scopes]`** - Scope descriptions
+   ```ini
+   [scopes]
+   LPScope = LeCroy HDO4104 - 4GHz 20GS/s oscilloscope for Langmuir probe diagnostics
+   testScope = LeCroy WavePro 404HD - RF and probe diagnostics
+   ```
+
+   **`[channels]`** - Channel descriptions
+   ```ini
+   [channels]
+   LPScope_C1 = Isat, p39, G: 1
+   LPScope_C2 = Isweep, p39
+   testScope_C1 = RF signal input
+   ```
+
+   **`[position]`** - Motion/position settings (optional)
+   ```ini
+   [position]
+   # Uncomment these lines to enable probe movement:
+   # nx = 31
+   # ny = 41
+   # xmin = -15
+   # xmax = 15
+   # ...
+   ```
+
+3. **Choose acquisition mode:**
+   - **With movement:** Uncomment and fill the `[position]` section → Use `Data_Run.py` or `Data_Run_45deg.py`
+   - **Stationary:** Leave `[position]` empty/commented → Use `Data_Run_MultiScope_Camera.py`
 
 ### Data Acquisition Integration
 

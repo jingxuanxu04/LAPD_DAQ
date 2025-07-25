@@ -46,106 +46,50 @@ save_path = f"{path}\\{exp_name}_{date}.hdf5"
 '''
 User: Set probe position array (units in cm)
 '''
-# Load probe position and acquisition parameters from config.txt
-config = load_config('motion/config.txt')
+# Load probe position and acquisition parameters from experiment_config.txt
+config = load_config()  # Uses default 'experiment_config.txt'
 
-xmin = config['xmin']
-xmax = config['xmax']
-nx = config['nx']
-ymin = config['ymin']
-ymax = config['ymax']
-ny = config['ny']
-zmin = config['zmin']
-zmax = config['zmax']
-nz = config['nz']
-num_duplicate_shots = config['num_duplicate_shots']
-num_run_repeats = config['num_run_repeats']
-
-#-------------------------------------------------------------------------------------------------------------
-'''
-User: Set probe movement boundaries (unit: cm)
-'''
-# Load boundaries from config.txt
-xm_limits = config['xm_limits']
-ym_limits = config['ym_limits']
-zm_limits = config['zm_limits']
-x_limits = config['x_limits']
-y_limits = config['y_limits']
-z_limits = config['z_limits']
+if config is None:
+    print("No position configuration found in experiment_config.txt")
+    print("This will be a stationary acquisition (no probe movement)")
+    # Set default values for stationary mode
+    xmin = xmax = nx = 0
+    ymin = ymax = ny = 0 
+    zmin = zmax = nz = None
+    num_duplicate_shots = 1
+    num_run_repeats = 1
+    xm_limits = ym_limits = zm_limits = (0, 0)
+    x_limits = y_limits = z_limits = (0, 0)
+else:
+    xmin = config['xmin']
+    xmax = config['xmax']
+    nx = config['nx']
+    ymin = config['ymin']
+    ymax = config['ymax']
+    ny = config['ny']
+    zmin = config['zmin']
+    zmax = config['zmax']
+    nz = config['nz']
+    num_duplicate_shots = config['num_duplicate_shots']
+    num_run_repeats = config['num_run_repeats']
+    
+    #-------------------------------------------------------------------------------------------------------------
+    '''
+    User: Set probe movement boundaries (unit: cm)
+    '''
+    # Load boundaries from experiment_config.txt
+    xm_limits = config['xm_limits']
+    ym_limits = config['ym_limits']
+    zm_limits = config['zm_limits']
+    x_limits = config['x_limits']
+    y_limits = config['y_limits']
+    z_limits = config['z_limits']
 #-------------------------------------------------------------------------------------------------------------
 
 def get_experiment_description():
-    """Return overall experiment description"""
-    return f'''
-    Isat and Langmuir sweep ylines. 6K Compumotor is broken. Using Jia's Python world to rescue. Instead of SIS, data from Oscilloscope is directly recorded.
-
-    LAPD B field:
-    ========
-    Black magnets at south:(PS12-13: 1100A)	2.0 kG
-    Magenta & yellow magnets: 		0.8 kG
-    Black magnet at north PS11: (0 A) 	0.0 kG
-
-    South LaB6 source:
-    ============
-    He plasma, 120 V bank discharge voltage, 3282 A discharge current
-    1/3 Hz rep rate 
-    Heater: ~36Vrms/2050 A
-    Gas puff using Piezo near south anode (~1" size cu tube feeding gas ~ x = 40 cm)
-    from both sides (east & west)
-    He 40PSI, 67 V from east and west pulses on Piezo valves 
-    Max Pressure: 4.5e-5  torr (New Cold magnetron gauge P33 west, N2 calibration) 
-    8.5/100 mtorr max mech pumps
-    Interferrometer (~288 GHz) @port 20, density at 15 ms ~6e12 cm^-3 assuming 40 cm plasma dia 
-    Interferrometer (~288 GHz) @port 29, density at 15 ms ~6e12 cm^-3 assuming 40 cm plasma dia 
-
-    North LaB6 source: Turned off and pulled out
-    =================
-
-    Antenna (turned OFF, in position):
-    ===========================
-
-    Port 47 top with four rods along x-direction
-    rod 4: y=+4.5 cm, rod 3: y=1.5 cm
-    rod 2: y=-1.5 cm, rod 1: y=-4.5 cm
-
-    *Direction of Bx field should reverse between neighboring elements due to probe geometry.
-
-
-    Timing:
-    =====
-    South Lab6 source: 0-15 ms 
-    Breakdown time (discharge voltage pulse to 1 kA dischrge): ~17 ms
-    Gas puff: 0 to  ~32 ms (w.r.t.  south discharge voltage pulse)
-    Lang Sweep: 200 us pulse-width, 18 cycles every 1 ms starting at 0.7 ms
-    Scope trigger: load traces to see. Must be several milliseconds befoe plasma turned on
-
-    Bdot probe C13 (10 turn) on port 41, (drive 2): PULLED OUT 
-    Bdot probe C16 (10 turn) on port 36, (drive 3): PULLED OUT
-                        
-    Moving Lang probe, coated shaft, 4 tip on port 29 (drive 4):
-    ==================================================
-    Isat-tip: Top-right, 50 Ohm, -120 V bias w.r.t. chamber ground
-    Iswp-tip: Top-left, 3 Ohm, Reference chamber ground
-    Tip size: ~0.5 mm x ~0.5 mm (???) - rely on interferro. calib.
-
-
-    Channels:
-    ======
-
-    Chan1:  Isat, p39, G: 1
-    Chan2:  Isweep, p39
-    Chan3 : Vsweep, p39, G: 1/100 
-
-    50 Ohm termination on scope.
-    Isat channel has a low pass filter to kill noise.
-
-    Probe Movement:
-    - X range: {xmin} to {xmax} cm, {nx} points
-    - Y range: {ymin} to {ymax} cm, {ny} points
-    - Z range: {zmin} to {zmax} cm, {nz} points (part 1 was -12 to -4)
-    - {num_duplicate_shots} shots per position
-    - {num_run_repeats} full scan repeats
-    '''
+    """Return overall experiment description - DEPRECATED: Now loaded from experiment_config.txt"""
+    print("Warning: get_experiment_description() is deprecated. Update experiment_config.txt instead.")
+    return "Experiment description moved to experiment_config.txt"
 
 #-------------------------------------------------------------------------------------------------------------
 # Scope and motor IP addresses
@@ -159,21 +103,14 @@ motor_ips = { # For 3D X:163, Y:165, Z:164
 }
 
 def get_channel_description(tr):
-    """Channel description"""
-    descriptions = {
-        'LPScope_C1': 'Isat, p39, G: 1',
-        'LPScope_C2': 'Isweep, p39',
-        'LPScope_C3': 'Vsweep, p39, G: 1/100 ',
-        'LPScope_C4': 'N/A'
-    }
-    return descriptions.get(tr, f'Channel {tr} - No description available')
+    """Channel description - DEPRECATED: Now loaded from experiment_config.txt"""
+    print("Warning: get_channel_description() is deprecated. Update experiment_config.txt instead.")
+    return f'Channel {tr} - Update experiment_config.txt [channels] section'
 
 def get_scope_description(scope_name):
-    """Return description for each scope"""
-    descriptions = {
-        'LPScope': '''LeCroy HDO4104'''
-    }
-    return descriptions.get(scope_name, f'Scope {scope_name} - No description available')
+    """Return description for each scope - DEPRECATED: Now loaded from experiment_config.txt"""
+    print("Warning: get_scope_description() is deprecated. Update experiment_config.txt instead.")
+    return f'Scope {scope_name} - Update experiment_config.txt [scopes] section'
 
 external_delays = { # unit: milliseconds
     'LPScope': 0

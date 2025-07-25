@@ -91,59 +91,19 @@ camera_config = {
 
 #-------------------------------------------------------------------------------------------------------------
 def get_experiment_description():
-    """Return overall experiment description"""
-    return f'''
-    Multi-scope and High-speed Camera Data Acquisition
-    
-    Experiment: {exp_name}
-    Date: {date}
-    Operator: Automated System
-    
-    Acquisition Parameters:
-    - Number of shots: {num_shots}
-    - No probe movement (stationary acquisition)
-    
-    Scope Configuration:
-    - Scopes: {list(scope_ips.keys())}
-    - External delays: {external_delays}
-    
-    Camera Configuration:
-    - Camera: {'Phantom' if camera_config else 'Disabled'}
-    - Resolution: {camera_config.get('resolution', 'N/A') if camera_config else 'N/A'}
-    - Frame rate: {camera_config.get('fps', 'N/A') if camera_config else 'N/A'} fps
-    - Exposure: {camera_config.get('exposure_us', 'N/A') if camera_config else 'N/A'} μs
-    - Frame range: {camera_config.get('pre_trigger_frames', 'N/A') if camera_config else 'N/A'} to +{camera_config.get('post_trigger_frames', 'N/A') if camera_config else 'N/A'}
-    
-    Setup Details:
-    - Add your specific experimental setup details here
-    - Plasma conditions, magnetic field settings, etc.
-    - Antenna configuration, timing sequences, etc.
-    
-    Notes:
-    - All data synchronized and saved to unified HDF5 file
-    - Scope data in respective scope groups (e.g., FastScope/, LPScope/)
-    - Camera metadata in /Control/FastCam/ group
-    - Configuration data in Control/ group
-    '''
+    """Return overall experiment description - DEPRECATED: Now loaded from experiment_config.txt"""
+    print("Warning: get_experiment_description() is deprecated. Update experiment_config.txt instead.")
+    return "Experiment description moved to experiment_config.txt"
 
-#-------------------------------------------------------------------------------------------------------------
 def get_channel_description(tr):
-    """Channel description for all scopes"""
-    descriptions = {
-        # FastScope channels
-        'testScope_C1': 'RF signal input',
-        'testScope_C2': 'RF signal at amplifier output', 
-        'testScope_C3': 'Probe signal',
-        'testScope_C4': 'Trigger signal',
-    }
-    return descriptions.get(tr, f'Channel {tr} - No description available')
+    """Channel description - DEPRECATED: Now loaded from experiment_config.txt"""
+    print("Warning: get_channel_description() is deprecated. Update experiment_config.txt instead.")
+    return f'Channel {tr} - Update experiment_config.txt [channels] section'
 
 def get_scope_description(scope_name):
-    """Return description for each scope"""
-    descriptions = {
-        'testScope': 'LeCroy WavePro 404HD 4GHz 20GS/s; RF and probe diagnostics',
-    }
-    return descriptions.get(scope_name, f'Scope {scope_name} - No description available')
+    """Return description for each scope - DEPRECATED: Now loaded from experiment_config.txt"""
+    print("Warning: get_scope_description() is deprecated. Update experiment_config.txt instead.")
+    return f'Scope {scope_name} - Update experiment_config.txt [scopes] section'
 
 
 #===============================================================================================================================================

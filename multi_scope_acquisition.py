@@ -10,6 +10,7 @@ from LeCroy_Scope import LeCroy_Scope, WAVEDESC_SIZE
 import h5py
 import time
 import os
+import configparser
 
 # Import motion control components from the motion package
 import sys
@@ -20,6 +21,49 @@ if motion_dir not in sys.path:
 from motion import PositionManager, initialize_motor, initialize_motor_45deg, move_45deg_probes
 
 #===============================================================================================================================================
+def load_experiment_config(config_path='experiment_config.txt'):
+    """Load experiment configuration from config file."""
+    config = configparser.ConfigParser()
+    config.read(config_path)
+    
+    # Set defaults if sections don't exist
+    if 'experiment' not in config:
+        config.add_section('experiment')
+    if 'scopes' not in config:
+        config.add_section('scopes')
+    if 'channels' not in config:
+        config.add_section('channels')
+    
+    # Set default values if not present
+    if not config.get('experiment', 'description', fallback=None):
+        config.set('experiment', 'description', 'No experiment description provided')
+    
+    return config
+
+def load_position_config():
+    """Load position config from experiment_config.txt if [position] section exists."""
+    try:
+        config = load_experiment_config()
+        if 'position' not in config or not dict(config.items('position')):
+            return None  # No position config, stationary
+        pos_config = {}
+        for key, value in config.items('position'):
+            try:
+                if ',' in value:
+                    pos_config[key] = tuple(float(x) if '.' in x else int(x) for x in value.split(','))
+                elif value.lower() == 'none':
+                    pos_config[key] = None
+                elif '.' in value:
+                    pos_config[key] = float(value)
+                else:
+                    pos_config[key] = int(value)
+            except Exception:
+                pos_config[key] = value
+        return pos_config
+    except Exception as e:
+        print(f"Warning: Could not load position config: {e}")
+        return None
+
 def stop_triggering(scope, retry=500):
     retry_count = 0
     while retry_count < retry:
@@ -173,19 +217,47 @@ class MultiScopeAcquisition:
         self.cleanup()
 
     def get_scope_description(self, scope_name):
-        """Get scope description from Data_Run module"""
-        from Data_Run import get_scope_description
-        return get_scope_description(scope_name)
+        """Get scope description from experiment config"""
+        try:
+            config = load_experiment_config()
+            return config.get('scopes', scope_name, fallback=f'Scope {scope_name} - No description available')
+        except Exception as e:
+            print(f"Warning: Could not load scope description from config: {e}")
+            return f'Scope {scope_name} - No description available'
     
     def get_channel_description(self, channel_name):
-        """Get channel description from Data_Run module"""
-        from Data_Run import get_channel_description
-        return get_channel_description(channel_name)
+        """Get channel description from experiment config"""
+        try:
+            config = load_experiment_config()
+            return config.get('channels', channel_name, fallback=f'Channel {channel_name} - No description available')
+        except Exception as e:
+            print(f"Warning: Could not load channel description from config: {e}")
+            return f'Channel {channel_name} - No description available'
     
     def get_experiment_description(self):
-        """Get experiment description from Data_Run module"""
-        from Data_Run import get_experiment_description
-        return get_experiment_description()
+        """Get experiment description from experiment config"""
+        try:
+            config = load_experiment_config()
+            description = config.get('experiment', 'description', fallback='No experiment description provided')
+            
+            # Add position config information if available
+            pos_config = load_position_config()
+            if pos_config:
+                description += f"""
+
+Position Configuration (from experiment_config.txt [position] section):
+- X range: {pos_config.get('xmin', 'N/A')} to {pos_config.get('xmax', 'N/A')} cm, {pos_config.get('nx', 'N/A')} points
+- Y range: {pos_config.get('ymin', 'N/A')} to {pos_config.get('ymax', 'N/A')} cm, {pos_config.get('ny', 'N/A')} points
+- Z range: {pos_config.get('zmin', 'N/A')} to {pos_config.get('zmax', 'N/A')} cm, {pos_config.get('nz', 'N/A')} points
+- {pos_config.get('num_duplicate_shots', 'N/A')} shots per position
+- {pos_config.get('num_run_repeats', 'N/A')} full scan repeats
+- Probe boundaries: x={pos_config.get('x_limits', 'N/A')}, y={pos_config.get('y_limits', 'N/A')}, z={pos_config.get('z_limits', 'N/A')}
+- Motor boundaries: x={pos_config.get('xm_limits', 'N/A')}, y={pos_config.get('ym_limits', 'N/A')}, z={pos_config.get('zm_limits', 'N/A')}"""
+            
+            return description
+        except Exception as e:
+            print(f"Warning: Could not load experiment description from config: {e}")
+            return 'No experiment description provided'
 
     def get_script_contents(self):
         """Read the contents of the Python scripts used to create the HDF5 file"""

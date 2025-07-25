@@ -23,6 +23,7 @@ from multi_scope_acquisition import run_acquisition
 import time
 import sys
 import logging
+from motion import create_all_positions_45deg
 
 logging.basicConfig(filename='motor.log', level=logging.WARNING, 
                    format='%(asctime)s %(levelname)s %(message)s')
@@ -40,43 +41,23 @@ save_path = f"{path}\\{exp_name}-{cur_dt.month}-{cur_dt.day}-{cur_dt.hour}-{cur_
 '''
 User: Set probe position array
 '''
-# Set up position array (unit: cm)
-xstart = {'P16': -38, 'P22': -18, 'P29': -38, 'P34': -38, 'P42': -38}
-xstop  = {'P16': -38, 'P22': 18, 'P29': -38, 'P34': -38, 'P42': -38}
-nx = 37       # number of positions
+# Load 45deg probe position parameters from experiment_config.txt
+from motion.position_manager import load_config
 
-nshot = 5    # number of shots at each position
+config = load_config()  # Uses default 'experiment_config.txt'
 
-#-------------------------------------------------------------------------------------------------------------
-def get_experiment_description():
+if config is None:
+    print("No position configuration found in experiment_config.txt")
+    print("45deg movement requires position configuration with 45deg parameters")
+    sys.exit("Please configure [position] section in experiment_config.txt for 45deg movement")
+else:
+    # Get 45deg specific parameters from config
+    xstart = config.get('xstart', {'P16': -38, 'P22': -18, 'P29': -38, 'P34': -38, 'P42': -38})
+    xstop = config.get('xstop', {'P16': -38, 'P22': 18, 'P29': -38, 'P34': -38, 'P42': -38})
+    nx = config.get('nx', 37)
+    nshot = config.get('nshots', 5)
 
-    """Return overall experiment description"""
-    return f'''
-    45deg probe @P22 radial line
-    Parameters see parameter scan 17
-    
-    Experiment: {exp_name}
-    Date: {cur_dt.month}-{cur_dt.day}-{cur_dt.year}
-    Time: {cur_dt.hour}:{cur_dt.minute}
-    Operator: Jia Han
-    
-    Probe Movement:
-    - 45deg probes located at P16, P22, P29, P34, P42
-    - Probe moves on single radial line    
-    - Number of shots at each position: {nshot}
-    - Number of positions: {nx}
- 
-    - 4-tip Langmuir with Tunsten wire 1mm long
-    - Triple probe boxes are used (see https://drive.google.com/drive/folders/1-9VcMYBBSbKsqKTpIVFkImKsi8OC1s4K?usp=drive_link)
-    - P16 -- Not active
-    - P22 -- Vf(C1), Te(C3), Isat(C5) R=330
-    - P29 -- Vf(C2), Te(C4), Isat(C6) R=330
-    - P34 -- Not active
-    - P42 -- Not active
 
-    - Scope descriptions: See scope_group.attrs['description']
-    - Channel descriptions: See channel_group.attrs['description']
-    '''
 #-------------------------------------------------------------------------------------------------------------
 scope_ips = {
     'Scope': '192.168.7.67' # LeCroy WavePro 404HD 4GHz 20GS/s
@@ -90,60 +71,6 @@ motor_ips = {
     'P42': '192.168.7.145'
 }
 
-def get_channel_description(tr):
-    """Channel description"""
-    descriptions = {
-        'Scope_C1': 'Vf_P22',
-        'Scope_C2': 'Vf_P29',
-        'Scope_C3': 'Te_P22',
-        'Scope_C4': 'Te_P29',
-        'Scope_C5': 'Isat_P22',
-        'Scope_C6': 'Isat_P29',
-    }
-    return descriptions.get(tr, f'Channel {tr} - No description available')
-
-def get_scope_description(scope_name):
-    """Return description for each scope"""
-    descriptions = {
-        'Scope': '''LeCroy '''
-    }
-    return descriptions.get(scope_name, f'Scope {scope_name} - No description available')
-
-def get_positions(xstart, xstop, nx, nshots):
-	""" 
-	callback function to return the positions array
-	"""
-
-	if nx==0:
-		sys.exit('Position array is empty.')
-        
-	xpos = np.linspace(xstart, xstop, nx)
-
-	# allocate positions array, fill it with zeros
-	positions = np.zeros((nx*nshots), dtype=[('shot_num', np.int32), ('x', np.float64)])
-
-	#create rectangular shape position array with height z
-	index = 0
-
-	for x in xpos:
-		for dup_cnt in range(nshots):
-			positions[index] = (index+1, x)
-			index += 1
-                        
-	return positions, xpos
-
-def create_all_positions(pr_ls, xstart, xstop, nx, nshots):
-	"""
-	create position array for all probes
-	"""
-
-	positions = {}
-	xpos = {}
-
-	for pr in pr_ls:
-		positions[pr], xpos[pr] = get_positions(xstart[pr], xstop[pr], nx, nshots)
-
-	return positions, xpos
 #===============================================================================================================================================
 # Main Data Run sequence
 #===============================================================================================================================================
@@ -171,7 +98,7 @@ def main():
     t_start = time.time()
     
     try:
-        run_acquisition(save_path, scope_ips, motor_ips, is_45deg=True)
+        run_acquisition(save_path, scope_ips, motor_ips, external_delays={}, nz=None, is_45deg=True)
         
     except KeyboardInterrupt:
         print('\n______Halted due to Ctrl-C______', '  at', time.ctime())

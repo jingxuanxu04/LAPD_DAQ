@@ -9,39 +9,50 @@ import numpy as np
 import h5py
 import os
 import sys
-from .Motor_Control import Motor_Control_2D, Motor_Control_3D, MC
+from .Motor_Control import Motor_Control_2D, Motor_Control_3D
+from .Motor_Control_1D import Motor_Control
+import configparser
 
 # --- Config loader ---
-def load_config(config_path):
-    """Load configuration variables from a config.txt file."""
-    import ast
-    config = {}
-    with open(config_path, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith('#'):
-                continue
-            key, value = line.split('=', 1)
-            key = key.strip()
-            value = value.strip()
-            try:
-                # Try to parse as Python literal (int, float, list, tuple)
-                value = ast.literal_eval(value)
-            except Exception:
-                pass
-            config[key] = value
-    return config
+def load_config(config_path='experiment_config.txt'):
+    config = configparser.ConfigParser()
+    config.read(config_path)
+    if 'position' not in config or not dict(config.items('position')):
+        return None  # No position config, stationary
+    pos_config = {}
+    for key, value in config.items('position'):
+        try:
+            if ',' in value and not value.startswith('{'):
+                # Handle comma-separated tuples (e.g., x_limits = -40,200)
+                pos_config[key] = tuple(float(x) if '.' in x else int(x) for x in value.split(','))
+            elif value.lower() == 'none':
+                pos_config[key] = None
+            elif value.startswith('{') and value.endswith('}'):
+                # Handle JSON-like dictionaries (e.g., xstart = {"P16": -38, "P22": -18})
+                import json
+                pos_config[key] = json.loads(value)
+            elif '.' in value:
+                pos_config[key] = float(value)
+            else:
+                pos_config[key] = int(value)
+        except Exception:
+            # Handle string values like probe_list = P16,P22,P29,P34,P42
+            if ',' in value:
+                pos_config[key] = [item.strip() for item in value.split(',')]
+            else:
+                pos_config[key] = value
+    return pos_config
 
 class PositionManager:
     """Handles position arrays, HDF5 position data, and position-related metadata"""
     
-    def __init__(self, save_path, nz=None, is_45deg=False, config_path='motion/config.txt'):
+    def __init__(self, save_path, nz=None, is_45deg=False, config_path='experiment_config.txt'):
         """
         Args:
             save_path: Path to HDF5 file
             nz: Number of z positions (None for 2D, int for 3D)
             is_45deg: Whether this is a 45-degree probe acquisition
-            config_path: Path to config.txt file
+            config_path: Path to experiment_config.txt file
         """
         self.save_path = save_path
         self.nz = nz
@@ -51,9 +62,23 @@ class PositionManager:
     def get_positions(self):
         """Get position arrays based on acquisition type"""
         if self.is_45deg:
-            from Data_Run_45deg import create_all_positions, xstart, xstop, nx, nshot
-            return create_all_positions(['P16', 'P22', 'P29', 'P34', 'P42'], xstart, xstop, nx, nshot)
+            # For 45deg, we need probe-specific parameters from config
+            if self.config is None:
+                raise ValueError("45deg movement requires position configuration in experiment_config.txt")
+            
+            # Get 45deg specific parameters from config
+            pr_ls = self.config.get('probe_list', ['P16', 'P22', 'P29', 'P34', 'P42'])
+            xstart = self.config.get('xstart', {})
+            xstop = self.config.get('xstop', {})
+            nx = self.config.get('nx', 0)
+            nshots = self.config.get('nshots', 1)
+            
+            return create_all_positions_45deg(pr_ls, xstart, xstop, nx, nshots)
         else:
+            # For XY/XYZ movement, use existing functions
+            if self.config is None:
+                raise ValueError("XY/XYZ movement requires position configuration in experiment_config.txt")
+                
             if self.nz is None:
                 return get_positions_xy(self.config)
             else:
@@ -138,7 +163,7 @@ class PositionManager:
 #===============================================================================================================================================
 # Acquisition Function for XY or XYZ probe drive
 #===============================================================================================================================================
-def initialize_motor(positions, motor_ips, nz, config_path='motion/config.txt'):
+def initialize_motor(positions, motor_ips, nz, config_path='experiment_config.txt'):
     config = load_config(config_path)
     # Check if motor movement is needed
     needs_movement = False
@@ -181,10 +206,10 @@ def initialize_motor_45deg(positions, motor_ips):
         try:
             # Special case for P29 which has different cm_per_turn
             if probe == 'P29':
-                motors[probe] = MC(server_ip_addr=motor_ips[probe], name=f"probe_{probe}", 
+                motors[probe] = Motor_Control(server_ip_addr=motor_ips[probe], name=f"probe_{probe}", 
                                  stop_switch_mode=2, cm_per_turn=0.127)
             else:
-                motors[probe] = MC(server_ip_addr=motor_ips[probe], name=f"probe_{probe}", 
+                motors[probe] = Motor_Control(server_ip_addr=motor_ips[probe], name=f"probe_{probe}", 
                                  stop_switch_mode=2)
                 
             # Set motor speed if connection successful
@@ -316,6 +341,59 @@ def get_positions_xyz(config):
                         index += 1
                     
     return positions, xpos, ypos, zpos
+
+def get_positions_45deg(xstart, xstop, nx, nshots):
+    """Generate the positions array for 45deg probe movement.
+    Args:
+        xstart: Starting x position
+        xstop: Ending x position  
+        nx: Number of x positions
+        nshots: Number of shots per position
+    Returns:
+        tuple: (positions, xpos)
+            - positions: Array of tuples (shot_num, x)
+            - xpos: Array of x positions
+    """
+    import sys
+    
+    if nx == 0:
+        sys.exit('Position array is empty.')
+        
+    xpos = np.linspace(xstart, xstop, nx)
+
+    # allocate positions array, fill it with zeros
+    positions = np.zeros((nx*nshots), dtype=[('shot_num', np.int32), ('x', np.float64)])
+
+    #create rectangular shape position array with height z
+    index = 0
+
+    for x in xpos:
+        for dup_cnt in range(nshots):
+            positions[index] = (index+1, x)
+            index += 1
+                        
+    return positions, xpos
+
+def create_all_positions_45deg(pr_ls, xstart, xstop, nx, nshots):
+    """Create position array for all 45deg probes.
+    Args:
+        pr_ls: List of probe names (e.g., ['P16', 'P22', 'P29', 'P34', 'P42'])
+        xstart: Dict of starting x positions for each probe
+        xstop: Dict of ending x positions for each probe
+        nx: Number of x positions
+        nshots: Number of shots per position
+    Returns:
+        tuple: (positions, xpos)
+            - positions: Dict of position arrays for each probe
+            - xpos: Dict of x position arrays for each probe
+    """
+    positions = {}
+    xpos = {}
+
+    for pr in pr_ls:
+        positions[pr], xpos[pr] = get_positions_45deg(xstart[pr], xstop[pr], nx, nshots)
+
+    return positions, xpos
 
 def outer_boundary(x, y, z, config):
     """Return True if position is within allowed range using config dict."""
