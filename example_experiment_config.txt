@@ -2,40 +2,37 @@
 # Copy this file to experiment_config.txt and edit for your experiment
 
 [experiment]
-description = """
-Multi-scope Data Acquisition with Probe Movement
+description = Multi-scope Data Acquisition with Probe Movement
+    Experiment: 18-isatswp-p39-xy-2000G-800G
+    Date: 2024-12-XX
+    Operator: Research Team
 
-Experiment: 18-isatswp-p39-xy-2000G-800G
-Date: 2024-12-XX
-Operator: Research Team
+    LAPD B field:
+    ========
+    Black magnets at south:(PS12-13: 1100A)	2.0 kG
+    Magenta & yellow magnets: 		0.8 kG
+    Black magnet at north PS11: (0 A) 	0.0 kG
 
-LAPD B field:
-========
-Black magnets at south:(PS12-13: 1100A)	2.0 kG
-Magenta & yellow magnets: 		0.8 kG
-Black magnet at north PS11: (0 A) 	0.0 kG
+    South LaB6 source:
+    ============
+    He plasma, 120 V bank discharge voltage, 3282 A discharge current
+    1/3 Hz rep rate 
+    Heater: ~36Vrms/2050 A
 
-South LaB6 source:
-============
-He plasma, 120 V bank discharge voltage, 3282 A discharge current
-1/3 Hz rep rate 
-Heater: ~36Vrms/2050 A
+    Timing:
+    =====
+    South Lab6 source: 0-15 ms 
+    Lang Sweep: 200 us pulse-width, 18 cycles every 1 ms starting at 0.7 ms
+    Scope trigger: load traces to see. Must be several milliseconds before plasma turned on
 
-Timing:
-=====
-South Lab6 source: 0-15 ms 
-Lang Sweep: 200 us pulse-width, 18 cycles every 1 ms starting at 0.7 ms
-Scope trigger: load traces to see. Must be several milliseconds before plasma turned on
+    Moving Lang probe, coated shaft, 4 tip on port 29 (drive 4)
 
-Moving Lang probe, coated shaft, 4 tip on port 29 (drive 4)
+    Probe Movement:
+    - Controlled by motion control system
+    - Parameters loaded from [position] section below when available
 
-Probe Movement:
-- Controlled by motion control system
-- Parameters loaded from [position] section below when available
-
-50 Ohm termination on scope.
-Isat channel has a low pass filter to kill noise.
-"""
+    50 Ohm termination on scope.
+    Isat channel has a low pass filter to kill noise.
 
 [scopes]
 LPScope = LeCroy HDO4104 - 4GHz 20GS/s oscilloscope for Langmuir probe diagnostics
