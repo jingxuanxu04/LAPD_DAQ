@@ -41,6 +41,7 @@ if motion_dir not in sys.path:
     sys.path.insert(0, motion_dir)
 
 from motion import PositionManager, initialize_motor, initialize_motor_45deg, move_45deg_probes
+from motion.position_manager import load_position_config
 
 #===============================================================================================================================================
 def load_experiment_config(config_path='experiment_config.txt'):
@@ -62,29 +63,7 @@ def load_experiment_config(config_path='experiment_config.txt'):
     
     return config
 
-def load_position_config():
-    """Load position config from experiment_config.txt if [position] section exists."""
-    try:
-        config = load_experiment_config()
-        if 'position' not in config or not dict(config.items('position')):
-            return None  # No position config, stationary
-        pos_config = {}
-        for key, value in config.items('position'):
-            try:
-                if ',' in value:
-                    pos_config[key] = tuple(float(x) if '.' in x else int(x) for x in value.split(','))
-                elif value.lower() == 'none':
-                    pos_config[key] = None
-                elif '.' in value:
-                    pos_config[key] = float(value)
-                else:
-                    pos_config[key] = int(value)
-            except Exception:
-                pos_config[key] = value
-        return pos_config
-    except Exception as e:
-        print(f"Warning: Could not load position config: {e}")
-        return None
+
 
 def stop_triggering(scope, retry=500):
     retry_count = 0
@@ -263,7 +242,7 @@ class MultiScopeAcquisition:
             description = config.get('experiment', 'description', fallback='No experiment description provided')
             
             # Add position config information if available
-            pos_config = load_position_config()
+            pos_config, _ = load_position_config()
             if pos_config:
                 description += f"""
 
@@ -636,7 +615,7 @@ def single_shot_acquisition_45(pos, motors, msa, pos_manager, save_path, scope_i
 #===============================================================================================================================================
 # Main Acquisition Loop  
 #===============================================================================================================================================
-def run_acquisition(save_path, scope_ips, motor_ips=None, external_delays=None, nz=None, is_45deg=False):
+def run_acquisition(save_path, scope_ips, motor_ips=None,  nz=None, is_45deg=None):
     """Run the main acquisition sequence
     Args:
         save_path: Path to save HDF5 file
@@ -644,12 +623,15 @@ def run_acquisition(save_path, scope_ips, motor_ips=None, external_delays=None, 
         motor_ips: Dictionary of motor IPs (can be None for stationary acquisition)
         external_delays: Dictionary of external delays for scopes (unused in current implementation)
         nz: Number of z positions (None for 2D, int for 3D)
-        is_45deg: Whether this is a 45-degree probe acquisition
+        is_45deg: Whether this is a 45-degree probe acquisition (auto-determined from config if None)
     """
     print('Starting acquisition loop at', time.ctime())
     
-    # Initialize position manager
+    # Initialize position manager (will auto-determine is_45deg from config if not specified)
     pos_manager = PositionManager(save_path, nz, is_45deg)
+    
+    # Get the actual is_45deg value after auto-detection
+    is_45deg = pos_manager.is_45deg
     
     # Initialize multi-scope acquisition
     with MultiScopeAcquisition(scope_ips, save_path) as msa:

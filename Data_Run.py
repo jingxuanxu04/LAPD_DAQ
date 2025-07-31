@@ -27,7 +27,7 @@ from multi_scope_acquisition import run_acquisition
 import time
 import sys
 import logging
-from motion.position_manager import load_config
+from motion.position_manager import load_position_config
 
 logging.basicConfig(filename='motor.log', level=logging.WARNING, 
                    format='%(asctime)s %(levelname)s %(message)s')
@@ -42,23 +42,25 @@ path = f"C:\\data\\PPPL_AlfvenWave"
 save_path = f"{path}\\{exp_name}_{date}.hdf5"
 
 #-------------------------------------------------------------------------------------------------------------
+# Scope and motor IP addresses
+scope_ips = {
+    'LPScope': '192.168.7.66' # LeCroy WavePro 404HD 4GHz 20GS/s
+}
+
+motor_ips = { # For 3D X:163, Y:165, Z:164
+    'x': '192.168.7.166',
+    'y': '192.168.7.167',   
+}
+#-------------------------------------------------------------------------------------------------------------
 '''
 User: Set probe position array (units in cm)
 '''
 # Load probe position and acquisition parameters from experiment_config.txt
-config = load_config()  # Uses default 'experiment_config.txt'
+config, is_45deg = load_position_config()  # Uses default 'experiment_config.txt'
 
 if config is None:
     print("No position configuration found in experiment_config.txt")
     print("This will be a stationary acquisition (no probe movement)")
-    # Set default values for stationary mode
-    xmin = xmax = nx = 0
-    ymin = ymax = ny = 0 
-    zmin = zmax = nz = None
-    num_duplicate_shots = 1
-    num_run_repeats = 1
-    xm_limits = ym_limits = zm_limits = (0, 0)
-    x_limits = y_limits = z_limits = (0, 0)
 else:
     xmin = config['xmin']
     xmax = config['xmax']
@@ -83,23 +85,7 @@ else:
     x_limits = config['x_limits']
     y_limits = config['y_limits']
     z_limits = config['z_limits']
-#-------------------------------------------------------------------------------------------------------------
 
-def get_experiment_description():
-    """Return overall experiment description - DEPRECATED: Now loaded from experiment_config.txt"""
-    print("Warning: get_experiment_description() is deprecated. Update experiment_config.txt instead.")
-    return "Experiment description moved to experiment_config.txt"
-
-#-------------------------------------------------------------------------------------------------------------
-# Scope and motor IP addresses
-scope_ips = {
-    'LPScope': '192.168.7.66' # LeCroy WavePro 404HD 4GHz 20GS/s
-}
-
-motor_ips = { # For 3D X:163, Y:165, Z:164
-    'x': '192.168.7.166',
-    'y': '192.168.7.167',   
-}
 
 #===============================================================================================================================================
 # Main Data Run sequence
@@ -122,13 +108,13 @@ def main():
             sys.exit()
         else:
             print('Overwriting existing file')
-            os.remove(save_path)  # Delete the existing file
+            os.remove(save_path)
     
     print('Data run started at', datetime.datetime.now())
     t_start = time.time()
     
     try:
-        run_acquisition(save_path, scope_ips, motor_ips, external_delays, nz)
+        run_acquisition(save_path, scope_ips, motor_ips, nz, is_45deg=is_45deg)
     
     except KeyboardInterrupt:
         print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
@@ -150,6 +136,4 @@ def main():
 #===============================================================================================================================================
 
 if __name__ == '__main__':
-    # Run a test acquisition with minimal settings
-    # run_test(test_save_path = r"E:\Shadow data\Energetic_Electron_Ring\test.hdf5")
     main()

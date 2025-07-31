@@ -36,6 +36,29 @@ xstop = {"P16": -38, "P22": 18, "P29": -38, "P34": -38, "P42": -38}
 
 If you want a stationary run (e.g., for Data_Run_MultiScope_Camera), leave `[position]` empty or commented out.
 
+## Configuration Loading
+
+The motion package provides a centralized configuration loader:
+
+```python
+from motion.position_manager import load_position_config
+
+# Load configuration with automatic mode detection
+config, is_45deg = load_position_config('experiment_config.txt')
+
+if config is None:
+    print("No position configuration - stationary acquisition")
+elif is_45deg:
+    print("45-degree probe acquisition detected")
+else:
+    print("XY/XYZ grid acquisition detected")
+```
+
+**Features:**
+- **Smart parsing**: Handles all data types (tuples, JSON dicts, string lists, etc.)
+- **Automatic mode detection**: Returns both config data and acquisition mode
+- **Unified interface**: Single function replaces previous duplicate functions
+
 ## Movement Styles
 
 The system supports two movement styles:
@@ -52,13 +75,16 @@ The system supports two movement styles:
 ## Components
 
 ### PositionManager (`position_manager.py`)
-Handles position arrays, HDF5 position data storage, and position-related metadata. Reads from `[position]` in `experiment_config.txt`.
+Handles position arrays, HDF5 position data storage, and position-related metadata. Automatically detects acquisition mode from `[position]` section in `experiment_config.txt`.
 
 ```python
 from motion import PositionManager
 
-# Create position manager
-pos_manager = PositionManager(save_path, nz=None, is_45deg=False)
+# Create position manager (automatically detects acquisition mode)
+pos_manager = PositionManager(save_path, nz=None)  # is_45deg auto-detected
+
+# Manual override if needed
+pos_manager = PositionManager(save_path, nz=None, is_45deg=True)  # Force 45deg mode
 
 # Initialize HDF5 position structure
 positions = pos_manager.initialize_position_hdf5()
@@ -66,6 +92,11 @@ positions = pos_manager.initialize_position_hdf5()
 # Update position data
 pos_manager.update_position_hdf5(shot_num, positions)
 ```
+
+**Automatic Mode Detection:**
+- **45-degree mode**: Detected when config contains `probe_list` + dictionary-format `xstart`/`xstop`
+- **XY/XYZ mode**: Detected when config contains standard grid parameters (`nx`, `ny`, etc.)
+- **Stationary mode**: When no `[position]` section exists
 
 ### Motor Control (`motor_control.py`)
 Functions for initializing and controlling different types of probe motors.

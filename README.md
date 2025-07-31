@@ -54,6 +54,69 @@ All experiment settings are now configured through a single file: `experiment_co
    - **With movement:** Uncomment and fill the `[position]` section → Use `Data_Run.py` or `Data_Run_45deg.py`
    - **Stationary:** Leave `[position]` empty/commented → Use `Data_Run_MultiScope_Camera.py`
 
+### Automatic Acquisition Mode Detection
+
+The system now automatically detects the acquisition mode from your configuration:
+
+- **45-degree probe acquisition**: Detected when `[position]` section contains:
+  - `probe_list` parameter (e.g., `probe_list = P16,P22,P29,P34,P42`)
+  - Dictionary-format `xstart` and/or `xstop` parameters:
+    ```ini
+    xstart = {"P16": -38, "P22": -18, "P29": -38, "P34": -38, "P42": -38}
+    xstop = {"P16": -38, "P22": 18, "P29": -38, "P34": -38, "P42": -38}
+    ```
+
+- **XY/XYZ probe acquisition**: Detected when `[position]` section contains:
+  - Standard grid parameters: `nx`, `ny`, `xmin`, `xmax`, `ymin`, `ymax`
+  - Optional Z parameters: `nz`, `zmin`, `zmax` (for 3D movement)
+
+- **Stationary acquisition**: When `[position]` section is empty or missing
+
+The `is_45deg` parameter is now automatically determined and no longer needs to be manually specified in most cases.
+
+### Configuration Loading System
+
+**Consolidated Configuration Parser**
+
+The system now uses a single, centralized `load_position_config()` function located in `motion/position_manager.py`:
+
+```python
+from motion.position_manager import load_position_config
+
+# Load configuration with automatic mode detection
+config, is_45deg = load_position_config('experiment_config.txt')
+```
+
+**Function Features:**
+- **Unified parsing**: Handles all configuration formats (tuples, JSON dicts, lists, etc.)
+- **Automatic mode detection**: Returns both config data and determined acquisition mode
+- **Smart type conversion**: 
+  - Comma-separated values → tuples (e.g., `x_limits = -40,200`)
+  - JSON format → dictionaries (e.g., `xstart = {"P16": -38, "P22": -18}`)
+  - String lists → arrays (e.g., `probe_list = P16,P22,P29,P34,P42`)
+- **Backward compatibility**: Existing code continues to work unchanged
+
+**Return Values:**
+- `config`: Dictionary of parsed configuration parameters (or `None` if no config)
+- `is_45deg`: Boolean indicating 45-degree probe acquisition mode
+
+**Previous Behavior (deprecated):**
+Previously, there were two separate `load_position_config` functions in different modules, which caused confusion and code duplication. The consolidation eliminates this redundancy while maintaining all functionality.
+
+**PositionManager Integration:**
+The `PositionManager` class now automatically determines the acquisition mode:
+
+```python
+# Old way (manual specification)
+pos_manager = PositionManager(save_path, nz=None, is_45deg=True)
+
+# New way (automatic detection from config)
+pos_manager = PositionManager(save_path, nz=None)  # is_45deg auto-detected
+
+# Still supports manual override when needed
+pos_manager = PositionManager(save_path, nz=None, is_45deg=False)  # Force non-45deg
+```
+
 ### Data Acquisition Integration
 
 1. **HDF5 Structure**

@@ -14,11 +14,20 @@ from .Motor_Control_1D import Motor_Control
 import configparser
 
 # --- Config loader ---
-def load_config(config_path='experiment_config.txt'):
+def load_position_config(config_path='experiment_config.txt'):
+    """
+    Load position configuration from config file.
+    
+    Returns:
+        tuple: (pos_config, is_45deg) where:
+            - pos_config: dict containing parsed position parameters, or None if no config
+            - is_45deg: bool indicating if this is a 45-degree probe acquisition
+    """
     config = configparser.ConfigParser()
     config.read(config_path)
     if 'position' not in config or not dict(config.items('position')):
-        return None  # No position config, stationary
+        return None, False  # No position config, stationary
+    
     pos_config = {}
     for key, value in config.items('position'):
         try:
@@ -41,23 +50,36 @@ def load_config(config_path='experiment_config.txt'):
                 pos_config[key] = [item.strip() for item in value.split(',')]
             else:
                 pos_config[key] = value
-    return pos_config
+    
+    # Determine if this is a 45-degree acquisition based on config parameters
+    is_45deg = False
+    if pos_config:
+        # 45deg mode is indicated by presence of probe_list and dict-format xstart/xstop
+        has_probe_list = 'probe_list' in pos_config
+        has_dict_xstart = 'xstart' in pos_config and isinstance(pos_config.get('xstart'), dict)
+        has_dict_xstop = 'xstop' in pos_config and isinstance(pos_config.get('xstop'), dict)
+        
+        is_45deg = has_probe_list and (has_dict_xstart or has_dict_xstop)
+    
+    return pos_config, is_45deg
 
 class PositionManager:
     """Handles position arrays, HDF5 position data, and position-related metadata"""
     
-    def __init__(self, save_path, nz=None, is_45deg=False, config_path='experiment_config.txt'):
+    def __init__(self, save_path, nz=None, is_45deg=None, config_path='experiment_config.txt'):
         """
         Args:
             save_path: Path to HDF5 file
             nz: Number of z positions (None for 2D, int for 3D)
-            is_45deg: Whether this is a 45-degree probe acquisition
+            is_45deg: Whether this is a 45-degree probe acquisition (auto-determined from config if None)
             config_path: Path to experiment_config.txt file
         """
         self.save_path = save_path
         self.nz = nz
-        self.is_45deg = is_45deg
-        self.config = load_config(config_path)
+        
+        # Load config and automatically determine is_45deg if not explicitly provided
+        self.config, auto_is_45deg = load_position_config(config_path)
+        self.is_45deg = is_45deg if is_45deg is not None else auto_is_45deg
         
     def get_positions(self):
         """Get position arrays based on acquisition type"""
@@ -164,7 +186,7 @@ class PositionManager:
 # Acquisition Function for XY or XYZ probe drive
 #===============================================================================================================================================
 def initialize_motor(positions, motor_ips, nz, config_path='experiment_config.txt'):
-    config = load_config(config_path)
+    config, _ = load_position_config(config_path)
     # Check if motor movement is needed
     needs_movement = False
     if len(positions) > 1:
