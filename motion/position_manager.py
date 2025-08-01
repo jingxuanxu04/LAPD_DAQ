@@ -14,7 +14,7 @@ from .Motor_Control_1D import Motor_Control
 import configparser
 
 # --- Config loader ---
-def load_position_config(config_path='experiment_config.txt'):
+def load_position_config(config_path):
     """
     Load position configuration from config file.
     

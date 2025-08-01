@@ -36,31 +36,32 @@ logging.basicConfig(filename='motor.log', level=logging.WARNING,
 '''
 User: Set experiment name and path
 '''
-exp_name = '18-isatswp-p39-xy-2000G-800G'  # experiment name
+exp_name = '00_speed_test'  # experiment name
 date = datetime.date.today()
-path = f"C:\\data\\PPPL_AlfvenWave"
+path = r"C:\data\Energetic_Electron_Ring"
 save_path = f"{path}\\{exp_name}_{date}.hdf5"
+config_path = r"C:\data\Energetic_Electron_Ring\experiment_config.txt"
 
 #-------------------------------------------------------------------------------------------------------------
 # Scope and motor IP addresses
 scope_ips = {
-    'LPScope': '192.168.7.66' # LeCroy WavePro 404HD 4GHz 20GS/s
+    'LPScope': '192.168.7.63' # LeCroy WavePro 404HD 4GHz 20GS/s
 }
 
-motor_ips = { # For 3D X:163, Y:165, Z:164
-    'x': '192.168.7.166',
-    'y': '192.168.7.167',   
-}
+# motor_ips = { # For 3D X:163, Y:165, Z:164
+#     'x': '192.168.7.166',
+#     'y': '192.168.7.167',   
+# }
 #-------------------------------------------------------------------------------------------------------------
 '''
 User: Set probe position array (units in cm)
 '''
 # Load probe position and acquisition parameters from experiment_config.txt
-config, is_45deg = load_position_config()  # Uses default 'experiment_config.txt'
+config, is_45deg = load_position_config(config_path)
 
 if config is None:
     print("No position configuration found in experiment_config.txt")
-    print("This will be a stationary acquisition (no probe movement)")
+    print("This will be a run without probe movement")
 else:
     xmin = config['xmin']
     xmax = config['xmax']
