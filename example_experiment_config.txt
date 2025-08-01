@@ -48,6 +48,11 @@ testScope_C2 = RF signal at amplifier output
 testScope_C3 = Probe signal
 testScope_C4 = Trigger signal
 
+# Number of shots
+[nshots]
+num_duplicate_shots = 5
+num_run_repeats = 1
+
 [position]
 # Uncomment and fill these lines to enable motion/position management
 # If this section is empty or commented out, the system assumes stationary acquisition (no movement)
@@ -62,8 +67,6 @@ testScope_C4 = Trigger signal
 # ymax = 20
 # zmin = None
 # zmax = None
-# num_duplicate_shots = 11
-# num_run_repeats = 1
 # x_limits = -40,200
 # y_limits = -40,40
 # z_limits = -15,15
@@ -74,6 +77,5 @@ testScope_C4 = Trigger signal
 # --- For 45deg Movement (Data_Run_45deg.py) ---
 # probe_list = P16,P22,P29,P34,P42
 # nx = 37
-# nshots = 5
 # xstart = {"P16": -38, "P22": -18, "P29": -38, "P34": -38, "P42": -38}
 # xstop = {"P16": -38, "P22": 18, "P29": -38, "P34": -38, "P42": -38} 

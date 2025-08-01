@@ -22,17 +22,12 @@ TODO: this script is not optimized for speed. Need to:
 
 import datetime
 import os
-import numpy as np
 from multi_scope_acquisition import run_acquisition
 import time
 import sys
-import logging
-from motion.position_manager import load_position_config
 
-logging.basicConfig(filename='motor.log', level=logging.WARNING, 
-                   format='%(asctime)s %(levelname)s %(message)s')
-
-############################################################################################################################
+#===============================================================================================================================================
+#===============================================================================================================================================
 '''
 User: Set experiment name and path
 '''
@@ -42,54 +37,8 @@ path = r"C:\data\Energetic_Electron_Ring"
 save_path = f"{path}\\{exp_name}_{date}.hdf5"
 config_path = r"C:\data\Energetic_Electron_Ring\experiment_config.txt"
 
-#-------------------------------------------------------------------------------------------------------------
-# Scope and motor IP addresses
-scope_ips = {
-    'LPScope': '192.168.7.63' # LeCroy WavePro 404HD 4GHz 20GS/s
-}
-
-# motor_ips = { # For 3D X:163, Y:165, Z:164
-#     'x': '192.168.7.166',
-#     'y': '192.168.7.167',   
-# }
-#-------------------------------------------------------------------------------------------------------------
-'''
-User: Set probe position array (units in cm)
-'''
-# Load probe position and acquisition parameters from experiment_config.txt
-config, is_45deg = load_position_config(config_path)
-
-if config is None:
-    print("No position configuration found in experiment_config.txt")
-    print("This will be a run without probe movement")
-else:
-    xmin = config['xmin']
-    xmax = config['xmax']
-    nx = config['nx']
-    ymin = config['ymin']
-    ymax = config['ymax']
-    ny = config['ny']
-    zmin = config['zmin']
-    zmax = config['zmax']
-    nz = config['nz']
-    num_duplicate_shots = config['num_duplicate_shots']
-    num_run_repeats = config['num_run_repeats']
-    
-    #-------------------------------------------------------------------------------------------------------------
-    '''
-    User: Set probe movement boundaries (unit: cm)
-    '''
-    # Load boundaries from experiment_config.txt
-    xm_limits = config['xm_limits']
-    ym_limits = config['ym_limits']
-    zm_limits = config['zm_limits']
-    x_limits = config['x_limits']
-    y_limits = config['y_limits']
-    z_limits = config['z_limits']
-
-
 #===============================================================================================================================================
-# Main Data Run sequence
+# Main function
 #===============================================================================================================================================
 def main():
     # Create save directory if it doesn't exist
@@ -115,7 +64,7 @@ def main():
     t_start = time.time()
     
     try:
-        run_acquisition(save_path, scope_ips, motor_ips, nz, is_45deg=is_45deg)
+        run_acquisition(save_path, config_path)
     
     except KeyboardInterrupt:
         print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
