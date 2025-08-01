@@ -27,7 +27,6 @@ Updated July.2025
 '''
 
 import numpy as np
-import matplotlib.pyplot as plt
 from LeCroy_Scope import LeCroy_Scope, WAVEDESC_SIZE
 import h5py
 import time
@@ -43,6 +42,8 @@ if motion_dir not in sys.path:
 from motion import PositionManager, initialize_motor, initialize_motor_45deg, move_45deg_probes
 from motion.position_manager import load_position_config
 
+import bapsf_motion as bmotion
+#===============================================================================================================================================
 #===============================================================================================================================================
 def load_experiment_config(config_path='experiment_config.txt'):
     """Load experiment configuration from config file."""
@@ -63,8 +64,7 @@ def load_experiment_config(config_path='experiment_config.txt'):
     
     return config
 
-
-
+#===============================================================================================================================================
 def stop_triggering(scope, retry=500):
     retry_count = 0
     while retry_count < retry:
@@ -75,7 +75,7 @@ def stop_triggering(scope, retry=500):
             time.sleep(0.05)
         except KeyboardInterrupt:
             print('Keyboard interrupted in stop_triggering')
-            raise  # Re-raise to propagate the interrupt
+            raise
         retry_count += 1
 
     print('Scope did not enter STOP state')
@@ -196,7 +196,7 @@ class MultiScopeAcquisition:
         self.scopes = {}
         self.figures = {}
         self.time_arrays = {}  # Store time arrays for each scope
-        # self.plot_data = {}    # Store plot data for each scope/trace/shot
+        self.config = load_experiment_config()
 
     def cleanup(self):
         """Clean up resources"""
@@ -219,46 +219,16 @@ class MultiScopeAcquisition:
 
     def get_scope_description(self, scope_name):
         """Get scope description from experiment config"""
-        try:
-            config = load_experiment_config()
-            return config.get('scopes', scope_name, fallback=f'Scope {scope_name} - No description available')
-        except Exception as e:
-            print(f"Warning: Could not load scope description from config: {e}")
-            return f'Scope {scope_name} - No description available'
+        return self.config.get('scopes', scope_name, fallback=f'Scope {scope_name} - No description available')
     
     def get_channel_description(self, channel_name):
         """Get channel description from experiment config"""
-        try:
-            config = load_experiment_config()
-            return config.get('channels', channel_name, fallback=f'Channel {channel_name} - No description available')
-        except Exception as e:
-            print(f"Warning: Could not load channel description from config: {e}")
-            return f'Channel {channel_name} - No description available'
+        return self.config.get('channels', channel_name, fallback=f'Channel {channel_name} - No description available')
     
     def get_experiment_description(self):
         """Get experiment description from experiment config"""
-        try:
-            config = load_experiment_config()
-            description = config.get('experiment', 'description', fallback='No experiment description provided')
-            
-            # Add position config information if available
-            pos_config, _ = load_position_config()
-            if pos_config:
-                description += f"""
-
-Position Configuration (from experiment_config.txt [position] section):
-- X range: {pos_config.get('xmin', 'N/A')} to {pos_config.get('xmax', 'N/A')} cm, {pos_config.get('nx', 'N/A')} points
-- Y range: {pos_config.get('ymin', 'N/A')} to {pos_config.get('ymax', 'N/A')} cm, {pos_config.get('ny', 'N/A')} points
-- Z range: {pos_config.get('zmin', 'N/A')} to {pos_config.get('zmax', 'N/A')} cm, {pos_config.get('nz', 'N/A')} points
-- {pos_config.get('num_duplicate_shots', 'N/A')} shots per position
-- {pos_config.get('num_run_repeats', 'N/A')} full scan repeats
-- Probe boundaries: x={pos_config.get('x_limits', 'N/A')}, y={pos_config.get('y_limits', 'N/A')}, z={pos_config.get('z_limits', 'N/A')}
-- Motor boundaries: x={pos_config.get('xm_limits', 'N/A')}, y={pos_config.get('ym_limits', 'N/A')}, z={pos_config.get('zm_limits', 'N/A')}"""
-            
-            return description
-        except Exception as e:
-            print(f"Warning: Could not load experiment description from config: {e}")
-            return 'No experiment description provided'
+        description = self.config.get('experiment', 'description', fallback='No experiment description provided')
+        return description
 
     def get_script_contents(self):
         """Read the contents of the Python scripts used to create the HDF5 file"""
@@ -470,8 +440,8 @@ Position Configuration (from experiment_config.txt [position] section):
                     data_ds.attrs['dtype'] = str(trace_data.dtype)
                     header_ds.attrs['description'] = f'Binary header data for {tr}'
     
-
-
+#===============================================================================================================================================
+# Data Acquisition Functions
 #===============================================================================================================================================
 def single_shot_acquisition(pos, needs_movement, nz, msa, pos_manager, mc, save_path, scope_ips, active_scopes):
 
@@ -612,6 +582,45 @@ def single_shot_acquisition_45(pos, motors, msa, pos_manager, save_path, scope_i
     else:
         print(f"Warning: No valid data acquired at shot {shot_num}")
 
+def single_shot_acquisition_bmotion(shot_num, msa, active_scopes, save_path, scope_ips, motion_group):
+    """
+    Acquire a single shot using bmotion.
+    """
+    try:
+        current_pos = motion_group.position #TODO: add position to hdf5
+
+        msa.arm_scopes_for_trigger(active_scopes)
+        all_data = msa.acquire_shot(active_scopes, shot_num)
+        if all_data:
+            msa.update_scope_hdf5(all_data, shot_num)
+        else:
+            raise RuntimeError(f"Warning: No valid data acquired at shot {shot_num}")
+        
+    except KeyboardInterrupt:
+        raise KeyboardInterrupt
+    except (ValueError, RuntimeError) as e:
+        print(f'\nSkipping position - {str(e)}')
+        # Create empty shot group with explanation
+        with h5py.File(save_path, 'a') as f:
+            for scope_name in scope_ips:
+                scope_group = f[scope_name]
+                shot_group = scope_group.create_group(f'shot_{shot_num}')
+                shot_group.attrs['skipped'] = True
+                shot_group.attrs['skip_reason'] = str(e)
+                shot_group.attrs['acquisition_time'] = time.ctime()
+        return
+    except Exception as e:
+        print(f'\nMotion failed with {str(e)}')
+        # Create empty shot group with explanation
+        with h5py.File(save_path, 'a') as f:
+            for scope_name in scope_ips:
+                scope_group = f[scope_name]
+                shot_group = scope_group.create_group(f'shot_{shot_num}')
+                shot_group.attrs['skipped'] = True
+                shot_group.attrs['skip_reason'] = f"Motion failed: {str(e)}"
+                shot_group.attrs['acquisition_time'] = time.ctime()
+        return
+    
 #===============================================================================================================================================
 # Main Acquisition Loop  
 #===============================================================================================================================================
@@ -690,20 +699,75 @@ def run_acquisition(save_path, scope_ips, motor_ips=None,  nz=None, is_45deg=Non
             print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
             raise
 
-        finally:
-            # Cleanup resources
-            plt.close('all')  # Ensure all figures are closed
-
-#===============================================================================================================================================
- 
-def run_acquisition_bmotion(save_path, scope_ips):
-    """Run the main acquisition sequence with probe movement set by bmotion library
-    Args:
-        save_path: Path to save HDF5 file
-        scope_ips: Dictionary of scope IPs
-
-        TODO: Implement bmotion integration with DAQ
-    """
+def run_acquisition_bmotion(save_path, toml_path, scope_ips, num_duplicate_shots):
     print('Starting acquisition loop at', time.ctime())
+    
+    # Load the TOML file and initialize run manager in bmotion
+    print("Loading TOML configuration...", end='')
+    run_manager = bmotion.RunManager(toml_path, auto_run=True)
+    print("✓")
+    
+    # Print and select from all available motion lists
+    print(f"\nAvailable motion groups ({len(run_manager.mgs)}):")
+    motion_groups = list(run_manager.mgs.items())
+    for i, (key, mg) in enumerate(motion_groups):
+        motion_list_size = len(mg.mb.motion_list) if mg.mb.motion_list is not None else 0
+        print(f"  {i}: '{key}' - {motion_list_size} positions")
+    
+    # For now, use the first motion group (could be extended to allow user selection)
+    if not motion_groups:
+        raise RuntimeError("No motion groups found in TOML configuration")
+    
+    selected_key, selected_mg = motion_groups[0]
+    motion_list = selected_mg.mb.motion_list
+    if motion_list is None or len(motion_list) == 0:
+        raise RuntimeError(f"Selected motion group '{selected_key}' has no motion list")
+    
+    print(f"Using motion group '{selected_key}' with {len(motion_list)} positions")
+    print(f"Number of shots per position: {num_duplicate_shots}")
+    total_shots = len(motion_list) * num_duplicate_shots
+    print(f"Total shots: {total_shots}")
+    
+    with MultiScopeAcquisition(scope_ips, save_path) as msa: # Initialize multi-scope acquisition
+        try:
+
+            print("Initializing HDF5 file...", end='')
+            msa.initialize_hdf5_base()
+            print("✓")
+            
+            print("\nStarting initial acquisition...")
+            active_scopes = msa.initialize_scopes()
+            if not active_scopes:
+                raise RuntimeError("No valid data found from any scope. Aborting acquisition.")
+            
+            # Main acquisition loop
+            shot_num = 1  # 1-based shot numbering
+            for motion_index in range(len(motion_list)):
+
+                print(f"\nMoving to position {motion_index + 1}/{len(motion_list)}...")
+                selected_mg.move_ml(motion_index) # Moving to motion list position
+
+                for n in range(num_duplicate_shots):
+                    acquisition_loop_start_time = time.time()
+                    
+                    print(f"Acquiring shot {shot_num} at position {motion_index + 1}/{len(motion_list)}")
+                    single_shot_acquisition_bmotion(shot_num, msa, active_scopes, save_path, scope_ips, selected_mg)
+                    
+                    if shot_num > 1: # Calculate and display remaining time
+                        time_per_shot = (time.time() - acquisition_loop_start_time)
+                        remaining_shots = total_shots - shot_num
+                        remaining_time = remaining_shots * time_per_shot
+                        print(f' | Remaining: {remaining_time/3600:.2f}h ({remaining_shots} shots)')
+                    else:
+                        print()
+                    
+                    shot_num += 1
+
+        except KeyboardInterrupt:
+            print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
+            raise
+        finally:
+
+            run_manager.terminate()
     
 
