@@ -1,8 +1,11 @@
 """
 Position management module for LAPD DAQ system.
+Created by JH, 2025 for centralizing position management and motor control.
 
 Contains the PositionManager class for handling position arrays,
 HDF5 position data storage, and position-related metadata.
+
+TODO: boundary checking functions
 """
 
 import numpy as np
@@ -257,7 +260,7 @@ def motor_boundary_2D(x, y, z, config):
 class PositionManager:
     """Handles position arrays, HDF5 position data, and position-related metadata"""
     
-    def __init__(self, save_path, config_path='experiment_config.txt'):
+    def __init__(self, save_path, config_path):
         """
         Args:
             save_path: Path to HDF5 file
@@ -384,14 +387,14 @@ class PositionManager:
                 print("XY drive in use")
                 mc = Motor_Control_2D(motor_ips['x'], motor_ips['y'])
 
-                mc.boundary_checker.add_motor_boundary(lambda x, y, z: motor_boundary_2D(x, y, z, config))
+                # mc.boundary_checker.add_motor_boundary(lambda x, y, z: motor_boundary_2D(x, y, z, self.config))
             else:
                 print("XYZ drive in use")
                 mc = Motor_Control_3D(motor_ips['x'], motor_ips['y'], motor_ips['z'])
 
-                mc.boundary_checker.add_probe_boundary(lambda x, y, z: outer_boundary(x, y, z, config), is_outer_boundary=True)
+                # mc.boundary_checker.add_probe_boundary(lambda x, y, z: outer_boundary(x, y, z, config), is_outer_boundary=True)
                 # mc.boundary_checker.add_probe_boundary(lambda x, y, z: obstacle_boundary(x, y, z, config))
-                mc.boundary_checker.add_motor_boundary(lambda x, y, z: motor_boundary(x, y, z, config))
+                # mc.boundary_checker.add_motor_boundary(lambda x, y, z: motor_boundary(x, y, z, config))
         except KeyboardInterrupt:
             raise KeyboardInterrupt
         except Exception as e:
