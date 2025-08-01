@@ -4,12 +4,7 @@ This package contains all position and motor control functionality for the LAPD 
 
 ## Configuration
 
-All experiment, scope, channel, and (optionally) position/motion settings are now in a single file: `experiment_config.txt` in the project root.
-
-- `[experiment]`: General experiment description (multi-line string allowed)
-- `[scopes]`: Scope names and descriptions
-- `[channels]`: Channel names and descriptions
-- `[position]`: (Optional) Position/motion settings. If empty or commented out, the system assumes stationary acquisition (no movement).
+See `example_experiment_config.txt` in the project root.
 
 **Example for XY/XYZ Movement:**
 ```ini
@@ -20,8 +15,6 @@ xmin = -15
 xmax = 15
 ymin = -20
 ymax = 20
-num_duplicate_shots = 11
-num_run_repeats = 1
 ```
 
 **Example for 45deg Movement:**
@@ -29,12 +22,11 @@ num_run_repeats = 1
 [position]
 probe_list = P16,P22,P29,P34,P42
 nx = 37
-nshots = 5
 xstart = {"P16": -38, "P22": -18, "P29": -38, "P34": -38, "P42": -38}
 xstop = {"P16": -38, "P22": 18, "P29": -38, "P34": -38, "P42": -38}
 ```
 
-If you want a stationary run (e.g., for Data_Run_MultiScope_Camera), leave `[position]` empty or commented out.
+If you want a run without probe movement, leave `[position]` empty or commented out.
 
 ## Configuration Loading
 
@@ -54,10 +46,6 @@ else:
     print("XY/XYZ grid acquisition detected")
 ```
 
-**Features:**
-- **Smart parsing**: Handles all data types (tuples, JSON dicts, string lists, etc.)
-- **Automatic mode detection**: Returns both config data and acquisition mode
-- **Unified interface**: Single function replaces previous duplicate functions
 
 ## Movement Styles
 
@@ -80,11 +68,14 @@ Handles position arrays, HDF5 position data storage, and position-related metada
 ```python
 from motion import PositionManager
 
-# Create position manager (automatically detects acquisition mode)
-pos_manager = PositionManager(save_path, nz=None)  # is_45deg auto-detected
+# Create position manager (automatically detects acquisition mode and loads positions)
+pos_manager = PositionManager(save_path, config_path='experiment_config.txt')
 
-# Manual override if needed
-pos_manager = PositionManager(save_path, nz=None, is_45deg=True)  # Force 45deg mode
+# Access loaded positions
+positions = pos_manager.positions
+xpos = pos_manager.xpos
+ypos = pos_manager.ypos
+zpos = pos_manager.zpos  # Only available for 3D configurations
 
 # Initialize HDF5 position structure
 positions = pos_manager.initialize_position_hdf5()
@@ -98,25 +89,90 @@ pos_manager.update_position_hdf5(shot_num, positions)
 - **XY/XYZ mode**: Detected when config contains standard grid parameters (`nx`, `ny`, etc.)
 - **Stationary mode**: When no `[position]` section exists
 
-### Motor Control (`motor_control.py`)
-Functions for initializing and controlling different types of probe motors.
+**Automatic Position Loading:**
+- Positions are automatically loaded during `__init__`
+- Access via `self.positions`, `self.xpos`, `self.ypos`, `self.zpos`
+- No need to manually call `get_positions()`
+
+### Motor Control Methods
+Motor control functions are now integrated as methods of the `PositionManager` class:
 
 ```python
-from motion import initialize_motor, initialize_motor_45deg, move_45deg_probes
+from motion import PositionManager
 
-# For XY/XYZ probes
-mc, needs_movement = initialize_motor(positions, motor_ips, nz)
+# Create position manager
+pos_manager = PositionManager(save_path, config_path='experiment_config.txt')
 
-# For 45-degree probes  
-motors = initialize_motor_45deg(positions, motor_ips)
-achieved_positions = move_45deg_probes(active_motors, target_positions)
+# Initialize motor control (automatically uses config from PositionManager)
+if pos_manager.is_45deg:
+    # For 45-degree probes
+    motors = pos_manager.initialize_motor_45deg()
+    if motors:
+        achieved_positions = pos_manager.move_45deg_probes(active_motors, target_positions)
+else:
+    # For XY/XYZ probes
+    mc = pos_manager.initialize_motor()
+    if mc:
+        # Use motor control for movement
+        pass
+```
+
+**Key Changes:**
+- Motor control functions are now methods of `PositionManager`
+- Configuration is automatically loaded from `self.config`
+- No need to pass external parameters
+- Better integration with position management
+
+### Utility Functions
+
+**Position Generation:**
+```python
+from motion import get_positions_xy, get_positions_xyz, get_positions_45deg, create_all_positions_45deg
+
+# Generate position arrays
+positions, xpos, ypos = get_positions_xy(config)
+positions, xpos, ypos, zpos = get_positions_xyz(config)
+positions, xpos = get_positions_45deg(xstart, xstop, nx, nshots)
+all_positions, all_xpos = create_all_positions_45deg(pr_ls, xstart, xstop, nx, nshots)
+```
+
+**Boundary Checking:**
+```python
+from motion import outer_boundary, obstacle_boundary, motor_boundary, motor_boundary_2D
+
+# Check if position is within boundaries
+is_valid = outer_boundary(x, y, z, config)
+is_clear = obstacle_boundary(x, y, z, config)
+is_motor_safe = motor_boundary(x, y, z, config)
+is_2d_safe = motor_boundary_2D(x, y, z, config)
 ```
 
 ## Usage
 
 ### Direct Import (Recommended)
 ```python
-from motion import PositionManager, initialize_motor, initialize_motor_45deg
+from motion import PositionManager, load_position_config
+from motion import get_positions_xy, outer_boundary, motor_boundary
+```
+
+### Complete Example
+```python
+from motion import PositionManager
+
+# Create position manager with automatic configuration loading
+pos_manager = PositionManager('data.h5', 'experiment_config.txt')
+
+# Initialize HDF5 structure
+positions = pos_manager.initialize_position_hdf5()
+
+# Initialize motor control
+if pos_manager.is_45deg:
+    motors = pos_manager.initialize_motor_45deg()
+else:
+    mc = pos_manager.initialize_motor()
+
+# During acquisition, update positions
+pos_manager.update_position_hdf5(shot_num, current_positions)
 ```
 
 ## Integration
@@ -128,4 +184,4 @@ This package is designed to work with:
 
 ## Architecture
 
-The motion package separates position management from scope operations, making the code more modular and preparing it for new motion control libraries like bapsf_motion. 
+The motion package separates position management from scope operations, making the code more modular and preparing it for new motion control libraries like bapsf_motion. The `PositionManager` class now provides a unified interface for both position management and motor control. 

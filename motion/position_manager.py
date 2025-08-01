@@ -13,7 +13,10 @@ from .Motor_Control import Motor_Control_2D, Motor_Control_3D
 from .Motor_Control_1D import Motor_Control
 import configparser
 
-# --- Config loader ---
+# ============================================================================
+# CONFIGURATION FUNCTIONS
+# ============================================================================
+
 def load_position_config(config_path):
     """
     Load position configuration from config file.
@@ -51,233 +54,18 @@ def load_position_config(config_path):
             else:
                 pos_config[key] = value
     
-    # Determine if this is a 45-degree acquisition based on config parameters
-    is_45deg = False
-    if pos_config:
-        # 45deg mode is indicated by presence of probe_list and dict-format xstart/xstop
-        has_probe_list = 'probe_list' in pos_config
-        has_dict_xstart = 'xstart' in pos_config and isinstance(pos_config.get('xstart'), dict)
-        has_dict_xstop = 'xstop' in pos_config and isinstance(pos_config.get('xstop'), dict)
-        
-        is_45deg = has_probe_list and (has_dict_xstart or has_dict_xstop)
+
+    if 'probe_list' in pos_config:     # Determine if this is a 45-degree acquisition based on config parameters
+        is_45deg = True
+    else:
+        is_45deg = False
     
     return pos_config, is_45deg
 
-class PositionManager:
-    """Handles position arrays, HDF5 position data, and position-related metadata"""
-    
-    def __init__(self, save_path, nz=None, is_45deg=None, config_path='experiment_config.txt'):
-        """
-        Args:
-            save_path: Path to HDF5 file
-            nz: Number of z positions (None for 2D, int for 3D)
-            is_45deg: Whether this is a 45-degree probe acquisition (auto-determined from config if None)
-            config_path: Path to experiment_config.txt file
-        """
-        self.save_path = save_path
-        self.nz = nz
-        
-        # Load config and automatically determine is_45deg if not explicitly provided
-        self.config, auto_is_45deg = load_position_config(config_path)
-        self.is_45deg = is_45deg if is_45deg is not None else auto_is_45deg
-        
-    def get_positions(self):
-        """Get position arrays based on acquisition type"""
-        if self.is_45deg:
-            # For 45deg, we need probe-specific parameters from config
-            if self.config is None:
-                raise ValueError("45deg movement requires position configuration in experiment_config.txt")
-            
-            # Get 45deg specific parameters from config
-            pr_ls = self.config.get('probe_list', ['P16', 'P22', 'P29', 'P34', 'P42'])
-            xstart = self.config.get('xstart', {})
-            xstop = self.config.get('xstop', {})
-            nx = self.config.get('nx', 0)
-            nshots = self.config.get('nshots', 1)
-            
-            return create_all_positions_45deg(pr_ls, xstart, xstop, nx, nshots)
-        else:
-            # For XY/XYZ movement, use existing functions
-            if self.config is None:
-                raise ValueError("XY/XYZ movement requires position configuration in experiment_config.txt")
-                
-            if self.nz is None:
-                return get_positions_xy(self.config)
-            else:
-                return get_positions_xyz(self.config)
-    
-    def initialize_position_hdf5(self):
-        """Initialize HDF5 position structure and return positions"""
-        if self.is_45deg:
-            positions, xpos = self.get_positions()
-            dtype = {'P16': [('shot_num', '>u4'), ('x', '>f4')],
-                    'P22': [('shot_num', '>u4'), ('x', '>f4')],
-                    'P29': [('shot_num', '>u4'), ('x', '>f4')],
-                    'P34': [('shot_num', '>u4'), ('x', '>f4')],
-                    'P42': [('shot_num', '>u4'), ('x', '>f4')]}
-        else:
-            if self.nz is None:
-                positions, xpos, ypos = self.get_positions()
-                dtype = [('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4')]
-            else:
-                positions, xpos, ypos, zpos = self.get_positions()
-                dtype = [('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4'), ('z', '>f4')]
+# ============================================================================
+# POSITION GENERATION FUNCTIONS
+# ============================================================================
 
-        with h5py.File(self.save_path, 'a') as f:
-            # Create Control/Positions group and datasets
-            if '/Control' not in f:
-                ctl_grp = f.create_group('/Control')
-            else:
-                ctl_grp = f['/Control']
-                
-            if 'Positions' not in ctl_grp:
-                pos_grp = ctl_grp.create_group('Positions')
-                
-                if self.is_45deg:
-                    # Create separate position arrays for each probe
-                    for probe in positions:
-                        probe_grp = pos_grp.create_group(probe)
-                        # Create setup array with metadata
-                        setup_ds = probe_grp.create_dataset('positions_setup_array', 
-                                                          data=positions[probe], 
-                                                          dtype=dtype[probe])
-                        setup_ds.attrs['xpos'] = xpos[probe]
-                        
-                        # Create array for actual positions
-                        probe_grp.create_dataset('positions_array', 
-                                               shape=(len(positions[probe]),), 
-                                               dtype=dtype[probe])
-                else:
-                    # Create positions setup array with metadata
-                    pos_ds = pos_grp.create_dataset('positions_setup_array', data=positions, dtype=dtype)
-                    pos_ds.attrs['xpos'] = xpos
-                    if not self.is_45deg:
-                        pos_ds.attrs['ypos'] = ypos
-                        if self.nz is not None:
-                            pos_ds.attrs['zpos'] = zpos
-                    
-                    # Create positions array for actual positions
-                    pos_grp.create_dataset('positions_array', shape=(len(positions),), dtype=dtype)
-
-        return positions
-    
-    def update_position_hdf5(self, shot_num, positions):
-        """Update HDF5 position arrays with current shot position data"""
-        if positions is None:
-            return
-            
-        with h5py.File(self.save_path, 'a') as f:
-            if self.is_45deg:
-                # For 45-degree probes, update each probe's position separately
-                for probe, pos in positions.items():
-                    if pos is not None:  # Only update if we have valid position data
-                        pos_arr = f[f'/Control/Positions/{probe}/positions_array']
-                        pos_arr[shot_num-1] = (shot_num, pos)
-            else:
-                # For regular XY/XYZ acquisition
-                pos_arr = f['/Control/Positions/positions_array']
-                if all(p is not None for p in positions.values()):
-                    if self.nz is None:
-                        pos_arr[shot_num-1] = (shot_num, positions['x'], positions['y'])
-                    else:
-                        pos_arr[shot_num-1] = (shot_num, positions['x'], positions['y'], positions['z'])
-
-#===============================================================================================================================================
-# Acquisition Function for XY or XYZ probe drive
-#===============================================================================================================================================
-def initialize_motor(positions, motor_ips, nz, config_path='experiment_config.txt'):
-    config, _ = load_position_config(config_path)
-    # Check if motor movement is needed
-    needs_movement = False
-    if len(positions) > 1:
-        first_pos = positions[0]
-        last_pos = positions[-1]
-        if not (first_pos['x'] == last_pos['x'] and first_pos['y'] == last_pos['y'] and 
-                (nz is None or first_pos['z'] == last_pos['z'])):
-            needs_movement = True
-    
-    # Initialize motor control if needed
-    mc = None
-    if needs_movement:
-        print("Initializing motor...", end='')
-        if nz is None:
-            print("XY drive in use")
-            mc = Motor_Control_2D(motor_ips['x'], motor_ips['y'])
-            # Add motor boundary for 2D drive
-            mc.boundary_checker.add_motor_boundary(lambda x, y, z: motor_boundary_2D(x, y, z, config))
-        else:
-            print("XYZ drive in use")
-            mc = Motor_Control_3D(motor_ips['x'], motor_ips['y'], motor_ips['z'])
-            # Add boundaries only for 3D drive
-            mc.boundary_checker.add_probe_boundary(lambda x, y, z: outer_boundary(x, y, z, config), is_outer_boundary=True)
-            # mc.boundary_checker.add_probe_boundary(lambda x, y, z: obstacle_boundary(x, y, z, config))
-            mc.boundary_checker.add_motor_boundary(lambda x, y, z: motor_boundary(x, y, z, config))
-    else:
-        print("No motor movement required")
-    return mc, needs_movement
-
-#===============================================================================================================================================
-# Acquisition Function for 45 degree probe drive
-#===============================================================================================================================================
-def initialize_motor_45deg(positions, motor_ips):
-    # Initialize dictionary to store motor controllers
-    motors = {}
-    
-    # Try to connect to each probe's motor
-    for probe in ['P16', 'P22', 'P29', 'P34', 'P42']:
-        try:
-            # Special case for P29 which has different cm_per_turn
-            if probe == 'P29':
-                motors[probe] = Motor_Control(server_ip_addr=motor_ips[probe], name=f"probe_{probe}", 
-                                 stop_switch_mode=2, cm_per_turn=0.127)
-            else:
-                motors[probe] = Motor_Control(server_ip_addr=motor_ips[probe], name=f"probe_{probe}", 
-                                 stop_switch_mode=2)
-                
-            # Set motor speed if connection successful
-            motors[probe].motor_speed = 4
-            print(f"Connected to {probe} motor")
-            
-        except Exception as e:
-            print(f"Could not connect to {probe} motor: {str(e)}")
-            motors[probe] = None
-            
-    return motors
-
-def move_45deg_probes(mc_list, move_to_list):
-
-	pos_list = []
-
-	for mc in mc_list:
-		mc.enable
-
-	for i, mc in enumerate(mc_list):
-		mc.motor_position = move_to_list[i]
-
-	for i, mc in enumerate(mc_list): 
-
-		pos = mc.motor_position
-		
-		if round(pos,2) != move_to_list[i]:
-			retry = 0
-			while retry < 3:
-				try:
-					mc.motor_position = move_to_list[i]
-					pos = mc.motor_position
-					if round(pos,2) == move_to_list[i]:
-						break
-					else:
-						retry += 1
-				except:
-					print("Failed to move to position %.2f" %(move_to_list[i]))
-
-		pos_list.append(round(pos,2))
-		mc.disable
-	
-	return pos_list
-
-
-#-------------------------------------------------------------------------------------------------------------
 def get_positions_xy(config):
     """Generate the positions array for probe movement using config dict.
     Returns:
@@ -417,6 +205,10 @@ def create_all_positions_45deg(pr_ls, xstart, xstop, nx, nshots):
 
     return positions, xpos
 
+# ============================================================================
+# BOUNDARY CHECKING FUNCTIONS
+# ============================================================================
+
 def outer_boundary(x, y, z, config):
     """Return True if position is within allowed range using config dict."""
     x_limits = config['x_limits']
@@ -455,3 +247,216 @@ def motor_boundary_2D(x, y, z, config):
                         ym_limits[0] <= y <= ym_limits[1] and
                         -999 <= z <= 999)
     return in_outer_boundary
+
+
+
+# ============================================================================
+# MAIN POSITION MANAGER CLASS
+# ============================================================================
+
+class PositionManager:
+    """Handles position arrays, HDF5 position data, and position-related metadata"""
+    
+    def __init__(self, save_path, config_path='experiment_config.txt'):
+        """
+        Args:
+            save_path: Path to HDF5 file
+            nz: Number of z positions (None for 2D, int for 3D)
+            is_45deg: Whether this is a 45-degree probe acquisition (auto-determined from config if None)
+            config_path: Path to experiment_config.txt file
+        """
+        self.save_path = save_path
+        
+        # Load config and automatically determine is_45deg if not explicitly provided
+        self.config, self.is_45deg = load_position_config(config_path)
+        self.nz = self.config.get('nz', None)
+        self.positions, self.xpos, self.ypos, self.zpos = self.get_positions()
+        
+    def get_positions(self):
+        """Get position arrays based on acquisition type"""
+        if self.is_45deg:
+            
+            # Get 45deg specific parameters from config
+            pr_ls = self.config.get('probe_list', ['P16', 'P22', 'P29', 'P34', 'P42'])
+            xstart = self.config.get('xstart', {})
+            xstop = self.config.get('xstop', {})
+            nx = self.config.get('nx', 0)
+            nshots = self.config.get('num_duplicate_shots', 1)
+            
+            return create_all_positions_45deg(pr_ls, xstart, xstop, nx, nshots)
+        else:
+            if self.nz is None:
+                return get_positions_xy(self.config)
+            else:
+                return get_positions_xyz(self.config)
+    
+    def initialize_position_hdf5(self):
+        """Initialize HDF5 position structure and return positions"""
+        if self.is_45deg:
+            positions, xpos = self.get_positions()
+            dtype = {'P16': [('shot_num', '>u4'), ('x', '>f4')],
+                    'P22': [('shot_num', '>u4'), ('x', '>f4')],
+                    'P29': [('shot_num', '>u4'), ('x', '>f4')],
+                    'P34': [('shot_num', '>u4'), ('x', '>f4')],
+                    'P42': [('shot_num', '>u4'), ('x', '>f4')]}
+        else:
+            if self.nz is None:
+                positions, xpos, ypos = self.get_positions()
+                dtype = [('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4')]
+            else:
+                positions, xpos, ypos, zpos = self.get_positions()
+                dtype = [('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4'), ('z', '>f4')]
+
+        with h5py.File(self.save_path, 'a') as f:
+            # Create Control/Positions group and datasets
+            if '/Control' not in f:
+                ctl_grp = f.create_group('/Control')
+            else:
+                ctl_grp = f['/Control']
+                
+            if 'Positions' not in ctl_grp:
+                pos_grp = ctl_grp.create_group('Positions')
+                
+                if self.is_45deg:
+                    # Create separate position arrays for each probe
+                    for probe in positions:
+                        probe_grp = pos_grp.create_group(probe)
+                        # Create setup array with metadata
+                        setup_ds = probe_grp.create_dataset('positions_setup_array', 
+                                                          data=positions[probe], 
+                                                          dtype=dtype[probe])
+                        setup_ds.attrs['xpos'] = xpos[probe]
+                        
+                        # Create array for actual positions
+                        probe_grp.create_dataset('positions_array', 
+                                               shape=(len(positions[probe]),), 
+                                               dtype=dtype[probe])
+                else:
+                    # Create positions setup array with metadata
+                    pos_ds = pos_grp.create_dataset('positions_setup_array', data=positions, dtype=dtype)
+                    pos_ds.attrs['xpos'] = xpos
+                    if not self.is_45deg:
+                        pos_ds.attrs['ypos'] = ypos
+                        if self.nz is not None:
+                            pos_ds.attrs['zpos'] = zpos
+                    
+                    # Create positions array for actual positions
+                    pos_grp.create_dataset('positions_array', shape=(len(positions),), dtype=dtype)
+
+        return positions
+    
+    def update_position_hdf5(self, shot_num, positions):
+        """Update HDF5 position arrays with current shot position data"""
+        if positions is None:
+            return
+            
+        with h5py.File(self.save_path, 'a') as f:
+            if self.is_45deg:
+                # For 45-degree probes, update each probe's position separately
+                for probe, pos in positions.items():
+                    if pos is not None:  # Only update if we have valid position data
+                        pos_arr = f[f'/Control/Positions/{probe}/positions_array']
+                        pos_arr[shot_num-1] = (shot_num, pos)
+            else:
+                # For regular XY/XYZ acquisition
+                pos_arr = f['/Control/Positions/positions_array']
+                if all(p is not None for p in positions.values()):
+                    if self.nz is None:
+                        pos_arr[shot_num-1] = (shot_num, positions['x'], positions['y'])
+                    else:
+                        pos_arr[shot_num-1] = (shot_num, positions['x'], positions['y'], positions['z'])
+
+    # ============================================================================
+        # MOTOR CONTROL FUNCTIONS
+    # ============================================================================
+    def initialize_motor(self):
+        """Initialize motor control based on config dict."""
+        nz = self.config.get('nz', None)
+        motor_ips = self.config.get('motor_ips', None)
+
+        if motor_ips is None:
+            return None
+        
+        print("Initializing motor...", end='')
+
+        try:
+            if nz is None:
+                print("XY drive in use")
+                mc = Motor_Control_2D(motor_ips['x'], motor_ips['y'])
+
+                mc.boundary_checker.add_motor_boundary(lambda x, y, z: motor_boundary_2D(x, y, z, config))
+            else:
+                print("XYZ drive in use")
+                mc = Motor_Control_3D(motor_ips['x'], motor_ips['y'], motor_ips['z'])
+
+                mc.boundary_checker.add_probe_boundary(lambda x, y, z: outer_boundary(x, y, z, config), is_outer_boundary=True)
+                # mc.boundary_checker.add_probe_boundary(lambda x, y, z: obstacle_boundary(x, y, z, config))
+                mc.boundary_checker.add_motor_boundary(lambda x, y, z: motor_boundary(x, y, z, config))
+        except KeyboardInterrupt:
+            raise KeyboardInterrupt
+        except Exception as e:
+            print(f"Error initializing motor: {str(e)}")
+            return None
+
+        return mc
+
+    def initialize_motor_45deg(self):
+        """Initialize motor control for 45deg probes based on config dict."""
+        motor_ips = self.config.get('motor_ips', None)
+        if motor_ips is None:
+            return None
+        else:
+            print("Initializing motors...")
+            motors = {}
+
+        
+        for probe in ['P16', 'P22', 'P29', 'P34', 'P42']: # Try to connect to each probe's motor
+            try:
+                if probe == 'P29': # Special case for P29 which has different cm_per_turn
+                    motors[probe] = Motor_Control(server_ip_addr=motor_ips[probe], name=f"probe_{probe}", 
+                                    stop_switch_mode=2, cm_per_turn=0.127)
+                else:
+                    motors[probe] = Motor_Control(server_ip_addr=motor_ips[probe], name=f"probe_{probe}", 
+                                    stop_switch_mode=2)
+                    
+                # Set motor speed if connection successful
+                motors[probe].motor_speed = 4
+                print(f"Connected to {probe} motor")
+                
+            except KeyboardInterrupt:
+                raise KeyboardInterrupt
+            except Exception as e:
+                print(f"Could not connect to {probe} motor: {str(e)}")
+                motors[probe] = None
+                
+        return motors
+
+    def move_45deg_probes(self, mc_list, move_to_list):
+        pos_list = []
+
+        for mc in mc_list:
+            mc.enable
+
+        for i, mc in enumerate(mc_list):
+            mc.motor_position = move_to_list[i]
+
+        for i, mc in enumerate(mc_list): 
+            pos = mc.motor_position
+            
+            if round(pos,2) != move_to_list[i]:
+                retry = 0
+                while retry < 3:
+                    try:
+                        mc.motor_position = move_to_list[i]
+                        pos = mc.motor_position
+                        if round(pos,2) == move_to_list[i]:
+                            break
+                        else:
+                            retry += 1
+                    except:
+                        print("Failed to move to position %.2f" %(move_to_list[i]))
+
+            pos_list.append(round(pos,2))
+            mc.disable
+        
+        return pos_list
