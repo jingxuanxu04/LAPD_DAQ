@@ -264,15 +264,33 @@ class PositionManager:
         """
         Args:
             save_path: Path to HDF5 file
-            nz: Number of z positions (None for 2D, int for 3D)
-            is_45deg: Whether this is a 45-degree probe acquisition (auto-determined from config if None)
             config_path: Path to experiment_config.txt file
         """
         self.save_path = save_path
+        self.config_path = config_path
         
-        # Load config and automatically determine is_45deg if not explicitly provided
-        self.config, self.is_45deg = load_position_config(config_path)
-        self.nz = self.config.get('nz', None)
+        # Load position config and automatically determine is_45deg
+        self.pos_config, self.is_45deg = load_position_config(config_path)
+        
+        # Load full config for other parameters
+        import configparser
+        full_config = configparser.ConfigParser()
+        full_config.read(config_path)
+        self.config = dict(full_config.items()) if full_config.sections() else {}
+        
+        # Extract position and shot parameters
+        if self.pos_config:
+            self.nz = self.pos_config.get('nz', None)
+        else:
+            self.nz = None
+            
+        # Get num_duplicate_shots from config
+        if 'nshots' in full_config:
+            self.num_duplicate_shots = full_config.getint('nshots', 'num_duplicate_shots', fallback=1)
+        else:
+            self.num_duplicate_shots = 1
+            
+        # Get positions (or create stationary shots)
         self.positions, self.xpos, self.ypos, self.zpos = self.get_positions()
         
     def get_positions(self):

@@ -183,7 +183,7 @@ def acquire_from_scope_sequence(scope, scope_name):
 class MultiScopeAcquisition:
     """Handles scope connections, data acquisition, and scope data storage"""
     
-    def __init__(self, scope_ips, save_path):
+    def __init__(self, scope_ips, save_path, config):
         """
         Args:
             scope_ips: dict of scope names and IP addresses
@@ -195,7 +195,7 @@ class MultiScopeAcquisition:
         self.scopes = {}
         self.figures = {}
         self.time_arrays = {}  # Store time arrays for each scope
-        self.config = load_experiment_config()
+        self.config = config
 
     def cleanup(self):
         """Clean up resources"""
@@ -569,92 +569,122 @@ def single_shot_acquisition_bmotion(shot_num, msa, active_scopes, save_path, sco
 #===============================================================================================================================================
 # Main Acquisition Loop  
 #===============================================================================================================================================
+def handle_movement(pos_manager, mc, shot_num, pos, save_path, scope_ips):
+    if pos_manager.nz is None:
+        print(f'Shot = {shot_num}, x = {pos["x"]}, y = {pos["y"]}', end='')
+    else:
+        print(f'Shot = {shot_num}, x = {pos["x"]}, y = {pos["y"]}, z = {pos["z"]}', end='')
+
+    if mc is not None:
+        try:
+            mc.enable
+            if pos_manager.nz is None:
+                mc.probe_positions = (pos['x'], pos['y'])
+            else:
+                mc.probe_positions = (pos['x'], pos['y'], pos['z'])
+            mc.disable
+
+        except KeyboardInterrupt:
+            raise KeyboardInterrupt
+        except ValueError as e:
+            print(f'\nSkipping position - {str(e)}')
+            # Create empty shot group with explanation
+            with h5py.File(save_path, 'a') as f:
+                for scope_name in scope_ips:
+                    scope_group = f[scope_name]
+                    shot_group = scope_group.create_group(f'shot_{shot_num}')
+                    shot_group.attrs['skipped'] = True
+                    shot_group.attrs['skip_reason'] = str(e)
+                    shot_group.attrs['acquisition_time'] = time.ctime()
+            return False
+        except Exception as e:
+            print(f'\nMotor failed to move with {str(e)}')
+            # Create empty shot group with explanation
+            with h5py.File(save_path, 'a') as f:
+                for scope_name in scope_ips:
+                    scope_group = f[scope_name]
+                    shot_group = scope_group.create_group(f'shot_{shot_num}')
+                    shot_group.attrs['skipped'] = True
+                    shot_group.attrs['skip_reason'] = f"Motor movement failed: {str(e)}"
+                    shot_group.attrs['acquisition_time'] = time.ctime()
+            return False
+    else:
+        print(f'Shot = {shot_num}', end='')
+        return True
+
 def run_acquisition(save_path, config_path):
 
     print('Starting acquisition loop at', time.ctime())
+    config = load_experiment_config(config_path)
+    num_duplicate_shots = config.get('nshots', 'num_duplicate_shots', fallback=1)
+    num_run_repeats = config.get('nshots', 'num_run_repeats', fallback=1)
+
+    # Check if position configuration exists
+    has_position_config = 'position' in config and config.items('position')
     
-    pos_manager = PositionManager(save_path, config_path)
+    if has_position_config:
+        pos_manager = PositionManager(save_path, config_path)
+    else:
+        pos_manager = None
     
-    scope_ips = pos_manager.config.get('scope_ips', None)
+    scope_ips = config.get('scope_ips', None)
     if scope_ips is None:
         raise RuntimeError("No scope IPs found in config. Please check experiment_config.txt")
     
     # Initialize multi-scope acquisition
-    with MultiScopeAcquisition(scope_ips, save_path) as msa:
+    with MultiScopeAcquisition(scope_ips, save_path, config) as msa:
         try:
             # Initialize HDF5 file structure
             print("Initializing HDF5 file...", end='')
             msa.initialize_hdf5_base()  # Initialize scope structure
-            positions = pos_manager.initialize_position_hdf5()  # Initialize position structure  
             print("✓")
             
-            # Initialize motors based on acquisition type
-            if pos_manager.is_45deg:
-                motors = pos_manager.initialize_motor_45deg()
-                print("45-degree acquisition not implemented yet")
-                return
+            if pos_manager is not None:
+                positions = pos_manager.initialize_position_hdf5()
+                # Initialize motors based on acquisition type
+                if pos_manager.is_45deg:
+                    motors = pos_manager.initialize_motor_45deg()
+                    print("45-degree acquisition not implemented yet")
+                    return
+                else:
+                    mc = pos_manager.initialize_motor()
             else:
-                mc = pos_manager.initialize_motor()
+                # Stationary acquisition - no positions or motors
+                positions = None
+                mc = None
 
             # First shot: Initialize scopes and save time arrays
             print("\nStarting initial acquisition...")
             active_scopes = msa.initialize_scopes()
             if not active_scopes:
                 raise RuntimeError("No valid data found from any scope. Aborting acquisition.")
+
+            # Calculate total shots
+            if pos_manager is not None:
+                total_shots = len(positions) * num_duplicate_shots * num_run_repeats
+            else:
+                # Stationary acquisition - just num_duplicate_shots
+                total_shots = num_duplicate_shots * num_run_repeats
+            
+            print(f"Total shots to acquire: {total_shots}")
             
             # Main acquisition loop
-            if pos_manager.is_45deg:
-                print("45-degree acquisition not implemented yet")
-                return
-
-            shot_num = 1
-            for pos in positions:
+            n = 0  # 1-based shot numbering
+            for n in range(total_shots):
+                shot_num = n + 1
                 acquisition_loop_start_time = time.time()
- 
-                if pos_manager.nz is None:
-                    print(f'Shot = {shot_num}, x = {pos["x"]}, y = {pos["y"]}', end='')
-                else:
-                    print(f'Shot = {shot_num}, x = {pos["x"]}, y = {pos["y"]}, z = {pos["z"]}', end='')
 
-                if mc is not None:
-                    try:
-                        mc.enable
-                        if pos_manager.nz is None:
-                            mc.probe_positions = (pos['x'], pos['y'])
-                        else:
-                            mc.probe_positions = (pos['x'], pos['y'], pos['z'])
-                        mc.disable
-
-                    except KeyboardInterrupt:
-                        raise KeyboardInterrupt
-                    except ValueError as e:
-                        print(f'\nSkipping position - {str(e)}')
-                        # Create empty shot group with explanation
-                        with h5py.File(save_path, 'a') as f:
-                            for scope_name in scope_ips:
-                                scope_group = f[scope_name]
-                                shot_group = scope_group.create_group(f'shot_{shot_num}')
-                                shot_group.attrs['skipped'] = True
-                                shot_group.attrs['skip_reason'] = str(e)
-                                shot_group.attrs['acquisition_time'] = time.ctime()
-                        continue
-                    except Exception as e:
-                        print(f'\nMotor failed to move with {str(e)}')
-                        # Create empty shot group with explanation
-                        with h5py.File(save_path, 'a') as f:
-                            for scope_name in scope_ips:
-                                scope_group = f[scope_name]
-                                shot_group = scope_group.create_group(f'shot_{shot_num}')
-                                shot_group.attrs['skipped'] = True
-                                shot_group.attrs['skip_reason'] = f"Motor movement failed: {str(e)}"
-                                shot_group.attrs['acquisition_time'] = time.ctime()
-                        return
+                if pos_manager is not None:
+                    movement_success = handle_movement(pos_manager, mc, shot_num, positions[n], save_path, scope_ips)
+                    if not movement_success:
+                        continue  # Skip this shot if movement failed
                 else:
+                    # Stationary acquisition
                     print(f'Shot = {shot_num}', end='')
 
                 single_shot_acquisition(msa, active_scopes, shot_num)
 
-                if mc is not None: # Update position data in HDF5
+                if pos_manager is not None and mc is not None: # Update position data in HDF5
                     if pos_manager.nz is None:
                         xpos, ypos = mc.probe_positions
                         zpos = None
@@ -664,12 +694,12 @@ def run_acquisition(save_path, config_path):
                     pos_manager.update_position_hdf5(shot_num, current_positions)
 
                 # Calculate and display remaining time
-                time_per_pos = (time.time() - acquisition_loop_start_time)
-                remaining_positions = len(positions) - shot_num
-                remaining_time = remaining_positions * time_per_pos
-                print(f'Remaining time: {remaining_time/3600:.2f}h')
+                time_per_shot = (time.time() - acquisition_loop_start_time)
+                remaining_shots = total_shots - shot_num
+                remaining_time = remaining_shots * time_per_shot
+                print(f' | Remaining time: {remaining_time/3600:.2f}h ({remaining_shots} shots)')
                 
-                shot_num += 1
+                n += 1
 
         except KeyboardInterrupt:
             print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
