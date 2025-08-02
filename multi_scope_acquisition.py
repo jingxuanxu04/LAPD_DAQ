@@ -127,16 +127,7 @@ def init_acquire_from_scope(scope, scope_name):
     return is_sequence, time_array
 
 def acquire_from_scope(scope, scope_name):
-    """Acquire data from a single scope with optimized speed
-    Args:
-        scope: LeCroy_Scope instance
-        scope_name: Name of the scope
-    Returns:
-        tuple: (traces, data, headers)
-            - traces: List of trace names that have valid data
-            - data: Dict of trace data
-            - headers: Dict of trace headers
-    """
+    """Acquire data from a single scope with optimized speed (int16/raw)."""
     data = {}
     headers = {}
     active_traces = []
@@ -146,7 +137,8 @@ def acquire_from_scope(scope, scope_name):
     
     for tr in traces:
         if stop_triggering(scope) == True:
-            data[tr], headers[tr] = scope.acquire(tr)
+            # Acquire raw int16 data
+            data[tr], headers[tr] = scope.acquire(tr, raw=True)
             active_traces.append(tr)
         else:
             raise Exception('Scope did not enter STOP state')
@@ -154,16 +146,7 @@ def acquire_from_scope(scope, scope_name):
     return active_traces, data, headers
 
 def acquire_from_scope_sequence(scope, scope_name):
-    """Acquire sequence mode data from a single scope
-    Args:
-        scope: LeCroy_Scope instance
-        scope_name: Name of the scope
-    Returns:
-        tuple: (traces, data, headers)
-            - traces: List of trace names that have valid data
-            - data: Dict of trace data arrays for each segment
-            - headers: Dict of trace headers with sequence info
-    """
+    """Acquire sequence mode data from a single scope (int16/raw)."""
     data = {}
     headers = {}
     active_traces = []
@@ -171,9 +154,13 @@ def acquire_from_scope_sequence(scope, scope_name):
     traces = scope.displayed_traces()
     
     for tr in traces:
-
         if stop_triggering(scope) == True:
-            data[tr], headers[tr] = scope.acquire_sequence_data(tr)
+            # Acquire raw int16 data for all segments
+            segment_data, header = scope.acquire_sequence_data(tr)
+            # Convert each segment to np.int16 array if not already
+            segment_data = [np.asarray(seg, dtype=np.int16) for seg in segment_data]
+            data[tr] = np.stack(segment_data)
+            headers[tr] = header
             active_traces.append(tr)
         else:
             raise Exception('Scope did not enter STOP state')
@@ -388,57 +375,38 @@ class MultiScopeAcquisition:
             time_ds.attrs['dtype'] = str(time_array.dtype)
 
     def update_scope_hdf5(self, all_data, shot_num):
-        """Update HDF5 file with scope data only"""
+        """Update HDF5 file with scope data only (save as int16)."""
         with h5py.File(self.save_path, 'a') as f:
-            # Save data for each scope
             for scope_name, (traces, data, headers) in all_data.items():
                 scope_group = f[scope_name]
-                
-                # Check if shot group already exists
                 shot_name = f'shot_{shot_num}'
                 if shot_name in scope_group:
                     raise RuntimeError(f"Shot {shot_num} already exists for scope {scope_name}.")
-                
-                # Create shot group with optimized settings
                 shot_group = scope_group.create_group(shot_name)
                 shot_group.attrs['acquisition_time'] = time.ctime()
-                
-                # Save trace data and headers with optimized chunk size and compression
                 for tr in traces:
                     if tr not in data:
                         continue
-                        
-                    # Convert data to appropriate dtype
-                    trace_data = np.asarray(data[tr])
-                    if trace_data.dtype != np.float64:
-                        trace_data = trace_data.astype(np.float64)
-                    
-                    # Check if this is sequence data (will be 2D array)
+                    trace_data = np.asarray(data[tr], dtype=np.int16)
                     is_sequence = len(trace_data.shape) > 1
-                    
-                    # Calculate optimal chunk size
                     if is_sequence:
                         chunk_size = (1, min(trace_data.shape[1], 512*1024))
                     else:
                         chunk_size = (min(len(trace_data), 512*1024),)
-                    
-                    # Create dataset
-                    data_ds = shot_group.create_dataset(f'{tr}_data', 
-                                                      data=trace_data,
-                                                      chunks=chunk_size,
-                                                      compression='gzip',
-                                                      compression_opts=9,
-                                                      shuffle=True,
-                                                      fletcher32=True)
-                    
-                    # Store header
+                    data_ds = shot_group.create_dataset(
+                        f'{tr}_data',
+                        data=trace_data,
+                        dtype='int16',
+                        chunks=chunk_size,
+                        compression=None, # compression_opts=9,
+                        shuffle=False, # true if compression is enabled
+                        fletcher32=True
+                    )
                     header_ds = shot_group.create_dataset(f'{tr}_header', data=np.void(headers[tr]))
-                    
-                    # Add metadata
                     data_ds.attrs['description'] = self.get_channel_description(tr)
-                    data_ds.attrs['dtype'] = str(trace_data.dtype)
+                    data_ds.attrs['dtype'] = 'int16'
                     header_ds.attrs['description'] = f'Binary header data for {tr}'
-    
+
 #===============================================================================================================================================
 # Data Acquisition Functions
 #===============================================================================================================================================
@@ -780,5 +748,5 @@ def run_acquisition_bmotion(save_path, toml_path, scope_ips, num_duplicate_shots
         finally:
 
             run_manager.terminate()
-    
+
 

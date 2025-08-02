@@ -117,134 +117,114 @@ pos_manager = PositionManager(save_path, nz=None)  # is_45deg auto-detected
 pos_manager = PositionManager(save_path, nz=None, is_45deg=False)  # Force non-45deg
 ```
 
+
 ### Data Acquisition Integration
 
-1. **HDF5 Structure**
-   ```
-   experiment_name.hdf5/
-   ├── attrs/
-   │   ├── description          # Overall experiment description
-   │   ├── creation_time        # Time when file was created
-   │   └── source_code          # Python scripts used to create the file
-   │
-   ├── Control/
-   │   └── Positions/
-   │       ├── positions_setup_array  # Planned positions with metadata
-   │       │   └── attrs/
-   │       │       ├── xpos           # Array of x positions
-   │       │       ├── ypos           # Array of y positions
-   │       │       └── zpos           # Array of z positions (if 3D)
-   │       │
-   │       └── positions_array        # Actual achieved positions
-   │
-   ├── FastScope/               # Scope group
-   │   ├── attrs/
-   │   │   ├── description     # Scope description
-   │   │   ├── ip_address      # Scope IP address
-   │   │   ├── scope_type      # Scope identification string
-   │   │   └── external_delay(ms)  # External delay in milliseconds
-   │   │
-   │   ├── time_array          # Time array for all channels
-   │   │   └── attrs/
-   │   │       ├── units       # "seconds"
-   │   │       ├── description # Time array info and mode
-   │   │       └── dtype       # Data type of time array
-   │   │
-   │   ├── shot_1/            # First shot data
-   │   │   ├── attrs/
-   │   │   │   └── acquisition_time
-   │   │   │
-   │   │   ├── C1_data        # Channel 1 voltage data
-   │   │   │   └── attrs/
-   │   │   │       ├── description  # Channel description
-   │   │   │       └── dtype       # Data type
-   │   │   ├── C1_header      # Channel 1 binary header
-   │   │   │   └── attrs/
-   │   │   │       └── description
-   │   │   ├── C2_data        # Channel 2 voltage data
-   │   │   ├── C2_header      # Channel 2 binary header
-   │   │   └── ...            # Additional channels
-   │   │
-   │   ├── shot_2/            # Second shot data
-   │   │   └── ...            # Same structure as shot_1
-   │   │
-   │   └── shot_N/            # Shot N data
-   │       ├── attrs/         # For skipped positions:
-   │       │   ├── skipped = True
-   │       │   └── skip_reason = "Cannot find valid path..."
-   │       └── acquisition_time
-   │
-   └── x-ray_dipole/          # Second scope group
-       └── ...                # Same structure as above
+#### HDF5 Structure and Data Format
+
+```
+experiment_name.hdf5/
+├── attrs/
+│   ├── description          # Overall experiment description
+│   ├── creation_time        # Time when file was created
+│   └── source_code          # Python scripts used to create the file
+│
+├── Control/
+│   └── Positions/
+│       ├── positions_setup_array  # Planned positions with metadata
+│       │   └── attrs/
+│       │       ├── xpos           # Array of x positions
+│       │       ├── ypos           # Array of y positions
+│       │       └── zpos           # Array of z positions (if 3D)
+│       │
+│       └── positions_array        # Actual achieved positions
+│
+├── FastScope/               # Scope group
+│   ├── attrs/
+│   │   ├── description     # Scope description
+│   │   ├── ip_address      # Scope IP address
+│   │   ├── scope_type      # Scope identification string
+│   │   └── external_delay(ms)  # External delay in milliseconds
+│   │
+│   ├── time_array          # Time array for all channels
+│   │   └── attrs/
+│   │       ├── units       # "seconds"
+│   │       ├── description # Time array info and mode
+│   │       └── dtype       # Data type of time array
+│   │
+│   ├── shot_1/            # First shot data
+│   │   ├── attrs/
+│   │   │   └── acquisition_time
+│   │   │
+│   │   ├── C1_data        # Channel 1 raw data (int16)
+│   │   │   └── attrs/
+│   │   │       ├── description  # Channel description
+│   │   │       └── dtype       # Data type (int16)
+│   │   ├── C1_header      # Channel 1 binary header
+│   │   │   └── attrs/
+│   │   │       └── description
+│   │   ├── C2_data        # Channel 2 raw data (int16)
+│   │   ├── C2_header      # Channel 2 binary header
+│   │   └── ...            # Additional channels
+│   │
+│   ├── shot_2/            # Second shot data
+│   │   └── ...            # Same structure as shot_1
+│   │
+│   └── shot_N/            # Shot N data
+│       ├── attrs/         # For skipped positions:
+│       │   ├── skipped = True
+│       │   └── skip_reason = "Cannot find valid path..."
+│       └── acquisition_time
+│
+└── x-ray_dipole/          # Second scope group
+    └── ...                # Same structure as above
 ```
 
-### Key Features
-1. **Root Level**
-   - Contains experiment metadata and scope groups
-   - Stores source code used to create the file
-   - Includes experiment description and creation time
+#### Key Features and Data Format (2025 Update)
 
-2. **Control Group**
-   - Contains probe position information
-   - `positions_setup_array`: Planned probe positions with metadata
-   - `positions_array`: Actual achieved positions during acquisition
+1. **Raw int16 Data Storage**
+   - All scope waveform data is now saved as raw `int16` arrays for maximum write speed and minimal file size.
+   - No conversion to float64 is performed during acquisition or saving.
+   - To convert to physical units, use the scale/offset in the binary header (see LeCroy documentation).
 
-3. **Scope Groups**
-   - Each scope has its own group with metadata
-   - Time array stored once per scope (in seconds)
-   - External delay and scope configuration information
-   - Supports both normal and sequence mode acquisition
+2. **HDF5 Optimization Settings**
+   - **Chunking:** Large chunk sizes are used for fast writing (typically 512k–1M samples per chunk).
+   - **Compression:** By default, no compression is used for maximum speed. Optionally, `'lzf'` can be enabled for fast, lightweight compression.
+   - **Shuffle:** Disabled for speed (enabling can improve compression if used).
+   - **Fletcher32:** Enabled by default for data integrity (detects corruption on read).
 
-4. **Shot Data**
-   - Numbered shots under each scope group
-   - Each shot contains:
-     - Voltage data for each channel
-     - Binary header data for each channel
-     - Channel descriptions and data types
-     - Acquisition timestamp
-   - For skipped positions (e.g., blocked by obstacles):
-     - `skipped` attribute set to True
-     - `skip_reason` explains why position was skipped
+3. **Metadata and Structure**
+   - Channel and scope descriptions, acquisition time, and binary headers are stored as attributes or datasets.
+   - Skipped positions are recorded with `skipped=True` and a `skip_reason` attribute.
+   - Time arrays are stored once per scope group.
 
-5. **Data Optimization**
-   - Efficient chunking for large datasets
-   - Compression enabled for voltage data
-   - Metadata stored as attributes
-   - Time array shared across all shots
+#### Reading int16 Data
 
-### Reading the Data
-Example Python code to read the data:
+When reading, you will get raw int16 arrays. To convert to voltage:
+
 ```python
 import h5py
 import numpy as np
 
-# Open the HDF5 file
 with h5py.File('experiment_name.hdf5', 'r') as f:
-    # Read experiment description
-    description = f.attrs['description']
-    
-    # Get planned and actual positions
-    positions_setup = f['/Control/Positions/positions_setup_array'][:]
-    positions_actual = f['/Control/Positions/positions_array'][:]
-    
-    # Access scope data
     scope_group = f['FastScope']
-    time_array = scope_group['time_array'][:]
-    
-    # Read shots
     for shot_name in [k for k in scope_group.keys() if k.startswith('shot_')]:
         shot_group = scope_group[shot_name]
-        
-        # Check if position was skipped
-        if 'skipped' in shot_group.attrs:
-            print(f"{shot_name} was skipped: {shot_group.attrs['skip_reason']}")
-            continue
-            
-        # Read channel data
         for channel in [k for k in shot_group.keys() if k.endswith('_data')]:
-            data = shot_group[channel][:]
-            description = shot_group[channel].attrs['description']
+            raw = shot_group[channel][:]  # int16 array
+            header = shot_group[channel.replace('_data', '_header')][:]
+            # Use header to get vertical_gain and vertical_offset, then:
+            # voltage = vertical_gain * raw - vertical_offset
 ```
+
+#### HDF5 Performance Tuning
+
+- For **maximum speed**, use `compression=None`, `shuffle=False`, `fletcher32=False`.
+- For **data integrity**, set `fletcher32=True` (default in this repo).
+- For **smaller files** with some speed, use `compression='lzf'` and optionally `shuffle=True`.
+- Chunk size can be tuned for your disk and data size; larger chunks are faster up to a point.
+
+---
 
 2. **Position Skipping**
    - When a position is blocked by an obstacle:
