@@ -37,6 +37,9 @@ def load_position_config(config_path):
     pos_config = {}
     for key, value in config.items('position'):
         try:
+            # Skip empty or None values
+            if value is None or value.strip() == '':
+                continue
             if ',' in value and not value.startswith('{'):
                 # Handle comma-separated tuples (e.g., x_limits = -40,200)
                 pos_config[key] = tuple(float(x) if '.' in x else int(x) for x in value.split(','))

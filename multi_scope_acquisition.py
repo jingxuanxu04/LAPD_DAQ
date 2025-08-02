@@ -627,9 +627,13 @@ def run_acquisition(save_path, config_path):
     else:
         pos_manager = None
     
-    scope_ips = config.get('scope_ips', None)
-    if scope_ips is None:
-        raise RuntimeError("No scope IPs found in config. Please check experiment_config.txt")
+    # Load scope IPs from config
+    if 'scope_ips' not in config:
+        raise RuntimeError("No [scope_ips] section found in config. Please check experiment_config.txt")
+    
+    scope_ips = dict(config.items('scope_ips'))
+    if not scope_ips:
+        raise RuntimeError("No scope IPs found in [scope_ips] section. Please uncomment and configure scope IP addresses in experiment_config.txt")
     
     # Initialize multi-scope acquisition
     with MultiScopeAcquisition(scope_ips, save_path, config) as msa:

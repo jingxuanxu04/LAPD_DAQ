@@ -78,4 +78,38 @@ num_run_repeats = 1
 # probe_list = P16,P22,P29,P34,P42
 # nx = 37
 # xstart = {"P16": -38, "P22": -18, "P29": -38, "P34": -38, "P42": -38}
-# xstop = {"P16": -38, "P22": 18, "P29": -38, "P34": -38, "P42": -38} 
+# xstop = {"P16": -38, "P22": 18, "P29": -38, "P34": -38, "P42": -38}
+
+[scope_ips]
+# Dictionary of scope names and their IP addresses
+# Uncomment and modify the appropriate lines for your experiment setup
+# Format: scope_name = IP_address
+
+# Example configuration for testing (uncomment one of these):
+LPScope = 192.168.7.65       # LeCroy HDO4104 - Langmuir probe diagnostics
+
+# Other scope configurations:
+# testScope = 192.168.7.66     # LeCroy WavePro 404HD - RF and probe diagnostics  
+# BdotScope = 192.168.7.67     # Bdot measurements
+# Scope = 192.168.7.68         # Generic scope configuration
+
+[motor_ips]
+# Dictionary of motor controller IP addresses
+# Uncomment and modify the appropriate lines for your experiment setup
+# Format: motor_name = IP_address
+
+# --- For XY/XYZ Movement (Data_Run.py) ---
+# x = 192.168.7.101            # X-axis motor controller
+# y = 192.168.7.102            # Y-axis motor controller  
+# z = 192.168.7.103            # Z-axis motor controller (for 3D movement)
+
+# --- For 45deg Movement (Data_Run_45deg.py) ---
+# P16 = 192.168.7.141          # Probe P16 motor controller
+# P22 = 192.168.7.142          # Probe P22 motor controller
+# P29 = 192.168.7.143          # Probe P29 motor controller
+# P34 = 192.168.7.144          # Probe P34 motor controller
+# P42 = 192.168.7.145          # Probe P42 motor controller
+
+# --- For B-motion Movement (Data_Run bmotion.py) ---
+# Uses motion group configurations from separate TOML file
+# Motor IPs are defined in the TOML configuration file 
