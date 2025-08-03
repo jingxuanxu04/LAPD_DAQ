@@ -403,7 +403,9 @@ class MultiScopeAcquisition:
                         fletcher32=True
                     )
                     header_ds = shot_group.create_dataset(f'{tr}_header', data=np.void(headers[tr]))
-                    data_ds.attrs['description'] = self.get_channel_description(tr)
+                    # Use full key for channel description lookup
+                    full_channel_key = f"{scope_name}_{tr}"
+                    data_ds.attrs['description'] = self.get_channel_description(full_channel_key)
                     data_ds.attrs['dtype'] = 'int16'
                     header_ds.attrs['description'] = f'Binary header data for {tr}'
 
