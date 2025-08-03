@@ -131,7 +131,7 @@ class PhantomRecorder:
         print("✓")
         return time.time()
         
-    def save_cine(self, shot_number, timestamp):
+    def save_cine(self, ifn):
         """Save the recorded cine file with frame range and trigger timestamp.
         
         Args:
@@ -140,9 +140,6 @@ class PhantomRecorder:
         # Create Cine object
         rec_cine = cine.Cine.from_camera(self.cam, 1)
 
-        filename = f"{self.config['name']}_shot{shot_number:03d}.cine"
-        full_path = os.path.join(self.config['save_path'], filename)
-        
         # Set frame range and save
         frame_range = utils.FrameRange(self.config['pre_trigger_frames'], self.config['post_trigger_frames'])
         range = rec_cine.range
@@ -157,8 +154,7 @@ class PhantomRecorder:
             print(f"Adjusted frame range to: ({frame_range.first_image}, {frame_range.last_image})")
         
         # Save and monitor progress
-        print(f"Saving cine file to {filename}")
-        rec_cine.save_non_blocking(filename=full_path, range=frame_range)
+        rec_cine.save_non_blocking(filename=ifn, range=frame_range)
 
         return rec_cine
     

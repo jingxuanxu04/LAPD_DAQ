@@ -83,6 +83,7 @@ def get_camera_config(config):
         cam_config['resolution'] = (256, 256)
 
     cam_config['hdf5_file_path'] = hdf5_path
+    cam_config['save_path'] = base_path
     return cam_config
 
 #===============================================================================================================================================
@@ -106,7 +107,6 @@ def run_acquisition_with_camera(hdf5_path):
     camera_recorder = None  # Initialize to avoid NameError in finally block
     
     try:
-        # Initialize multi-scope acquisition (no motor control)
         with MultiScopeAcquisition(scope_ips, hdf5_path, config) as msa:
             print("Initializing HDF5 file structure...", end='')
             msa.initialize_hdf5_base()
@@ -146,19 +146,19 @@ def run_acquisition_with_camera(hdf5_path):
                     all_data = msa.acquire_shot(active_scopes, shot_num)
 
                     if camera_recorder:
-                        rec_cine = camera_recorder.save_cine(shot_num, timestamp)
+                        filename = f"{exp_name}_shot{shot_num:03d}.cine"
+                        ifn = os.path.join(base_path, filename)
+                        rec_cine = camera_recorder.save_cine(ifn)
 
+                    print("Saving scope data to HDF5")
                     msa.update_scope_hdf5(all_data, shot_num)
-                    print("Save scope data to HDF5")
 
                     if camera_recorder:
                         camera_recorder.wait_for_save_completion(rec_cine)
-
-                        filename = f"{exp_name}_shot{shot_num:03d}.cine"
                         camera_recorder._update_hdf5_metadata(shot_num, filename, timestamp)
-                        print("Save camera metadata to HDF5")
+                        print("Camera metadata saved to HDF5")
 
-                    # Calculate time taken for this shot
+                    # Calculate remaining run time
                     time_per_shot = (time.time() - acquisition_loop_start_time)
                     remaining_shots = num_shots - shot_num
                     remaining_time = remaining_shots * time_per_shot
@@ -216,11 +216,9 @@ def run_acquisition_with_WDropper(hdf5_path):
 
             if cam_config is not None: # Initialize camera recorder if configured
                 try:
-                    print("Initializing Phantom camera...")
-                    # Set up configuration for HDF5 integration
-                    cam_config['hdf5_file_path'] = hdf5_path
+                    print("Initializing Phantom camera...", end='')
                     camera_recorder = PhantomRecorder(cam_config)
-
+                    print("✓")
                 except Exception as e:
                     print(f"⚠ Camera initialization failed: {e}")
                     print("Continuing with scope-only acquisition...")
@@ -229,7 +227,6 @@ def run_acquisition_with_WDropper(hdf5_path):
                 print("Camera recording disabled")
                 camera_recorder = None
             
-            # Main acquisition loop
             for shot_num in range(1, num_shots + 1): 
                 try:
                     acquisition_loop_start_time = time.time()
@@ -256,22 +253,22 @@ def run_acquisition_with_WDropper(hdf5_path):
                         camera_recorder.start_recording(shot_num)
                         timestamp = camera_recorder.wait_for_recording_completion()
                     
-                    all_data = msa.acquire_shot(active_scopes, shot_num) # Acquire data from scopes
+                    all_data = msa.acquire_shot(active_scopes, shot_num)
 
                     if camera_recorder:
-                        rec_cine = camera_recorder.save_cine(shot_num, timestamp)
+                        filename = f"{exp_name}_shot{shot_num:03d}.cine"
+                        ifn = os.path.join(base_path, filename)
+                        rec_cine = camera_recorder.save_cine(ifn)
 
-                    # Update scope data in HDF5
+                    print("Saving scope data to HDF5")
                     msa.update_scope_hdf5(all_data, shot_num)
-                    print("Save scope data to HDF5")
 
                     if camera_recorder:
                         camera_recorder.wait_for_save_completion(rec_cine)
-                        if hasattr(camera_recorder, 'hdf5_path'):
-                            filename = f"{camera_recorder.config['name']}_shot{shot_num:03d}.cine"
-                            camera_recorder._update_hdf5_metadata(shot_num, filename, timestamp)
-                            print("Save camera metadata to HDF5")
+                        camera_recorder._update_hdf5_metadata(shot_num, filename, timestamp)
+                        print("Camera metadata saved to HDF5")
 
+                    # Calculate remaining run time
                     time_per_shot = (time.time() - acquisition_loop_start_time)
                     remaining_shots = num_shots - shot_num
                     remaining_time = remaining_shots * time_per_shot
@@ -295,10 +292,7 @@ def run_acquisition_with_WDropper(hdf5_path):
                 print("✓ Camera resources cleaned up successfully")
             except Exception as e:
                 print(f"⚠ Error cleaning up camera: {e}")
-        
 
-        
-        print("=== Resource cleanup completed ===")
 #===============================================================================================================================================
 # Main Data Run sequence
 #===============================================================================================================================================
@@ -329,17 +323,14 @@ def main():
     print(f'Scopes: {list(scope_ips.keys())}')
 
     if cam_config:
-        print(f'Camera enabled')
+        print(f'Camera settings:')
         print(f'  Resolution: {cam_config["resolution"]}')
         print(f'  Frame rate: {cam_config["fps"]} fps')
         print(f'  Frames: {cam_config["pre_trigger_frames"]} to +{cam_config["post_trigger_frames"]}')
-        print(f'  HDF5 metadata: Yes')  # Always saved when camera is enabled
     else:
         print('Camera recording disabled')
 
     print(f'Total shots: {num_shots}')
-    print(f'Acquisition type: Stationary (no probe movement)')
-    print('=' * 50)
     
     t_start = time.time()
     
