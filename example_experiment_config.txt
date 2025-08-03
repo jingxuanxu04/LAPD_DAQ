@@ -1,6 +1,3 @@
-# Example experiment_config.txt for LAPD DAQ system
-# Copy this file to experiment_config.txt and edit for your experiment
-
 [experiment]
 description = Multi-scope Data Acquisition with Probe Movement
     Experiment: 18-isatswp-p39-xy-2000G-800G
@@ -112,4 +109,15 @@ LPScope = 192.168.7.65       # LeCroy HDO4104 - Langmuir probe diagnostics
 
 # --- For B-motion Movement (Data_Run bmotion.py) ---
 # Uses motion group configurations from separate TOML file
-# Motor IPs are defined in the TOML configuration file 
+# Motor IPs are defined in the TOML configuration file
+
+
+# Camera configuration (optional, for Data_Run_MultiScope_Camera.py)
+[camera_config]
+# exposure_us = 30
+# fps = 10000
+# pre_trigger_frames = -500
+# post_trigger_frames = 1000
+# resolution = 256,256
+# Example experiment_config.txt for LAPD DAQ system
+# Copy this file to experiment_config.txt and edit for your experiment

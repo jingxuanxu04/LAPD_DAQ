@@ -7,6 +7,10 @@ This combines the functionality of:
 - multi_scope_acquisition.py for multiple scope data
 - phantom_recorder.py for high-speed camera data
 
+Main functions:
+- run_acquisition_with_camera(): Basic multi-scope and camera acquisition
+- run_acquisition_with_WDropper(): Multi-scope and camera acquisition with tungsten dropper
+
 Configuration and metadata:
 - Scope and channel descriptions, as well as experiment metadata, are now loaded from experiment_config.txt.
 - Edit experiment_config.txt to set experiment description, scope descriptions, and channel descriptions.
@@ -19,7 +23,7 @@ Created July.2025
 import datetime
 import os
 import numpy as np
-from multi_scope_acquisition import MultiScopeAcquisition
+from multi_scope_acquisition import MultiScopeAcquisition, load_experiment_config
 from phantom_recorder import PhantomRecorder
 import time
 import sys
@@ -45,93 +49,72 @@ PI_PORT = 54321
 '''
 User: Set experiment name and path
 '''
-exp_name = 'scope_cam_tungsten_test_3'  # experiment name
+exp_name = '00_scope_cam_test'  # experiment name
 date = datetime.date.today()
 base_path = r"E:\Shadow data\Energetic_Electron_Ring\test"
-save_path = os.path.join(base_path, f"{exp_name}_{date}.hdf5")
+hdf5_path = os.path.join(base_path, f"{exp_name}_{date}.hdf5")
+
+config_path = os.path.join(base_path, 'experiment_config.txt')
+
 
 #-------------------------------------------------------------------------------------------------------------
-'''
-User: Set acquisition parameters
-'''
-num_shots = 5  # Total number of shots to acquire
+def get_camera_config(config):
+    """
+    Extract camera configuration from configparser.ConfigParser object.
+    Returns a dictionary suitable for PhantomRecorder.
+    Returns None if [camera_config] section is missing or disabled.
+    """
+    if not config.has_section('camera_config'):
+        print("No [camera_config] section found in config. Camera will be disabled.")
+        return None
 
-#-------------------------------------------------------------------------------------------------------------
-'''
-User: Set scope configuration
-'''
-scope_ips = {
-    'testScope': '192.168.7.65',
-}
+    cam_config = {
+        'exposure_us': config.getint('camera_config', 'exposure_us', fallback=30),
+        'fps': config.getint('camera_config', 'fps', fallback=10000),
+        'pre_trigger_frames': config.getint('camera_config', 'pre_trigger_frames', fallback=-500),
+        'post_trigger_frames': config.getint('camera_config', 'post_trigger_frames', fallback=1000),
+    }
+    # Parse resolution as tuple
+    res_str = config.get('camera_config', 'resolution', fallback='256,256')
+    try:
+        cam_config['resolution'] = tuple(int(x) for x in res_str.replace('x', ',').split(','))
+    except Exception:
+        print(f"Warning: Could not parse camera resolution '{res_str}', using (256, 256)")
+        cam_config['resolution'] = (256, 256)
 
-external_delays = { # unit: milliseconds
-    'testScope': 0,
-}
-
-#-------------------------------------------------------------------------------------------------------------
-'''
-User: Set camera configuration
-'''
-camera_config = {
-    'name': exp_name,
-    'save_path': base_path,  # Directory path for .cine files
-    'exposure_us': 30,
-    'fps': 10000,
-    'pre_trigger_frames': -500,  # 500 frames before trigger
-    'post_trigger_frames': 1000,  # 1000 frames after trigger
-    'resolution': (256, 256),
-    'hdf5_file_path': None  # Will be set to save_path during initialization
-}
-
-# Set to None to disable camera recording
-# camera_config = None
-
-#-------------------------------------------------------------------------------------------------------------
-def get_experiment_description():
-    """Return overall experiment description - DEPRECATED: Now loaded from experiment_config.txt"""
-    print("Warning: get_experiment_description() is deprecated. Update experiment_config.txt instead.")
-    return "Experiment description moved to experiment_config.txt"
-
-def get_channel_description(tr):
-    """Channel description - DEPRECATED: Now loaded from experiment_config.txt"""
-    print("Warning: get_channel_description() is deprecated. Update experiment_config.txt instead.")
-    return f'Channel {tr} - Update experiment_config.txt [channels] section'
-
-def get_scope_description(scope_name):
-    """Return description for each scope - DEPRECATED: Now loaded from experiment_config.txt"""
-    print("Warning: get_scope_description() is deprecated. Update experiment_config.txt instead.")
-    return f'Scope {scope_name} - Update experiment_config.txt [scopes] section'
-
+    cam_config['hdf5_file_path'] = hdf5_path
+    return cam_config
 
 #===============================================================================================================================================
 # Enhanced acquisition function with camera integration
 #===============================================================================================================================================
-def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, cam_config=None):
+# Used for both run_acquisition_with_camera() and run_acquisition_with_WDropper()
+config = load_experiment_config(config_path)
+scope_ips = config.get('scope_ips', {})
+cam_config = get_camera_config(config)
+num_shots = config.getint('num_shots', 1) # Default to 1 shot if not specified
+
+def run_acquisition_with_camera(hdf5_path):
     """Run the main acquisition sequence with integrated camera recording
     
     Args:
-        save_path: Path to save HDF5 file
-        scope_ips: Dictionary of scope IPs
-        external_delays: Dictionary of external delays for scopes
-        camera_config: Camera configuration dictionary (None to disable camera)
+        hdf5_path: Path to save HDF5 file
+
     """
     print('Starting multi-scope and camera acquisition at', time.ctime())
     
+    camera_recorder = None  # Initialize to avoid NameError in finally block
+    
     try:
         # Initialize multi-scope acquisition (no motor control)
-        with MultiScopeAcquisition(scope_ips, save_path) as msa:
-            
-            # Initialize HDF5 file structure (append mode since file already exists)
+        with MultiScopeAcquisition(scope_ips, hdf5_path, config) as msa:
             print("Initializing HDF5 file structure...", end='')
             msa.initialize_hdf5_base()
             print("✓")
 
-            if cam_config is not None: # Initialize camera recorder if configured
+            if cam_config is not None:
                 try:
                     print("Initializing Phantom camera...", end='')
-                    # Set up configuration for HDF5 integration
-                    cam_config['hdf5_file_path'] = save_path
-                    
                     camera_recorder = PhantomRecorder(cam_config)
                     print("✓")
                 except Exception as e:
@@ -141,53 +124,49 @@ def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, cam_
             else:
                 print("Camera recording disabled")
                 camera_recorder = None
-            
-            # Main acquisition loop
-            for shot_num in range(1, num_shots + 1): 
+
+            for shot_num in range(1, num_shots + 1):
                 try:
                     acquisition_loop_start_time = time.time()
                     print(f"\n______Acquiring shot {shot_num}/{num_shots}______")
 
-                    if shot_num == 1: # First shot: Initialize scopes and save time arrays
+                    if shot_num == 1:
                         print("\nStarting initial scope acquisition...")
                         active_scopes = msa.initialize_scopes()
                         if not active_scopes:
                             raise RuntimeError("No valid data found from any scope. Aborting acquisition.")
                         print(f"Active scopes: {list(active_scopes.keys())}")
                     else:
-                        msa.arm_scopes_for_trigger(active_scopes) # Arm scopes for trigger
+                        msa.arm_scopes_for_trigger(active_scopes)
 
                     if camera_recorder:
                         camera_recorder.start_recording(shot_num)
                         timestamp = camera_recorder.wait_for_recording_completion()
-                    
-                    all_data = msa.acquire_shot(active_scopes, shot_num) # Acquire data from scopes
+
+                    all_data = msa.acquire_shot(active_scopes, shot_num)
 
                     if camera_recorder:
                         rec_cine = camera_recorder.save_cine(shot_num, timestamp)
 
-                    # Update scope data in HDF5
                     msa.update_scope_hdf5(all_data, shot_num)
                     print("Save scope data to HDF5")
 
                     if camera_recorder:
                         camera_recorder.wait_for_save_completion(rec_cine)
-                        
-                        # Update HDF5 with camera metadata if HDF5 integration is enabled
-                        if hasattr(camera_recorder, 'hdf5_path'):
-                            filename = f"{camera_recorder.config['name']}_shot{shot_num:03d}.cine"
-                            camera_recorder._update_hdf5_metadata(shot_num, filename, timestamp)
-                            print("Save camera metadata to HDF5")
 
-                    # Calculate and display remaining time
+                        filename = f"{exp_name}_shot{shot_num:03d}.cine"
+                        camera_recorder._update_hdf5_metadata(shot_num, filename, timestamp)
+                        print("Save camera metadata to HDF5")
+
+                    # Calculate time taken for this shot
                     time_per_shot = (time.time() - acquisition_loop_start_time)
                     remaining_shots = num_shots - shot_num
                     remaining_time = remaining_shots * time_per_shot
                     print(f' | Remaining: {remaining_time/60:.1f}min ({remaining_time:.1f}s)')
-                    
+
                 except KeyboardInterrupt:
                     print(f'\n______Shot {shot_num} interrupted by Ctrl-C______')
-                    raise  # Re-raise to propagate to outer exception handler
+                    raise
 
     except KeyboardInterrupt:
         print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
@@ -203,9 +182,14 @@ def run_acquisition_with_camera(save_path, scope_ips, external_delays=None, cam_
                 print(f"Error cleaning up camera: {e}")
 
 
-def run_acquisition_with_WDropper(save_path, scope_ips, cam_config=None):
+def run_acquisition_with_WDropper(hdf5_path):
     """
-    main acquisition function with tungsten dropper
+    Main acquisition function with tungsten dropper and optional camera recording
+    
+    Args:
+        save_path: Path to save HDF5 file
+        scope_ips: Dictionary of scope IPs {scope_name: ip_address}
+        cam_config: Camera configuration dictionary (None to disable camera)
     """
     print('Starting acquisition at', time.ctime())
     
@@ -214,9 +198,10 @@ def run_acquisition_with_WDropper(save_path, scope_ips, cam_config=None):
     camera_recorder = None
     
     try:
+        config = load_experiment_config(config_path)
         # Initialize multi-scope acquisition (no motor control)
-        with MultiScopeAcquisition(scope_ips, save_path) as msa:
-            
+        with MultiScopeAcquisition(scope_ips, hdf5_path, config) as msa:
+
             # Initialize HDF5 file structure (append mode since file already exists)
             print("Initializing HDF5 file structure...", end='')
             msa.initialize_hdf5_base()
@@ -233,7 +218,7 @@ def run_acquisition_with_WDropper(save_path, scope_ips, cam_config=None):
                 try:
                     print("Initializing Phantom camera...")
                     # Set up configuration for HDF5 integration
-                    cam_config['hdf5_file_path'] = save_path
+                    cam_config['hdf5_file_path'] = hdf5_path
                     camera_recorder = PhantomRecorder(cam_config)
 
                 except Exception as e:
@@ -282,23 +267,19 @@ def run_acquisition_with_WDropper(save_path, scope_ips, cam_config=None):
 
                     if camera_recorder:
                         camera_recorder.wait_for_save_completion(rec_cine)
-                        
-                        # Update HDF5 with camera metadata if HDF5 integration is enabled
                         if hasattr(camera_recorder, 'hdf5_path'):
                             filename = f"{camera_recorder.config['name']}_shot{shot_num:03d}.cine"
                             camera_recorder._update_hdf5_metadata(shot_num, filename, timestamp)
                             print("Save camera metadata to HDF5")
 
-                    # Calculate and display remaining time
                     time_per_shot = (time.time() - acquisition_loop_start_time)
                     remaining_shots = num_shots - shot_num
                     remaining_time = remaining_shots * time_per_shot
                     print(f' | Remaining: {remaining_time/60:.1f}min ({remaining_time:.1f}s)')
-                    
+
                 except KeyboardInterrupt:
                     print(f'\n______Shot {shot_num} interrupted by Ctrl-C______')
-                    raise  # Re-raise to propagate to outer exception handler
-
+                    raise
     except KeyboardInterrupt:
         print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
         raise
@@ -327,9 +308,9 @@ def main():
         os.makedirs(base_path)
         
     # Check if file already exists
-    if os.path.exists(save_path):
+    if os.path.exists(hdf5_path):
         while True:
-            response = input(f'File "{save_path}" already exists. Overwrite? (y/n): ').lower()
+            response = input(f'File "{hdf5_path}" already exists. Overwrite? (y/n): ').lower()
             if response in ['y', 'n']:
                 break
             print("Please enter 'y' or 'n'")
@@ -339,20 +320,23 @@ def main():
             sys.exit()
         else:
             print('Overwriting existing file')
-            os.remove(save_path)  # Delete the existing file
+            os.remove(hdf5_path)  # Delete the existing file
     
     print('=== Multi-Scope and Camera Data Acquisition ===')
     print(f'Experiment: {exp_name}')
     print(f'Base path: {base_path}')
-    print(f'HDF5 file: {save_path}')
+    print(f'HDF5 file: {hdf5_path}')
     print(f'Scopes: {list(scope_ips.keys())}')
-    print(f'Camera: {"Enabled" if camera_config else "Disabled"}')
-    if camera_config:
-        print(f'  Resolution: {camera_config["resolution"]}')
-        print(f'  Frame rate: {camera_config["fps"]} fps')
-        print(f'  Frames: {camera_config["pre_trigger_frames"]} to +{camera_config["post_trigger_frames"]}')
+
+    if cam_config:
+        print(f'Camera enabled')
+        print(f'  Resolution: {cam_config["resolution"]}')
+        print(f'  Frame rate: {cam_config["fps"]} fps')
+        print(f'  Frames: {cam_config["pre_trigger_frames"]} to +{cam_config["post_trigger_frames"]}')
         print(f'  HDF5 metadata: Yes')  # Always saved when camera is enabled
-    
+    else:
+        print('Camera recording disabled')
+
     print(f'Total shots: {num_shots}')
     print(f'Acquisition type: Stationary (no probe movement)')
     print('=' * 50)
@@ -360,7 +344,7 @@ def main():
     t_start = time.time()
     
     try:
-        run_acquisition_with_WDropper(save_path, scope_ips, camera_config)
+        run_acquisition_with_WDropper(hdf5_path)
         
     except KeyboardInterrupt:
         print('\n' + '='*60)
@@ -378,11 +362,11 @@ def main():
         print('Time taken: %.2f minutes' % ((time.time()-t_start)/60))
         
         # Print file size if it was created
-        if os.path.isfile(save_path):
-            size = os.stat(save_path).st_size/(1024*1024)
-            print(f'Wrote file "{save_path}", {size:.1f} MB')
+        if os.path.isfile(hdf5_path):
+            size = os.stat(hdf5_path).st_size/(1024*1024)
+            print(f'Wrote file "{hdf5_path}", {size:.1f} MB')
         else:
-            print(f'File "{save_path}" was not created')
+            print(f'File "{hdf5_path}" was not created')
         print('='*50)
 
 #===============================================================================================================================================
