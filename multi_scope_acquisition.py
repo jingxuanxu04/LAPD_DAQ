@@ -7,7 +7,7 @@ Motion control and probe positioning functionality has been moved to the motion 
 Key components:
 - MultiScopeAcquisition class: Manages multiple oscilloscopes, data acquisition and storage
 - Scope configuration and metadata loaded from experiment_config.txt
-- HDF5 file structure optimized for large datasets with compression
+- Save experiment info and data in HDF5 file
 - Parallel scope arming support for synchronized acquisition
 
 Dependencies:
@@ -39,9 +39,9 @@ motion_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "motion")
 if motion_dir not in sys.path:
     sys.path.insert(0, motion_dir)
 
-from motion import PositionManager, move_45deg_probes
+from motion import PositionManager
 
-import bapsf_motion as bmotion
+# import bapsf_motion as bmotion
 #===============================================================================================================================================
 #===============================================================================================================================================
 def load_experiment_config(config_path='experiment_config.txt'):
@@ -398,7 +398,7 @@ class MultiScopeAcquisition:
                         data=trace_data,
                         dtype='int16',
                         chunks=chunk_size,
-                        compression=None, # compression_opts=9,
+                        compression='lzf', # compression_opts=9,
                         shuffle=False, # true if compression is enabled
                         fletcher32=True
                     )
@@ -412,14 +412,11 @@ class MultiScopeAcquisition:
 #===============================================================================================================================================
 def single_shot_acquisition(msa, active_scopes, shot_num):
     
-    print('Arming scopes for trigger...')
     msa.arm_scopes_for_trigger(active_scopes)
-
-    print('Acquiring data from all scopes...')
     all_data = msa.acquire_shot(active_scopes, shot_num)
     
     if all_data:
-        print('Updating scope data in HDF5...')
+        print('Updating scope data to HDF5...')
         msa.update_scope_hdf5(all_data, shot_num)
     else:
         print(f"Warning: No valid data acquired at shot {shot_num}")
@@ -440,7 +437,7 @@ def single_shot_acquisition_45(pos, motors, msa, pos_manager, save_path, scope_i
     shot_num = int(pos['P16'][0])
     positions = {}
     
-    print(f'Shot = {shot_num}', end='')
+    print(f'Shot = {shot_num}')
     
     # Collect active motors and their target positions
     active_motors = []
@@ -539,9 +536,9 @@ def single_shot_acquisition_bmotion(shot_num, msa, active_scopes, save_path, sco
 #===============================================================================================================================================
 def handle_movement(pos_manager, mc, shot_num, pos, save_path, scope_ips):
     if pos_manager.nz is None:
-        print(f'Shot = {shot_num}, x = {pos["x"]}, y = {pos["y"]}', end='')
+        print(f'Shot = {shot_num}, x = {pos["x"]}, y = {pos["y"]}')
     else:
-        print(f'Shot = {shot_num}, x = {pos["x"]}, y = {pos["y"]}, z = {pos["z"]}', end='')
+        print(f'Shot = {shot_num}, x = {pos["x"]}, y = {pos["y"]}, z = {pos["z"]}')
 
     if mc is not None:
         try:
@@ -577,15 +574,15 @@ def handle_movement(pos_manager, mc, shot_num, pos, save_path, scope_ips):
                     shot_group.attrs['acquisition_time'] = time.ctime()
             return False
     else:
-        print(f'Shot = {shot_num}', end='')
+        print(f'Shot = {shot_num}')
         return True
 
 def run_acquisition(save_path, config_path):
 
     print('Starting acquisition loop at', time.ctime())
     config = load_experiment_config(config_path)
-    num_duplicate_shots = config.get('nshots', 'num_duplicate_shots', fallback=1)
-    num_run_repeats = config.get('nshots', 'num_run_repeats', fallback=1)
+    num_duplicate_shots = int(config.get('nshots', 'num_duplicate_shots', fallback=1))
+    num_run_repeats = int(config.get('nshots', 'num_run_repeats', fallback=1))
 
     # Check if position configuration exists
     has_position_config = 'position' in config and config.items('position')
@@ -652,7 +649,7 @@ def run_acquisition(save_path, config_path):
                         continue  # Skip this shot if movement failed
                 else:
                     # Stationary acquisition
-                    print(f'Shot = {shot_num}', end='')
+                    print(f'Shot = {shot_num}')
 
                 single_shot_acquisition(msa, active_scopes, shot_num)
 
@@ -669,7 +666,7 @@ def run_acquisition(save_path, config_path):
                 time_per_shot = (time.time() - acquisition_loop_start_time)
                 remaining_shots = total_shots - shot_num
                 remaining_time = remaining_shots * time_per_shot
-                print(f' | Remaining time: {remaining_time/3600:.2f}h ({remaining_shots} shots)')
+                print(f' | Remaining time: {remaining_time/3600:.2f}h')
                 
                 n += 1
 

@@ -31,7 +31,7 @@ import sys
 '''
 User: Set experiment name and path
 '''
-exp_name = '00_speed_test'  # experiment name
+exp_name = '03_speed_test'  # experiment name
 date = datetime.date.today()
 path = r"C:\data\Energetic_Electron_Ring"
 save_path = f"{path}\\{exp_name}_{date}.hdf5"
