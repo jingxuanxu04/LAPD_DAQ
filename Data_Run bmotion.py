@@ -32,28 +32,24 @@ User set following
 '''
 exp_name = '00-test'  # experiment name
 date = datetime.date.today()
-path = r"E:\Shadow data\Energetic_Electron_Ring\test"
-save_path = f"{path}\\{exp_name}_{date}.hdf5"
+base_path = r"E:\Shadow data\Energetic_Electron_Ring\test"
+hdf5_path = os.path.join(base_path, f"{exp_name}_{date}.hdf5")
+config_path = os.path.join(base_path, 'experiment_config.txt')
+toml_path = os.path.join(base_path, 'bmotion_config.toml')
 
 num_duplicate_shots = 5  # number of shots per position
-toml_path = r"E:\Shadow data\Energetic_Electron_Ring\example_bmotion_config.toml"
-
-scope_ips = {
-    'BdotScope': '192.168.7.66'
-}
-
 #===============================================================================================================================================
 # Main Data Run sequence
 #===============================================================================================================================================
 def main():
     # Create save directory if it doesn't exist
-    if not os.path.exists(path):
-        os.makedirs(path)
-        
+    if not os.path.exists(base_path):
+        os.makedirs(base_path)
+
     # Check if file already exists
-    if os.path.exists(save_path):
+    if os.path.exists(hdf5_path):
         while True:
-            response = input(f'File "{save_path}" already exists. Overwrite? (y/n): ').lower()
+            response = input(f'File "{hdf5_path}" already exists. Overwrite? (y/n): ').lower()
             if response in ['y', 'n']:
                 break
             print("Please enter 'y' or 'n'")
@@ -63,21 +59,14 @@ def main():
             sys.exit()
         else:
             print('Overwriting existing file')
-            os.remove(save_path)  # Delete the existing file
-    
+            os.remove(hdf5_path)  # Delete the existing file
+
     print('Data run started at', datetime.datetime.now())
     t_start = time.time()
     
     try:
-        # Path to your bmotion TOML configuration file
-        toml_path = "example_bmotion_config.toml"  # Update this path as needed
-        
-        # Number of duplicate shots to acquire at each position
-        
-        
-        # Run the bmotion acquisition
-        run_acquisition_bmotion(save_path, toml_path, scope_ips, num_duplicate_shots)
-        
+        run_acquisition_bmotion(hdf5_path, toml_path, config_path)
+
     except KeyboardInterrupt:
         print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
     except Exception as e:
@@ -87,11 +76,11 @@ def main():
         print('Time taken: %.2f hours' % ((time.time()-t_start)/3600))
         
         # Print file size if it was created
-        if os.path.isfile(save_path):
-            size = os.stat(save_path).st_size/(1024*1024)
-            print(f'Wrote file "{save_path}", {size:.1f} MB')
+        if os.path.isfile(hdf5_path):
+            size = os.stat(hdf5_path).st_size/(1024*1024)
+            print(f'Wrote file "{hdf5_path}", {size:.1f} MB')
         else:
-            print(f'File "{save_path}" was not created')
+            print(f'File "{hdf5_path}" was not created')
 
 
 #===============================================================================================================================================
@@ -99,6 +88,4 @@ def main():
 #===============================================================================================================================================
 
 if __name__ == '__main__':
-    # Run a test acquisition with minimal settings
-    # run_test(test_save_path = r"E:\Shadow data\Energetic_Electron_Ring\test.hdf5")
     main()
