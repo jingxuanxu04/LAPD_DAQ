@@ -1,3 +1,8 @@
+# Number of shots
+[nshots]
+num_duplicate_shots = 5 # number of shots per position
+num_run_repeats = 1
+
 [experiment]
 description = Multi-scope Data Acquisition with Probe Movement
     Experiment: 18-isatswp-p39-xy-2000G-800G
@@ -32,23 +37,22 @@ description = Multi-scope Data Acquisition with Probe Movement
     Isat channel has a low pass filter to kill noise.
 
 [scopes]
-LPScope = LeCroy HDO4104 - 4GHz 20GS/s oscilloscope for Langmuir probe diagnostics
-testScope = LeCroy WavePro 404HD - RF and probe diagnostics
+BdotScope = LeCroy HDO4104 - 4GHz 20GS/s
+XrayScope = LeCroy regular black scope
 
 [channels]
-LPScope_C1 = Isat, p39, G: 1
-LPScope_C2 = Isweep, p39
-LPScope_C3 = Vsweep, p39, G: 1/100
-LPScope_C4 = N/A
-testScope_C1 = RF signal input
-testScope_C2 = RF signal at amplifier output
-testScope_C3 = Probe signal
-testScope_C4 = Trigger signal
+BdotScope_C1 = N/A
+BdotScope_C2 = active
+BdotScope_C3 = active
+BdotScope_C4 = active
+XrayScope_C1 = N/A
+XrayScope_C2 = active
+XrayScope_C3 = active
+XrayScope_C4 = active
 
-# Number of shots
-[nshots]
-num_duplicate_shots = 5
-num_run_repeats = 1
+[scope_ips]
+BdotScope = 192.168.7.63
+XrayScope = 192.168.7.64
 
 [position]
 # Uncomment and fill these lines to enable motion/position management

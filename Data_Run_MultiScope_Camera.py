@@ -91,9 +91,9 @@ def get_camera_config(config):
 #===============================================================================================================================================
 # Used for both run_acquisition_with_camera() and run_acquisition_with_WDropper()
 config = load_experiment_config(config_path)
-scope_ips = config.get('scope_ips', {})
+scope_ips = dict(config.items('scope_ips')) if config.has_section('scope_ips') else {}
 cam_config = get_camera_config(config)
-num_shots = config.getint('num_shots', 1) # Default to 1 shot if not specified
+num_shots = config.getint('nshots', 'num_duplicate_shots', fallback=1)  # Get from [nshots] section
 
 def run_acquisition_with_camera(hdf5_path):
     """Run the main acquisition sequence with integrated camera recording
@@ -335,7 +335,7 @@ def main():
     t_start = time.time()
     
     try:
-        run_acquisition_with_WDropper(hdf5_path)
+        run_acquisition_with_camera(hdf5_path)
         
     except KeyboardInterrupt:
         print('\n' + '='*60)
@@ -362,4 +362,4 @@ def main():
 
 #===============================================================================================================================================
 if __name__ == '__main__':
-    main() 
+    main()
