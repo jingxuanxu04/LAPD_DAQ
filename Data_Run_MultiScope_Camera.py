@@ -107,7 +107,7 @@ def run_acquisition_with_camera(hdf5_path):
     camera_recorder = None  # Initialize to avoid NameError in finally block
     
     try:
-        with MultiScopeAcquisition(scope_ips, hdf5_path, config) as msa:
+        with MultiScopeAcquisition(hdf5_path, config) as msa:
             print("Initializing HDF5 file structure...", end='')
             msa.initialize_hdf5_base()
             print("✓")

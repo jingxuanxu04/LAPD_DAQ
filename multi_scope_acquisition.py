@@ -42,6 +42,7 @@ if motion_dir not in sys.path:
 from motion import PositionManager
 
 # import bapsf_motion as bmotion
+import bapsf_motion as bmotion
 #===============================================================================================================================================
 #===============================================================================================================================================
 def load_experiment_config(config_path='experiment_config.txt'):
@@ -170,19 +171,26 @@ def acquire_from_scope_sequence(scope, scope_name):
 class MultiScopeAcquisition:
     """Handles scope connections, data acquisition, and scope data storage"""
     
-    def __init__(self, scope_ips, save_path, config):
+    def __init__(self, save_path, config):
         """
         Args:
             scope_ips: dict of scope names and IP addresses
             save_path: path to save HDF5 file
         """
-        self.scope_ips = scope_ips
         self.save_path = save_path
         
         self.scopes = {}
         self.figures = {}
         self.time_arrays = {}  # Store time arrays for each scope
         self.config = config
+        
+        # Load scope IPs from config
+        if 'scope_ips' not in config:
+            raise RuntimeError("No [scope_ips] section found in config. Please check experiment_config.txt")
+        self.scope_ips = dict(config.items('scope_ips'))
+        if not self.scope_ips:
+            raise RuntimeError("No scope IPs found in [scope_ips] section. Please uncomment and configure scope IP addresses in experiment_config.txt")
+        
 
     def cleanup(self):
         """Clean up resources"""
@@ -493,46 +501,7 @@ def single_shot_acquisition_45(pos, motors, msa, pos_manager, save_path, scope_i
         pos_manager.update_position_hdf5(shot_num, positions)
     else:
         print(f"Warning: No valid data acquired at shot {shot_num}")
-
-def single_shot_acquisition_bmotion(shot_num, msa, active_scopes, save_path, scope_ips, motion_group):
-    """
-    Acquire a single shot using bmotion.
-    """
-    try:
-        current_pos = motion_group.position #TODO: add position to hdf5
-
-        msa.arm_scopes_for_trigger(active_scopes)
-        all_data = msa.acquire_shot(active_scopes, shot_num)
-        if all_data:
-            msa.update_scope_hdf5(all_data, shot_num)
-        else:
-            raise RuntimeError(f"Warning: No valid data acquired at shot {shot_num}")
         
-    except KeyboardInterrupt:
-        raise KeyboardInterrupt
-    except (ValueError, RuntimeError) as e:
-        print(f'\nSkipping position - {str(e)}')
-        # Create empty shot group with explanation
-        with h5py.File(save_path, 'a') as f:
-            for scope_name in scope_ips:
-                scope_group = f[scope_name]
-                shot_group = scope_group.create_group(f'shot_{shot_num}')
-                shot_group.attrs['skipped'] = True
-                shot_group.attrs['skip_reason'] = str(e)
-                shot_group.attrs['acquisition_time'] = time.ctime()
-        return
-    except Exception as e:
-        print(f'\nMotion failed with {str(e)}')
-        # Create empty shot group with explanation
-        with h5py.File(save_path, 'a') as f:
-            for scope_name in scope_ips:
-                scope_group = f[scope_name]
-                shot_group = scope_group.create_group(f'shot_{shot_num}')
-                shot_group.attrs['skipped'] = True
-                shot_group.attrs['skip_reason'] = f"Motion failed: {str(e)}"
-                shot_group.attrs['acquisition_time'] = time.ctime()
-        return
-    
 #===============================================================================================================================================
 # Main Acquisition Loop  
 #===============================================================================================================================================
@@ -593,17 +562,9 @@ def run_acquisition(save_path, config_path):
         pos_manager = PositionManager(save_path, config_path)
     else:
         pos_manager = None
-    
-    # Load scope IPs from config
-    if 'scope_ips' not in config:
-        raise RuntimeError("No [scope_ips] section found in config. Please check experiment_config.txt")
-    
-    scope_ips = dict(config.items('scope_ips'))
-    if not scope_ips:
-        raise RuntimeError("No scope IPs found in [scope_ips] section. Please uncomment and configure scope IP addresses in experiment_config.txt")
-    
+
     # Initialize multi-scope acquisition
-    with MultiScopeAcquisition(scope_ips, save_path, config) as msa:
+    with MultiScopeAcquisition(save_path, config) as msa:
         try:
             # Initialize HDF5 file structure
             print("Initializing HDF5 file...", end='')
@@ -646,7 +607,7 @@ def run_acquisition(save_path, config_path):
                 acquisition_loop_start_time = time.time()
 
                 if pos_manager is not None:
-                    movement_success = handle_movement(pos_manager, mc, shot_num, positions[n], save_path, scope_ips)
+                    movement_success = handle_movement(pos_manager, mc, shot_num, positions[n], save_path, msa.scope_ips)
                     if not movement_success:
                         continue  # Skip this shot if movement failed
                 else:
@@ -677,10 +638,13 @@ def run_acquisition(save_path, config_path):
             raise
 
 
-def run_acquisition_bmotion(save_path, toml_path, scope_ips, num_duplicate_shots):
-    print('Starting acquisition loop at', time.ctime())
-    
-    # Load the TOML file and initialize run manager in bmotion
+def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
+    print('Starting acquisition at', time.ctime())
+
+    config = load_experiment_config(config_path)
+    nshots = config.getint('nshots', 'num_duplicate_shots', fallback=1)
+
+    #=======================================================================
     print("Loading TOML configuration...", end='')
     run_manager = bmotion.RunManager(toml_path, auto_run=True)
     print("✓")
@@ -690,25 +654,46 @@ def run_acquisition_bmotion(save_path, toml_path, scope_ips, num_duplicate_shots
     motion_groups = list(run_manager.mgs.items())
     for i, (key, mg) in enumerate(motion_groups):
         motion_list_size = len(mg.mb.motion_list) if mg.mb.motion_list is not None else 0
-        print(f"  {i}: '{key}' - {motion_list_size} positions")
-    
-    # For now, use the first motion group (TODO: extended to allow user selection)
+        print(f"  {i+1}: '{key}' - {motion_list_size} positions")
+
     if not motion_groups:
         raise RuntimeError("No motion groups found in TOML configuration")
-    
-    selected_key, selected_mg = motion_groups[0]
+
+    # Prompt user to select a motion list
+    while True:
+        try:
+            selection = int(input(f"Select motion group [1-{len(motion_groups)}]: "))
+            if 1 <= selection <= len(motion_groups):
+                break
+            else:
+                print(f"Please enter a number between 1 and {len(motion_groups)}.")
+        except ValueError:
+            print("Invalid input. Please enter a number.")
+
+    selected_key, selected_mg = motion_groups[selection - 1]
     motion_list = selected_mg.mb.motion_list
-    if motion_list is None or len(motion_list) == 0:
+    if motion_list is None:
         raise RuntimeError(f"Selected motion group '{selected_key}' has no motion list")
     
-    print(f"Using motion group '{selected_key}' with {len(motion_list)} positions")
-    print(f"Number of shots per position: {num_duplicate_shots}")
-    total_shots = len(motion_list) * num_duplicate_shots
-    print(f"Total shots: {total_shots}")
+    # Get the size of the motion list (handling xarray DataArray)
+    if hasattr(motion_list, 'size'):
+        motion_list_size = motion_list.size
+    elif hasattr(motion_list, '__len__'):
+        motion_list_size = len(motion_list)
+    else:
+        motion_list_size = 0
+        
+    if motion_list_size == 0:
+        raise RuntimeError(f"Selected motion group '{selected_key}' has an empty motion list")
     
-    with MultiScopeAcquisition(scope_ips, save_path) as msa: # Initialize multi-scope acquisition
-        try:
+    print(f"Using motion group '{selected_key}' with {motion_list_size} positions")
+    print(f"Number of shots per position: {nshots}")
+    total_shots = motion_list_size * nshots
+    print(f"Total shots: {total_shots}")
+    #=======================================================================
 
+    with MultiScopeAcquisition(hdf5_path, config) as msa: # Initialize multi-scope acquisition
+        try:
             print("Initializing HDF5 file...", end='')
             msa.initialize_hdf5_base()
             print("✓")
@@ -720,18 +705,40 @@ def run_acquisition_bmotion(save_path, toml_path, scope_ips, num_duplicate_shots
             
             # Main acquisition loop
             shot_num = 1  # 1-based shot numbering
-            for motion_index in range(len(motion_list)):
+            for motion_index in range(motion_list_size):
+                print(f"\nMoving to position {motion_index + 1}/{motion_list_size}...")
+                selected_mg.move_ml(motion_index)  # Moving to motion list position
 
-                print(f"\nMoving to position {motion_index + 1}/{len(motion_list)}...")
-                selected_mg.move_ml(motion_index) # Moving to motion list position
-
-                for n in range(num_duplicate_shots):
+                for n in range(nshots):
                     acquisition_loop_start_time = time.time()
+                    try: 
+                        single_shot_acquisition(msa, active_scopes, shot_num)
+                    except KeyboardInterrupt:
+                        raise KeyboardInterrupt
+                    except (ValueError, RuntimeError) as e:
+                        print(f'\nSkipping shot {shot_num} - {str(e)}')
+                        # Create empty shot group with explanation
+                        with h5py.File(hdf5_path, 'a') as f:
+                            for scope_name in msa.scope_ips:
+                                scope_group = f[scope_name]
+                                shot_group = scope_group.create_group(f'shot_{shot_num}')
+                                shot_group.attrs['skipped'] = True
+                                shot_group.attrs['skip_reason'] = str(e)
+                                shot_group.attrs['acquisition_time'] = time.ctime()
+
+                    except Exception as e:
+                        print(f'\nMotion failed for shot {shot_num} - {str(e)}')
+                        # Create empty shot group with explanation
+                        with h5py.File(hdf5_path, 'a') as f:
+                            for scope_name in msa.scope_ips:
+                                scope_group = f[scope_name]
+                                shot_group = scope_group.create_group(f'shot_{shot_num}')
+                                shot_group.attrs['skipped'] = True
+                                shot_group.attrs['skip_reason'] = f"Motion failed: {str(e)}"
+                                shot_group.attrs['acquisition_time'] = time.ctime()
                     
-                    print(f"Acquiring shot {shot_num} at position {motion_index + 1}/{len(motion_list)}")
-                    single_shot_acquisition_bmotion(shot_num, msa, active_scopes, save_path, scope_ips, selected_mg)
-                    
-                    if shot_num > 1: # Calculate and display remaining time
+                    # Calculate and display remaining time
+                    if shot_num > 1:
                         time_per_shot = (time.time() - acquisition_loop_start_time)
                         remaining_shots = total_shots - shot_num
                         remaining_time = remaining_shots * time_per_shot
@@ -739,13 +746,12 @@ def run_acquisition_bmotion(save_path, toml_path, scope_ips, num_duplicate_shots
                     else:
                         print()
                     
-                    shot_num += 1
+                    shot_num += 1  # Always increment shot number
 
         except KeyboardInterrupt:
             print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
             raise
         finally:
-
             run_manager.terminate()
 
 
