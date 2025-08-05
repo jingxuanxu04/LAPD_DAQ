@@ -649,7 +649,7 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
 
     #=======================================================================
     print("Loading TOML configuration...", end='')
-    run_manager = bmotion.RunManager(toml_path, auto_run=True)
+    run_manager = bmotion.actors.RunManager(toml_path, auto_run=True)
     print("✓")
     
     # Print and select from all available motion lists
