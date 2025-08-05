@@ -32,7 +32,7 @@ import h5py
 import time
 import os
 import configparser
-
+import warnings
 import xarray as xr
 
 # Import motion control components from the motion package
@@ -550,6 +550,7 @@ def handle_movement(pos_manager, mc, shot_num, pos, save_path, scope_ips):
         print(f'Shot = {shot_num}')
         return True
 
+
 def run_acquisition(save_path, config_path):
 
     print('Starting acquisition loop at', time.ctime())
@@ -648,18 +649,18 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
 
     #=======================================================================
     print("Loading TOML configuration...", end='')
-    run_manager = bmotion.RunManager(toml_path, auto_run=True)
+    run_manager = bmotion.actors.RunManager(toml_path, auto_run=True)
     print("✓")
     
     # Print and select from all available motion lists
     print(f"\nAvailable motion groups ({len(run_manager.mgs)}):")
-    motion_groups = list(run_manager.mgs.items())
-    for i, (key, mg) in enumerate(motion_groups):
-        motion_list_size = len(mg.mb.motion_list) if mg.mb.motion_list is not None else 0
-        print(f"  {i+1}: '{key}' - {motion_list_size} positions")
-
-    if not motion_groups:
+    if not run_manager.mgs:
         raise RuntimeError("No motion groups found in TOML configuration")
+
+    motion_groups = run_manager.mgs
+    for mg_key, mg in motion_groups.items():
+        motion_list_size = 0 if mg.mb.motion_list is None else len(mg.mb.motion_list)
+        print(f"  {mg_key}: {mg.name} -- {motion_list_size} positions")
 
     # Prompt user to select a motion list
     while True:
@@ -672,7 +673,16 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
         except ValueError:
             print("Invalid input. Please enter a number.")
 
-    selected_key, selected_mg = motion_groups[selection - 1]
+    selected_key = selection
+    if selected_key not in motion_groups:
+        selected_key = f"{selected_key}"
+        if selected_key not in motion_groups:
+            raise RuntimeError(
+                f"The specified motion group key '{selected_key}' does not exist.  "
+                f"Available motion group keys:  {motion_groups.keys()}"
+            )
+
+    selected_mg = motion_groups[selected_key]
     motion_list = selected_mg.mb.motion_list
     if motion_list is None:
         raise RuntimeError(f"Selected motion group '{selected_key}' has no motion list")
@@ -699,8 +709,7 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
             active_scopes = msa.initialize_scopes()
             if not active_scopes:
                 raise RuntimeError("No valid data found from any scope. Aborting acquisition.")
-            
-            
+
             with h5py.File(hdf5_path, 'a') as f: # create position group in hdf5
                 ctl_grp = f.require_group('Control')
                 pos_grp = ctl_grp.require_group('Positions')
@@ -719,7 +728,19 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
             for motion_index in range(motion_list_size):
                 try:
                     print(f"\nMoving to position {motion_index + 1}/{motion_list_size}...")
-                    selected_mg.move_to_index(motion_index)
+                    try:
+                        selected_mg.move_ml(motion_index)
+                    except ValueError as err:
+                        warnings.warn(
+                            f"Motion list index {motion_index} is out of range. "
+                            f"NO MOTION DONE.\n [{err}]."
+                        )
+
+                    # wait for motion to stop
+                    time.sleep(.5)
+                    while selected_mg.is_moving:
+                        time.sleep(.5)
+
                     # Get current position after movement
                     current_position = selected_mg.position
                     position_values = current_position.value  # Get numerical values
@@ -728,7 +749,7 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                     print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
                     raise
                 except Exception as e:
-                    run_manager.terminate() # TODO: not sure this is the right place to terminate
+                    run_manager.terminate()  # TODO: not sure this is the right place to terminate
                     print(f"Error occurred while moving to position {motion_index + 1}: {str(e)}")
                     raise
                 
@@ -763,7 +784,7 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                     except Exception as e:
                         print(f'\nMotion failed for shot {shot_num} - {str(e)}')
                         
-                        with h5py.File(hdf5_path, 'a') as f: # Create empty shot group with explanation
+                        with h5py.File(hdf5_path, 'a') as f:  # Create empty shot group with explanation
                             for scope_name in msa.scope_ips:
                                 scope_group = f[scope_name]
                                 shot_group = scope_group.create_group(f'shot_{shot_num}')
@@ -774,8 +795,7 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                             # Still update positions_array for failed shots
                             pos_array = f['Control/Positions/positions_array']
                             pos_array[shot_num - 1] = (shot_num, position_values[0], position_values[1])
-                    
-                    
+
                     # Calculate and display remaining time
                     if shot_num > 1:
                         time_per_shot = (time.time() - acquisition_loop_start_time)
