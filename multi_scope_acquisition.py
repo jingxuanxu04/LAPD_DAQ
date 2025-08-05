@@ -33,6 +33,8 @@ import time
 import os
 import configparser
 
+import xarray as xr
+
 # Import motion control components from the motion package
 import sys
 motion_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "motion")
@@ -674,17 +676,12 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
     motion_list = selected_mg.mb.motion_list
     if motion_list is None:
         raise RuntimeError(f"Selected motion group '{selected_key}' has no motion list")
-    
-    # Get the size of the motion list (handling xarray DataArray)
-    if hasattr(motion_list, 'size'):
-        motion_list_size = motion_list.size
-    elif hasattr(motion_list, '__len__'):
-        motion_list_size = len(motion_list)
-    else:
-        motion_list_size = 0
-        
-    if motion_list_size == 0:
+    if not isinstance(motion_list, xr.DataArray):
+        raise RuntimeError(f"Selected motion group '{selected_key}' has invalid motion list type")
+    elif motion_list.size == 0:
         raise RuntimeError(f"Selected motion group '{selected_key}' has an empty motion list")
+    
+    motion_list_size = motion_list.size
     
     print(f"Using motion group '{selected_key}' with {motion_list_size} positions")
     print(f"Number of shots per position: {nshots}")
@@ -703,39 +700,81 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
             if not active_scopes:
                 raise RuntimeError("No valid data found from any scope. Aborting acquisition.")
             
+            
+            with h5py.File(hdf5_path, 'a') as f: # create position group in hdf5
+                ctl_grp = f.require_group('Control')
+                pos_grp = ctl_grp.require_group('Positions')
+                # Save motion_list from bmotion
+                ds = pos_grp.create_dataset('motion_list', data=motion_list.values)
+                for coord in motion_list.coords:
+                    ds.attrs[coord] = np.array(motion_list.coords[coord])
+                for key, val in motion_list.attrs.items():
+                    ds.attrs[key] = val
+                # Create structured array to save actual achieved positions (like position_manager)
+                dtype = [('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4')]
+                pos_arr = pos_grp.create_dataset('positions_array', shape=(total_shots,), dtype=dtype)
+
             # Main acquisition loop
             shot_num = 1  # 1-based shot numbering
             for motion_index in range(motion_list_size):
-                print(f"\nMoving to position {motion_index + 1}/{motion_list_size}...")
-                selected_mg.move_ml(motion_index)  # Moving to motion list position
+                try:
+                    print(f"\nMoving to position {motion_index + 1}/{motion_list_size}...")
+                    selected_mg.move_to_index(motion_index)
+                    # Get current position after movement
+                    current_position = selected_mg.position
+                    position_values = current_position.value  # Get numerical values
+                except KeyboardInterrupt:
+                    run_manager.terminate()
+                    print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
+                    raise
+                except Exception as e:
+                    run_manager.terminate() # TODO: not sure this is the right place to terminate
+                    print(f"Error occurred while moving to position {motion_index + 1}: {str(e)}")
+                    raise
+                
+                print(f"Current position: {current_position}")
 
                 for n in range(nshots):
                     acquisition_loop_start_time = time.time()
-                    try: 
+                    try:
                         single_shot_acquisition(msa, active_scopes, shot_num)
+                        
+                        with h5py.File(hdf5_path, 'a') as f: # Update positions_array with actual achieved position
+                            pos_arr = f['Control/Positions/positions_array']
+                            pos_arr[shot_num - 1] = (shot_num, position_values[0], position_values[1])
+                            
                     except KeyboardInterrupt:
                         raise KeyboardInterrupt
                     except (ValueError, RuntimeError) as e:
                         print(f'\nSkipping shot {shot_num} - {str(e)}')
-                        # Create empty shot group with explanation
-                        with h5py.File(hdf5_path, 'a') as f:
+                        
+                        with h5py.File(hdf5_path, 'a') as f: # Create empty shot group with explanation
                             for scope_name in msa.scope_ips:
                                 scope_group = f[scope_name]
                                 shot_group = scope_group.create_group(f'shot_{shot_num}')
                                 shot_group.attrs['skipped'] = True
                                 shot_group.attrs['skip_reason'] = str(e)
                                 shot_group.attrs['acquisition_time'] = time.ctime()
+                            
+                            # Still update positions_array for skipped shots
+                            pos_array = f['Control/Positions/positions_array']
+                            pos_array[shot_num - 1] = (shot_num, position_values[0], position_values[1])
 
                     except Exception as e:
                         print(f'\nMotion failed for shot {shot_num} - {str(e)}')
-                        # Create empty shot group with explanation
-                        with h5py.File(hdf5_path, 'a') as f:
+                        
+                        with h5py.File(hdf5_path, 'a') as f: # Create empty shot group with explanation
                             for scope_name in msa.scope_ips:
                                 scope_group = f[scope_name]
                                 shot_group = scope_group.create_group(f'shot_{shot_num}')
                                 shot_group.attrs['skipped'] = True
                                 shot_group.attrs['skip_reason'] = f"Motion failed: {str(e)}"
                                 shot_group.attrs['acquisition_time'] = time.ctime()
+                            
+                            # Still update positions_array for failed shots
+                            pos_array = f['Control/Positions/positions_array']
+                            pos_array[shot_num - 1] = (shot_num, position_values[0], position_values[1])
+                    
                     
                     # Calculate and display remaining time
                     if shot_num > 1:
@@ -753,5 +792,3 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
             raise
         finally:
             run_manager.terminate()
-
-
