@@ -550,6 +550,7 @@ def handle_movement(pos_manager, mc, shot_num, pos, save_path, scope_ips):
         print(f'Shot = {shot_num}')
         return True
 
+
 def run_acquisition(save_path, config_path):
 
     print('Starting acquisition loop at', time.ctime())
@@ -699,8 +700,7 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
             active_scopes = msa.initialize_scopes()
             if not active_scopes:
                 raise RuntimeError("No valid data found from any scope. Aborting acquisition.")
-            
-            
+
             with h5py.File(hdf5_path, 'a') as f: # create position group in hdf5
                 ctl_grp = f.require_group('Control')
                 pos_grp = ctl_grp.require_group('Positions')
@@ -728,7 +728,7 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                     print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
                     raise
                 except Exception as e:
-                    run_manager.terminate() # TODO: not sure this is the right place to terminate
+                    run_manager.terminate()  # TODO: not sure this is the right place to terminate
                     print(f"Error occurred while moving to position {motion_index + 1}: {str(e)}")
                     raise
                 
@@ -763,7 +763,7 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                     except Exception as e:
                         print(f'\nMotion failed for shot {shot_num} - {str(e)}')
                         
-                        with h5py.File(hdf5_path, 'a') as f: # Create empty shot group with explanation
+                        with h5py.File(hdf5_path, 'a') as f:  # Create empty shot group with explanation
                             for scope_name in msa.scope_ips:
                                 scope_group = f[scope_name]
                                 shot_group = scope_group.create_group(f'shot_{shot_num}')
@@ -774,8 +774,7 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                             # Still update positions_array for failed shots
                             pos_array = f['Control/Positions/positions_array']
                             pos_array[shot_num - 1] = (shot_num, position_values[0], position_values[1])
-                    
-                    
+
                     # Calculate and display remaining time
                     if shot_num > 1:
                         time_per_shot = (time.time() - acquisition_loop_start_time)
