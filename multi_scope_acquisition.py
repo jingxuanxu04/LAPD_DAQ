@@ -32,7 +32,7 @@ import h5py
 import time
 import os
 import configparser
-
+import warnings
 import xarray as xr
 
 # Import motion control components from the motion package
@@ -728,7 +728,19 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
             for motion_index in range(motion_list_size):
                 try:
                     print(f"\nMoving to position {motion_index + 1}/{motion_list_size}...")
-                    selected_mg.move_to_index(motion_index)
+                    try:
+                        selected_mg.move_ml(motion_index)
+                    except ValueError as err:
+                        warnings.warn(
+                            f"Motion list index {motion_index} is out of range. "
+                            f"NO MOTION DONE.\n [{err}]."
+                        )
+
+                    # wait for motion to stop
+                    time.sleep(.5)
+                    while selected_mg.is_moving:
+                        time.sleep(.5)
+
                     # Get current position after movement
                     current_position = selected_mg.position
                     position_values = current_position.value  # Get numerical values
