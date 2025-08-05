@@ -654,13 +654,13 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
     
     # Print and select from all available motion lists
     print(f"\nAvailable motion groups ({len(run_manager.mgs)}):")
-    motion_groups = list(run_manager.mgs.items())
-    for i, (key, mg) in enumerate(motion_groups):
-        motion_list_size = len(mg.mb.motion_list) if mg.mb.motion_list is not None else 0
-        print(f"  {i+1}: '{key}' - {motion_list_size} positions")
-
-    if not motion_groups:
+    if not run_manager.mgs:
         raise RuntimeError("No motion groups found in TOML configuration")
+
+    motion_groups = run_manager.mgs
+    for mg_key, mg in motion_groups.items():
+        motion_list_size = 0 if mg.mb.motion_list is None else len(mg.mb.motion_list)
+        print(f"  {mg_key}: {mg.name} -- {motion_list_size} positions")
 
     # Prompt user to select a motion list
     while True:
