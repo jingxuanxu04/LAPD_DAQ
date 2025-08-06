@@ -32,6 +32,7 @@ import h5py
 import time
 import os
 import configparser
+import traceback
 import warnings
 import xarray as xr
 
@@ -659,19 +660,24 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
 
     motion_groups = run_manager.mgs
     for mg_key, mg in motion_groups.items():
-        motion_list_size = 0 if mg.mb.motion_list is None else len(mg.mb.motion_list)
+        motion_list_size = 0 if mg.mb.motion_list is None else mg.mb.motion_list.shape[0]
         print(f"  {mg_key}: {mg.name} -- {motion_list_size} positions")
 
     # Prompt user to select a motion list
     while True:
         try:
-            selection = int(input(f"Select motion group [1-{len(motion_groups)}]: "))
-            if 1 <= selection <= len(motion_groups):
+            selection = int(input(f"Select motion group [first column value]: "))
+            if 0 <= selection <= len(motion_groups):
                 break
             else:
                 print(f"Please enter a number between 1 and {len(motion_groups)}.")
-        except ValueError:
-            print("Invalid input. Please enter a number.")
+        except KeyboardInterrupt as err:
+            print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
+            run_manager.terminate()
+            raise KeyboardInterrupt from err
+        except ValueError as err:
+            run_manager.terminate()
+            raise ValueError("Invalid selection") from err
 
     selected_key = selection
     if selected_key not in motion_groups:
@@ -690,8 +696,8 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
         raise RuntimeError(f"Selected motion group '{selected_key}' has invalid motion list type")
     elif motion_list.size == 0:
         raise RuntimeError(f"Selected motion group '{selected_key}' has an empty motion list")
-    
-    motion_list_size = motion_list.size
+
+    motion_list_size = motion_list.shape[0]  # shape is (N, 2) for a 2D probe drive, N == number of positions
     
     print(f"Using motion group '{selected_key}' with {motion_list_size} positions")
     print(f"Number of shots per position: {nshots}")
@@ -713,12 +719,18 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
             with h5py.File(hdf5_path, 'a') as f: # create position group in hdf5
                 ctl_grp = f.require_group('Control')
                 pos_grp = ctl_grp.require_group('Positions')
+
                 # Save motion_list from bmotion
                 ds = pos_grp.create_dataset('motion_list', data=motion_list.values)
-                for coord in motion_list.coords:
-                    ds.attrs[coord] = np.array(motion_list.coords[coord])
-                for key, val in motion_list.attrs.items():
-                    ds.attrs[key] = val
+
+                # print("adding coords to attributes")
+                # for coord in motion_list.coords:
+                #     ds.attrs[coord] = np.array(motion_list.coords[coord])
+                
+                # print("adding ml atts to attr")
+                # for key, val in motion_list.attrs.items():
+                #     ds.attrs[key] = val
+
                 # Create structured array to save actual achieved positions (like position_manager)
                 dtype = [('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4')]
                 pos_arr = pos_grp.create_dataset('positions_array', shape=(total_shots,), dtype=dtype)
@@ -751,7 +763,8 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                 except Exception as e:
                     run_manager.terminate()  # TODO: not sure this is the right place to terminate
                     print(f"Error occurred while moving to position {motion_index + 1}: {str(e)}")
-                    raise
+                    traceback.print_exc()
+                    raise RuntimeError from e
                 
                 print(f"Current position: {current_position}")
 

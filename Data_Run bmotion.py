@@ -32,12 +32,11 @@ User set following
 '''
 exp_name = '00-test'  # experiment name
 date = datetime.date.today()
-base_path = r"E:\Shadow data\Energetic_Electron_Ring\test"
+base_path = r"E:\Shadow data\Energetic_Electron_Ring\AUG2025"
 hdf5_path = os.path.join(base_path, f"{exp_name}_{date}.hdf5")
 config_path = os.path.join(base_path, 'experiment_config.txt')
 toml_path = os.path.join(base_path, 'bmotion_config.toml')
 
-num_duplicate_shots = 5  # number of shots per position
 #===============================================================================================================================================
 # Main Data Run sequence
 #===============================================================================================================================================

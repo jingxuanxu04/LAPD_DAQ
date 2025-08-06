@@ -243,63 +243,170 @@ with h5py.File('experiment_name.hdf5', 'r') as f:
 - Data compression and chunking optimize storage
 
 
-## Motor Control and Obstacle Avoidance
+# LAPD DAQ System
 
-### Motor Control Classes
-The system supports both 2D and 3D probe movement through the `Motor_Control_2D` and `Motor_Control_3D` classes:
+Multi-scope data acquisition system for the Large Plasma Device (LAPD) with support for probe positioning using motion control systems.
 
-1. **Motor_Control_1D**
-   - Base class for individual motor control
-   - Handles direct motor commands and status monitoring
-   - Properties: position, velocity, status, alarms
-   - Safety features: limit switches, timeout protection
+## Overview
 
-2. **Motor_Control_2D**
-   - Controls X-Y probe movement
-   - Converts probe coordinates to motor coordinates
-   - Synchronizes motor velocities for straight-line motion
-   - Properties: probe_positions, motor_positions, motor_velocity
+This system handles:
+- Multi-scope data acquisition from LeCroy oscilloscopes
+- Probe positioning using motion control systems
+- HDF5 data storage with comprehensive metadata
+- Real-time data visualization
+- Support for both stationary and moving probe measurements
 
-3. **Motor_Control_3D**
-   - Controls X-Y-Z probe movement
-   - Advanced path planning with obstacle avoidance
-   - Intelligent waypoint generation for safe paths
-   - Velocity scaling for smooth multi-segment motion
+## Main Scripts
 
-### Obstacle Avoidance System
+### Data_Run.py
+Standard data acquisition script for stationary or simple motion control measurements.
 
-The `BoundaryChecker` class provides intelligent path planning around obstacles:
+### Data_Run bmotion.py
+Data acquisition script using the `bapsf_motion` library for advanced probe positioning. This script provides:
+- Integration with LAPD's 6K probe drive system
+- Support for complex motion patterns (grids, exclusion zones, etc.)
+- TOML-based motion configuration
+- Advanced motion planning and execution
 
-1. **Boundaries and Obstacles**
-   ```python
-   # Define probe movement limits and obstacles in Data_Run.py
-   def probe_boundary(x, y, z):
-       # Check outer boundary
-       in_outer_boundary = (x_limits[0] <= x <= x_limits[1] and 
-                          y_limits[0] <= y <= y_limits[1] and 
-                          z_limits[0] <= z <= z_limits[1])
-       
-       # Check obstacles (e.g., large box obstacle)
-       in_obstacle = (-50 <= x <= -20 and 
-                     -3 <= y <= 3 and 
-                     -5.5 <= z <= 5.5)
-       
-       return in_outer_boundary and not in_obstacle
-   ```
+## Configuration Files
 
-2. **Path Planning Features**
-   - Automatic detection of blocked paths
-   - Multi-strategy path finding:
-     - Direct paths when possible
-     - Two-point paths with offset
-     - Three-point paths for complex obstacles
-     - Random exploration for difficult cases
-   - Path optimization for smooth motion
-   - Caching of successful paths for similar movements
+### experiment_config.txt
+Main experiment configuration containing:
+- Experiment description and parameters
+- Scope IP addresses and channel assignments
+- Shot configuration (num_duplicate_shots, num_run_repeats)
+- Channel descriptions and settings
 
-3. **Safety Features**
-   - Minimum clearance from obstacles
-   - Configurable resolution for path checking
-   - Velocity scaling based on path complexity
-   - Emergency stop handling
+### bmotion_config.toml (for bmotion acquisitions)
+TOML configuration file for `bapsf_motion` containing:
+- Motion group definitions
+- Drive and axis configurations
+- Transform parameters for probe coordinate systems
+- Motion builder settings (grid patterns, exclusion zones)
+- Layer definitions for multi-layer scans
+
+## HDF5 File Structure
+
+### Standard Acquisition Structure
+```
+experiment_file.hdf5
+├── attributes: description, creation_time, source_code
+├── ScopeName1/
+│   ├── attributes: description, ip_address, scope_type
+│   ├── time_array (dataset)
+│   ├── shot_1/
+│   │   ├── attributes: acquisition_time
+│   │   ├── C1_data (dataset, int16)
+│   │   ├── C1_header (dataset, binary)
+│   │   ├── C2_data (dataset, int16)
+│   │   └── C2_header (dataset, binary)
+│   ├── shot_2/
+│   └── ...
+├── ScopeName2/
+│   └── ... (similar structure)
+└── Control/
+    └── Positions/
+        ├── motion_list (dataset) [for bmotion]
+        ├── positions_array (dataset, structured array)
+        └── ProbeX/ [for multi-probe setups]
+            ├── shot_1/
+            ├── shot_2/
+            └── ...
+```
+
+### bmotion-Specific HDF5 Structure
+
+When using `Data_Run bmotion.py` with the `bapsf_motion` library, additional structure is created:
+
+```
+experiment_file.hdf5
+├── Control/
+│   └── Positions/
+│       ├── motion_list (dataset)
+│       │   ├── data: 2D array of [x, y] positions from bmotion motion list
+│       │   └── attributes: coordinate and motion list metadata
+│       └── positions_array (dataset)
+│           ├── dtype: [('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4')]
+│           └── data: actual achieved positions for each shot
+```
+
+#### motion_list Dataset
+- **Purpose**: Stores the complete motion list generated by `bapsf_motion`
+- **Format**: 2D numpy array where each row is a [x, y] position
+- **Source**: Generated from TOML configuration parameters (grid settings, exclusion zones, etc.)
+- **Coordinates**: Positions in the measurement coordinate system (typically cm)
+
+#### positions_array Dataset
+- **Purpose**: Records the actual achieved positions for each shot
+- **Format**: Structured array with fields:
+  - `shot_num`: Shot number (1-based indexing)
+  - `x`: Actual x position achieved by the motion system
+  - `y`: Actual y position achieved by the motion system
+- **Updates**: Populated in real-time during acquisition with feedback from motion system
+
+### Data Types and Compression
+
+- **Scope data**: Stored as `int16` with LZF compression for optimal speed/size balance
+- **Time arrays**: Stored as `float64` for maximum precision
+- **Position data**: 32-bit floats for position coordinates
+- **Headers**: Binary data preserving original scope header information
+
+## Motion Control Integration
+
+### bapsf_motion Integration
+The system integrates with the `bapsf_motion` library for advanced probe positioning:
+
+1. **TOML Configuration**: Motion parameters defined in `bmotion_config.toml`
+2. **Motion Planning**: Automatic generation of motion lists with exclusion zones
+3. **Coordinate Transforms**: Support for LAPD 6K probe drive coordinate systems
+4. **Real-time Feedback**: Position verification and logging
+5. **Error Handling**: Graceful handling of motion failures with data preservation
+
+### Motion Workflow
+1. Load TOML configuration and initialize motion system
+2. Generate motion list based on grid/pattern specifications
+3. For each position:
+   - Move probe to target position
+   - Wait for motion completion
+   - Verify achieved position
+   - Acquire scope data
+   - Save both planned and achieved positions
+
+## Key Features
+
+### Optimized Data Acquisition
+- Parallel scope arming for synchronized measurements
+- Raw int16 data acquisition for maximum speed
+- Chunked HDF5 storage with compression
+- Automatic error recovery and data preservation
+
+### Comprehensive Metadata
+- Complete experiment description and parameters
+- Source code preservation for reproducibility
+- Scope and channel configuration details
+- Timing and acquisition metadata
+
+### Robust Error Handling
+- Automatic scope reconnection on failures
+- Motion error recovery with position logging
+- Skipped shot tracking with reason codes
+- Data integrity preservation during interruptions
+
+## Usage Examples
+
+### Standard Acquisition
+```python
+python Data_Run.py
+```
+
+### bmotion Acquisition
+```python
+python "Data_Run bmotion.py"
+```
+
+The bmotion script will:
+1. Load motion configuration from TOML file
+2. Display available motion groups
+3. Prompt for motion group selection
+4. Execute the complete acquisition sequence
 
