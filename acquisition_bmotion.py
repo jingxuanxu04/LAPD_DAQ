@@ -12,6 +12,31 @@ from multi_scope_acquisition import (
 )
 
 
+def configure_bmotion_hdf5_group(hdf5_path: str, total_shots: int):
+    with h5py.File(hdf5_path, 'a') as f:
+        ctl_grp = f.require_group('Control')
+        pos_grp = ctl_grp.require_group('Positions')
+
+        # # Save motion_list from bmotion
+        # ds = pos_grp.create_dataset('motion_list', data=motion_list.values)
+        #
+        # # print("adding coords to attributes")
+        # for coord in motion_list.coords:
+        #     ds.attrs[coord] = np.array(motion_list.coords[coord])
+        #
+        # # print("adding ml atts to attr")
+        # for key, val in motion_list.attrs.items():
+        #     ds.attrs[key] = val
+
+        # Create structured array to save actual achieved positions
+        # (like position_manager)
+        pos_grp.create_dataset(
+            'positions_array',
+            shape=(total_shots,),
+            dtype=[('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4')],
+        )
+
+
 def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
     print('Starting acquisition at', time.ctime())
 
@@ -91,25 +116,9 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                 raise RuntimeError(
                     "No valid data found from any scope. Aborting acquisition.")
 
-            with h5py.File(hdf5_path, 'a') as f:  # create position group in hdf5
-                ctl_grp = f.require_group('Control')
-                pos_grp = ctl_grp.require_group('Positions')
 
-                # Save motion_list from bmotion
-                ds = pos_grp.create_dataset('motion_list', data=motion_list.values)
-
-                # print("adding coords to attributes")
-                # for coord in motion_list.coords:
-                #     ds.attrs[coord] = np.array(motion_list.coords[coord])
-
-                # print("adding ml atts to attr")
-                # for key, val in motion_list.attrs.items():
-                #     ds.attrs[key] = val
-
-                # Create structured array to save actual achieved positions (like position_manager)
-                dtype = [('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4')]
-                pos_arr = pos_grp.create_dataset('positions_array', shape=(total_shots,),
-                                                 dtype=dtype)
+            # create position group in hdf5
+            configure_bmotion_hdf5_group(hdf5_path, total_shots)
 
             # Main acquisition loop
             shot_num = 1  # 1-based shot numbering
