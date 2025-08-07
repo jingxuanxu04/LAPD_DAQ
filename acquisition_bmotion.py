@@ -103,8 +103,8 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
     print(f"Total shots: {total_shots}")
     # =======================================================================
 
-    with MultiScopeAcquisition(hdf5_path,
-                               config) as msa:  # Initialize multi-scope acquisition
+    # Start acquisition loop
+    with MultiScopeAcquisition(hdf5_path, config) as msa:
         try:
             print("Initializing HDF5 file...", end='')
             msa.initialize_hdf5_base()
@@ -114,8 +114,8 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
             active_scopes = msa.initialize_scopes()
             if not active_scopes:
                 raise RuntimeError(
-                    "No valid data found from any scope. Aborting acquisition.")
-
+                    "No valid data found from any scope. Aborting acquisition."
+                )
 
             # create position group in hdf5
             configure_bmotion_hdf5_group(hdf5_path, total_shots)
