@@ -30,7 +30,7 @@ logging.basicConfig(filename='motor.log', level=logging.WARNING,
 '''
 User set following
 '''
-exp_name = '00-test'  # experiment name
+exp_name = '05-Bdot-p28-Xline-He1kG400G-5800A'  # experiment name
 date = datetime.date.today()
 base_path = r"E:\Shadow data\Energetic_Electron_Ring\AUG2025"
 hdf5_path = os.path.join(base_path, f"{exp_name}_{date}.hdf5")

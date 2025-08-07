@@ -661,7 +661,7 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
     motion_groups = run_manager.mgs
     for mg_key, mg in motion_groups.items():
         motion_list_size = 0 if mg.mb.motion_list is None else mg.mb.motion_list.shape[0]
-        print(f"  {mg_key}: {mg.name} -- {motion_list_size} positions")
+        print(f"  {mg_key}: {mg.config['name']} -- {motion_list_size} positions")
 
     # Prompt user to select a motion list
     while True:
