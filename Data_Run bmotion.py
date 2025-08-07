@@ -18,13 +18,17 @@ TODO: this script is not optimized for speed. Need to:
 import datetime
 import os
 import numpy as np
-from multi_scope_acquisition import run_acquisition_bmotion
 import time
 import sys
 import logging
 
-logging.basicConfig(filename='motor.log', level=logging.WARNING, 
-                   format='%(asctime)s %(levelname)s %(message)s')
+from acquisition_bmotion import run_acquisition_bmotion
+
+logging.basicConfig(
+    filename='motor.log',
+    level=logging.WARNING,
+    format='%(asctime)s %(levelname)s %(message)s',
+)
 
 ############################################################################################################################
 '''
