@@ -5,6 +5,8 @@ import traceback
 import warnings
 import xarray as xr
 
+from typing import Dict
+
 from multi_scope_acquisition import (
     load_experiment_config,
     MultiScopeAcquisition,
@@ -106,6 +108,32 @@ def select_motion_groups(rm: bmotion.actors.RunManager):
     return selection
 
 
+def select_motion_list_order(rm: bmotion.actors.RunManager, order: Dict[str, str]):
+    for mg_key in order:
+        mg = rm.mgs[mg_key]
+
+        while True:
+            direction = input(
+                f"Motion list direction is forward for '{mg.config['name']}'.\n"
+                f"Press Enter to continue, or R + Enter to reverse."
+            )
+
+            if direction == "":
+                break
+            elif direction == "R":
+                order[mg_key] = "backward"
+                print("Motion list direction is reversed.\n")
+                break
+            else:
+                print(
+                    f"Motion list direction selection was invalid '{direction}'.  "
+                    f"TRY AGAIN..."
+                )
+                continue
+
+    return order
+
+
 def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
     print('Starting acquisition at', time.ctime())
 
@@ -117,7 +145,15 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
     run_manager = bmotion.actors.RunManager(toml_path, auto_run=True)
     print("✓")
 
-    selection = select_motion_groups(run_manager)
+    try:
+        selection = select_motion_groups(run_manager)
+
+        order = dict(zip(selection, len(selection) * ["forward"]))
+        order = select_motion_list_order(run_manager, order)
+    except KeyboardInterrupt as err:
+        print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
+        run_manager.terminate()
+        raise KeyboardInterrupt from err
 
 
     selected_mg = motion_groups[selected_key]
