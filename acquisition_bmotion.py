@@ -54,56 +54,50 @@ def select_motion_groups(rm: bmotion.actors.RunManager):
 
     # Prompt user to select a motion list
     while True:
-        try:
-            selection = input(
-                f"Select motion group(s) [^Key Column]:\n"
-                f"  A - for all\n"
-                f"  Space Separated Keys for each motion group (e.g. '1 3 5')"
-            )
+        selection = input(
+            f"Select motion group(s) [^Key Column]:\n"
+            f"  A - for all\n"
+            f"  Space Separated Keys for each motion group (e.g. '1 3 5')"
+        )
 
-            if selection.startswith("'") or selection.startswith('"'):
-                selection = selection[1:]
+        if selection.startswith("'") or selection.startswith('"'):
+            selection = selection[1:]
 
-            if selection.endswith("'") or selection.endswith('"'):
-                selection = selection[:-1]
+        if selection.endswith("'") or selection.endswith('"'):
+            selection = selection[:-1]
 
-            if selection == "A":
-                selection = set(rm.mgs.keys())
-                break
+        if selection == "A":
+            selection = set(rm.mgs.keys())
+            break
 
-            selection = set(selection.split(" "))
-            initial_selection = selection
-            selection = []
-            for item in initial_selection:
-                if item == "":
-                    continue
+        selection = set(selection.split(" "))
+        initial_selection = selection
+        selection = []
+        for item in initial_selection:
+            if item == "":
+                continue
+
+            if item in rm.mgs:
+                selection.append(item)
+                continue
+
+            try:
+                item = int(item)
 
                 if item in rm.mgs:
                     selection.append(item)
-                    continue
+                else:
+                    raise ValueError
+            except ValueError:
+                selection = None
+                break
 
-                try:
-                    item = int(item)
-
-                    if item in rm.mgs:
-                        selection.append(item)
-                    else:
-                        raise ValueError
-                except ValueError:
-                    selection = None
-                    break
-
-            if selection is None or len(selection) == 0:
-                print(
-                    f"Motion Group selection was invalid '{initial_selection}'.  "
-                    f"SELECT AGAIN"
-                )
-                continue
-
-        except KeyboardInterrupt as err:
-            print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
-            rm.terminate()
-            raise KeyboardInterrupt from err
+        if selection is None or len(selection) == 0:
+            print(
+                f"Motion Group selection was invalid '{initial_selection}'.  "
+                f"SELECT AGAIN"
+            )
+            continue
 
     return selection
 
