@@ -259,6 +259,16 @@ class MultiScopeAcquisition:
             script_contents = self.get_script_contents()
             f.attrs['source_code'] = str(script_contents)
             
+            # Store configuration files
+            config_group = f.require_group('Configuration')
+            
+            # Store experiment_config.txt
+            try:
+                config_group.create_dataset('experiment_config', data=np.string_(self.config))
+            except Exception as e:
+                print(f"Warning: Could not read experiment_config.txt: {str(e)}")
+                config_group.create_dataset('experiment_config', data=np.string_(f"Error reading file: {str(e)}"))
+            
             # Create scope groups with their descriptions
             for scope_name in self.scope_ips:
                 if scope_name not in f:
@@ -387,7 +397,7 @@ class MultiScopeAcquisition:
 
     def update_scope_hdf5(self, all_data, shot_num):
         """Update HDF5 file with scope data only (save as int16)."""
-        with h5py.File(self.save_path, 'a') as f:
+        with h5py.File(self.save_path, 'a', libver='latest', rdcc_nbytes=0) as f:
             for scope_name, (traces, data, headers) in all_data.items():
                 scope_group = f[scope_name]
                 shot_name = f'shot_{shot_num}'
@@ -401,16 +411,16 @@ class MultiScopeAcquisition:
                     trace_data = np.asarray(data[tr], dtype=np.int16)
                     is_sequence = len(trace_data.shape) > 1
                     if is_sequence:
-                        chunk_size = (1, min(trace_data.shape[1], 1024*1024))
+                        chunk_size = (1, min(trace_data.shape[1], 8*1024*1024))
                     else:
-                        chunk_size = (min(len(trace_data), 1024*1024),)
+                        chunk_size = (min(len(trace_data), 8*1024*1024),)
                     data_ds = shot_group.create_dataset(
                         f'{tr}_data',
                         data=trace_data,
                         dtype='int16',
                         chunks=chunk_size,
                         compression='lzf', # compression_opts=9,
-                        shuffle=False, # true if compression is enabled
+                        shuffle=True, # true if compression is enabled
                         fletcher32=True
                     )
                     header_ds = shot_group.create_dataset(f'{tr}_header', data=np.void(headers[tr]))
@@ -723,13 +733,12 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                 # Save motion_list from bmotion
                 ds = pos_grp.create_dataset('motion_list', data=motion_list.values)
 
-                # print("adding coords to attributes")
-                # for coord in motion_list.coords:
-                #     ds.attrs[coord] = np.array(motion_list.coords[coord])
-                
-                # print("adding ml atts to attr")
-                # for key, val in motion_list.attrs.items():
-                #     ds.attrs[key] = val
+                # Store bmotion_config.toml if provided
+
+                with open(toml_path, 'r') as toml_file:
+                    bmotion_config_text = toml_file.read()
+                    f['Configuration'].create_dataset('bmotion_config', data=np.string_(bmotion_config_text))
+
 
                 # Create structured array to save actual achieved positions (like position_manager)
                 dtype = [('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4')]
@@ -771,7 +780,6 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                 for n in range(nshots):
                     acquisition_loop_start_time = time.time()
                     try:
-                        shot_num += 1  # Always increment shot number
                         print(f"{n}.", end='  ')
                         single_shot_acquisition(msa, active_scopes, shot_num)
                         
@@ -810,7 +818,9 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                             # Still update positions_array for failed shots
                             pos_array = f['Control/Positions/positions_array']
                             pos_array[shot_num - 1] = (shot_num, position_values[0], position_values[1])
-
+                    finally:
+                        # Increment shot number after each successful or skipped shot
+                        shot_num += 1
                 # Calculate and display remaining time
                 if shot_num > 1:
                     time_per_shot = (time.time() - acquisition_loop_start_time)
