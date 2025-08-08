@@ -228,32 +228,19 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
             # Main acquisition loop
             shot_num = 1  # 1-based shot numbering
             for motion_index in range(max_ml_size):
-                try:
-                    print(
-                        f"\nMoving to position {motion_index + 1}/{max_ml_size}..."
-                    )
+                print(
+                    f"\nMoving to position {motion_index + 1}/{max_ml_size}..."
+                )
 
-                    move_to_index(
-                        index=motion_index,
-                        rm=run_manager,
-                        ml_order_dict=ml_order,
-                    )
+                move_to_index(
+                    index=motion_index,
+                    rm=run_manager,
+                    ml_order_dict=ml_order,
+                )
 
-                    # Get current position after movement
-                    current_position = selected_mg.position
-                    position_values = current_position.value  # Get numerical values
-                except KeyboardInterrupt:
-                    run_manager.terminate()
-                    print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
-                    raise
-                except Exception as e:
-                    run_manager.terminate()
-                    print(
-                        f"Error occurred while moving to position "
-                        f"{motion_index + 1}: {str(e)}"
-                    )
-                    traceback.print_exc()
-                    raise RuntimeError from e
+                # Get current position after movement
+                current_position = selected_mg.position
+                position_values = current_position.value  # Get numerical values
 
                 print(f"Current position: {current_position}")
 
@@ -321,8 +308,8 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
 
                     shot_num += 1  # Always increment shot number
 
-        except KeyboardInterrupt:
+        except KeyboardInterrupt as err:
             print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
-            raise
+            raise RuntimeError() from err
         finally:
             run_manager.terminate()
