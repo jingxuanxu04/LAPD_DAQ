@@ -37,6 +37,78 @@ def configure_bmotion_hdf5_group(hdf5_path: str, total_shots: int):
         )
 
 
+def select_motion_groups(rm: bmotion.actors.RunManager):
+    # Print and select from all available motion lists
+    if not rm.mgs:
+        raise RuntimeError("No motion groups found in TOML configuration")
+
+    print(f"\nAvailable motion groups ({len(rm.mgs)}):")
+    print(f"  Key : {'Name':<25} -- {'Size':<16}")
+    for mg_key, mg in rm.mgs.items():
+        motion_list_size = 0 if mg.mb.motion_list is None else mg.mb.motion_list.shape[0]
+        print(
+            f"{mg_key:>5} : {mg.config['name']:.25} -- {motion_list_size:6d} positions"
+        )
+
+    # Prompt user to select a motion list
+    while True:
+        try:
+            selection = input(
+                f"Select motion group(s) [^Key Column]:\n"
+                f"  A - for all\n"
+                f"  Space Separated Keys for each motion group (e.g. '1 3 5')"
+            )
+
+            if selection.startswith("'") or selection.startswith('"'):
+                selection = selection[1:]
+
+            if selection.endswith("'") or selection.endswith('"'):
+                selection = selection[:-1]
+
+            if selection == "A":
+                selection = set(rm.mgs.keys())
+                break
+
+            selection = set(selection.split(" "))
+            initial_selection = selection
+            selection = []
+            for item in initial_selection:
+                if item == "":
+                    continue
+
+                if item in rm.mgs:
+                    selection.append(item)
+                    continue
+
+                try:
+                    item = int(item)
+
+                    if item in rm.mgs:
+                        selection.append(item)
+                    else:
+                        raise ValueError
+                except ValueError:
+                    selection = None
+                    break
+
+            if selection is None or len(selection) == 0:
+                print(
+                    f"Motion Group selection was invalid '{initial_selection}'.  "
+                    f"SELECT AGAIN"
+                )
+                continue
+
+        except KeyboardInterrupt as err:
+            print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
+            rm.terminate()
+            raise KeyboardInterrupt from err
+        except ValueError as err:
+            rm.terminate()
+            raise ValueError("Invalid selection") from err
+
+    return selection
+
+
 def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
     print('Starting acquisition at', time.ctime())
 
@@ -48,31 +120,7 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
     run_manager = bmotion.actors.RunManager(toml_path, auto_run=True)
     print("✓")
 
-    # Print and select from all available motion lists
-    print(f"\nAvailable motion groups ({len(run_manager.mgs)}):")
-    if not run_manager.mgs:
-        raise RuntimeError("No motion groups found in TOML configuration")
-
-    motion_groups = run_manager.mgs
-    for mg_key, mg in motion_groups.items():
-        motion_list_size = 0 if mg.mb.motion_list is None else mg.mb.motion_list.shape[0]
-        print(f"  {mg_key}: {mg.config['name']} -- {motion_list_size} positions")
-
-    # Prompt user to select a motion list
-    while True:
-        try:
-            selection = int(input(f"Select motion group [first column value]: "))
-            if 0 <= selection <= len(motion_groups):
-                break
-            else:
-                print(f"Please enter a number between 1 and {len(motion_groups)}.")
-        except KeyboardInterrupt as err:
-            print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
-            run_manager.terminate()
-            raise KeyboardInterrupt from err
-        except ValueError as err:
-            run_manager.terminate()
-            raise ValueError("Invalid selection") from err
+    selection = select_motion_groups(run_manager)
 
     selected_key = selection
     if selected_key not in motion_groups:
