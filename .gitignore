@@ -1,3 +1,28 @@
 *.log
 *.pyc
 *.hdf5
+
+# virtualenv
+.venvs
+.venv
+venv/
+venvs/
+ENV/
+
+# IDE setting/projec t direcotories
+.spyderproject
+.vscode
+.idea
+
+# Miscellaneous files
+.DS_Store
+*.tmp
+.ipynb_checkpoints
+*/.ipynb_checkpoints
+build/
+dist/
+eggs/
+.eggs/
+*.egg-info/
+*.egg
+__pycache__/
