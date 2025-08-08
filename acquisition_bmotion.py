@@ -82,7 +82,7 @@ def select_motion_groups(rm: bmotion.actors.RunManager):
         selection = input(
             f"Select motion group(s) [^Key Column]:\n"
             f"  A - for all\n"
-            f"  Space Separated Keys for each motion group (e.g. '1 3 5')"
+            f"  Space Separated Keys for each motion group (e.g. '1 3 5'): "
         )
 
         if selection.startswith("'") or selection.startswith('"'):
@@ -92,37 +92,43 @@ def select_motion_groups(rm: bmotion.actors.RunManager):
             selection = selection[:-1]
 
         if selection == "A":
-            selection = set(rm.mgs.keys())
+            selection = list(rm.mgs.keys())
             break
 
-        selection = set(selection.split(" "))
-        initial_selection = selection
-        selection = []
-        for item in initial_selection:
+        selection_items = selection.split()
+        initial_selection = selection_items
+        validated_selection = []
+        
+        for item in selection_items:
             if item == "":
                 continue
 
+            # First try the item as-is (string key)
             if item in rm.mgs:
-                selection.append(item)
+                validated_selection.append(item)
                 continue
 
+            # Then try converting to integer
             try:
-                item = int(item)
-
-                if item in rm.mgs:
-                    selection.append(item)
+                item_int = int(item)
+                if item_int in rm.mgs:
+                    validated_selection.append(item_int)
+                    continue
                 else:
-                    raise ValueError
+                    print(f"Motion Group key '{item}' not found in available groups.")
+                    validated_selection = None
+                    break
             except ValueError:
-                selection = None
+                print(f"Invalid motion group key '{item}'. Must be a valid key from the list above.")
+                validated_selection = None
                 break
 
-        if selection is None or len(selection) == 0:
-            print(
-                f"Motion Group selection was invalid '{initial_selection}'.  "
-                f"SELECT AGAIN"
-            )
+        if validated_selection is None or len(validated_selection) == 0:
+            print(f"Motion Group selection was invalid. Please SELECT AGAIN.\n")
             continue
+        
+        selection = validated_selection
+        break
 
     return selection
 
@@ -134,19 +140,23 @@ def select_motion_list_order(rm: bmotion.actors.RunManager, order: Dict[str, str
         while True:
             direction = input(
                 f"Motion list direction is forward for '{mg.config['name']}'.\n"
-                f"Press Enter to continue, or R + Enter to reverse."
-            )
+                f"Press Enter to continue, or R + Enter to reverse: "
+            ).strip().upper()
 
             if direction == "":
+                # Forward direction (default)
+                order[mg_key] = "forward"
+                print("Motion list direction is forward.\n")
                 break
             elif direction == "R":
+                # Reverse direction
                 order[mg_key] = "backward"
                 print("Motion list direction is reversed.\n")
                 break
             else:
                 print(
                     f"Motion list direction selection was invalid '{direction}'.  "
-                    f"TRY AGAIN..."
+                    f"Please press Enter for forward or 'R' + Enter for reverse. TRY AGAIN...\n"
                 )
                 continue
 
