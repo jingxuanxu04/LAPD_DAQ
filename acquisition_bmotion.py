@@ -19,34 +19,49 @@ def configure_bmotion_hdf5_group(
     hdf5_path: str,
     total_shots: int,
     n_motion_groups: int,
+    toml_path: str,
+    run_manager: bmotion.actors.RunManager,
+    selected_mg_keys,
 ):
     with h5py.File(hdf5_path, 'a') as f:
         ctl_grp = f.require_group('Control')
         pos_grp = ctl_grp.require_group('Positions')
+        
+        # Store TOML configuration file
+        config_grp = f.require_group('Configuration')
+        with open(toml_path, 'r') as toml_file:
+            bmotion_config_text = toml_file.read()
+            config_grp.create_dataset('bmotion_config', data=np.string_(bmotion_config_text))
 
-        # # Save motion_list from bmotion
-        # ds = pos_grp.create_dataset('motion_list', data=motion_list.values)
-        #
-        # # print("adding coords to attributes")
-        # for coord in motion_list.coords:
-        #     ds.attrs[coord] = np.array(motion_list.coords[coord])
-        #
-        # # print("adding ml atts to attr")
-        # for key, val in motion_list.attrs.items():
-        #     ds.attrs[key] = val
+        # Create MotionLists group to store each motion group's motion list
+        ml_grp = pos_grp.require_group('MotionLists')
+        
+        # Save motion_list from each selected motion group
+        for mg_key in selected_mg_keys:
+            mg = run_manager.mgs[mg_key]
+            mg_name = mg.config['name']
+            motion_list = mg.mb.motion_list
+            
+            # Create group for this motion group using the name as key
+            mg_group = ml_grp.create_group(mg_name)
+            mg_group.attrs['name'] = mg_name
+            mg_group.attrs['key'] = str(mg_key)
+            
+            # Store motion list values
+            ds = mg_group.create_dataset('motion_list', data=motion_list.values)
+            
+            # Create positions_array for this specific motion group
+            mg_group.create_dataset(
+                'positions_array',
+                shape=(total_shots,),
+                dtype=[
+                    ('shot_num', '>u4'),
+                    ('x', '>f4'),
+                    ('y', '>f4'),
+                ],
+            )
 
-        # Create structured array to save actual achieved positions
-        # (like position_manager)
-        pos_grp.create_dataset(
-            'positions_array',
-            shape=(total_shots * n_motion_groups,),
-            dtype=[
-                ('shot_num', '>u4'),
-                ('motion_group', np.bytes_, 120),
-                ('x', '>f4'),
-                ('y', '>f4'),
-            ],
-        )
+        # No longer need the combined positions_array since each motion group has its own
 
 
 def select_motion_groups(rm: bmotion.actors.RunManager):
@@ -197,18 +212,17 @@ def record_bmotion_positions(
 ) -> None:
 
     with h5py.File(hdf5_path, 'a') as f:
-        dataset = f["Control/Positions/positions_array"]
-        n_motion_groups = len(mg_keys)
-
-        for ii, key in enumerate(mg_keys):
+        for key in mg_keys:
             mg = rm.mgs[key]
-            name = mg.config['name']
+            mg_name = mg.config['name']
             positions = mg.position.value
 
-            base_index = (shotnum - 1) * n_motion_groups
-            dataset[base_index + ii] = [
+            # Access the positions_array for this specific motion group
+            dataset = f[f"Control/Positions/MotionLists/{mg_name}/positions_array"]
+            
+            # Record position for this shot (shot_num is 1-based, array is 0-based)
+            dataset[shotnum - 1] = [
                 shotnum,
-                name,
                 positions[0],
                 positions[1],
             ]
@@ -257,7 +271,7 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
 
             # create position group in hdf5
             configure_bmotion_hdf5_group(
-                hdf5_path, total_shots, len(ml_order)
+                hdf5_path, total_shots, len(ml_order), toml_path, run_manager, list(ml_order.keys())
             )
 
             # Main acquisition loop
