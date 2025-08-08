@@ -142,8 +142,8 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
     try:
         selection = select_motion_groups(run_manager)
 
-        order = dict(zip(selection, len(selection) * ["forward"]))
-        order = select_motion_list_order(run_manager, order)
+        ml_order = dict(zip(selection, len(selection) * ["forward"]))
+        ml_order = select_motion_list_order(run_manager, ml_order)
     except KeyboardInterrupt as err:
         print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
         run_manager.terminate()
