@@ -247,9 +247,11 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                     print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
                     raise
                 except Exception as e:
-                    run_manager.terminate()  # TODO: not sure this is the right place to terminate
+                    run_manager.terminate()
                     print(
-                        f"Error occurred while moving to position {motion_index + 1}: {str(e)}")
+                        f"Error occurred while moving to position "
+                        f"{motion_index + 1}: {str(e)}"
+                    )
                     traceback.print_exc()
                     raise RuntimeError from e
 
@@ -260,19 +262,20 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                     try:
                         single_shot_acquisition(msa, active_scopes, shot_num)
 
-                        with h5py.File(hdf5_path,
-                                       'a') as f:  # Update positions_array with actual achieved position
+                        # Update positions_array with actual achieved position
+                        with h5py.File(hdf5_path, 'a') as f:
                             pos_arr = f['Control/Positions/positions_array']
-                            pos_arr[shot_num - 1] = (shot_num, position_values[0],
-                                                     position_values[1])
+                            pos_arr[shot_num - 1] = (
+                                shot_num, position_values[0], position_values[1]
+                            )
 
                     except KeyboardInterrupt:
                         raise KeyboardInterrupt
                     except (ValueError, RuntimeError) as e:
                         print(f'\nSkipping shot {shot_num} - {str(e)}')
 
-                        with h5py.File(hdf5_path,
-                                       'a') as f:  # Create empty shot group with explanation
+                        # Create empty shot group with explanation
+                        with h5py.File(hdf5_path, 'a') as f:
                             for scope_name in msa.scope_ips:
                                 scope_group = f[scope_name]
                                 shot_group = scope_group.create_group(f'shot_{shot_num}')
@@ -288,8 +291,8 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                     except Exception as e:
                         print(f'\nMotion failed for shot {shot_num} - {str(e)}')
 
-                        with h5py.File(hdf5_path,
-                                       'a') as f:  # Create empty shot group with explanation
+                        # Create empty shot group with explanation
+                        with h5py.File(hdf5_path, 'a') as f:
                             for scope_name in msa.scope_ips:
                                 scope_group = f[scope_name]
                                 shot_group = scope_group.create_group(f'shot_{shot_num}')
@@ -300,8 +303,9 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
 
                             # Still update positions_array for failed shots
                             pos_array = f['Control/Positions/positions_array']
-                            pos_array[shot_num - 1] = (shot_num, position_values[0],
-                                                       position_values[1])
+                            pos_array[shot_num - 1] = (
+                                shot_num, position_values[0], position_values[1]
+                            )
 
                     # Calculate and display remaining time
                     if shot_num > 1:
@@ -309,7 +313,9 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                         remaining_shots = total_shots - shot_num
                         remaining_time = remaining_shots * time_per_shot
                         print(
-                            f' | Remaining: {remaining_time / 3600:.2f}h ({remaining_shots} shots)')
+                            f' | Remaining: {remaining_time / 3600:.2f}h '
+                            f'({remaining_shots} shots)'
+                        )
                     else:
                         print()
 
