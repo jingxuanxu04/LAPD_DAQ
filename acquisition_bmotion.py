@@ -267,8 +267,6 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                                 shot_num, position_values[0], position_values[1]
                             )
 
-                    except KeyboardInterrupt:
-                        raise KeyboardInterrupt
                     except (ValueError, RuntimeError) as e:
                         print(f'\nSkipping shot {shot_num} - {str(e)}')
 
