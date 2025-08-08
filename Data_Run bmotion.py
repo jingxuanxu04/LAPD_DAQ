@@ -34,7 +34,7 @@ logging.basicConfig(
 '''
 User set following
 '''
-exp_name = '05-Bdot-p28-Xline-He1kG400G-5800A'  # experiment name
+exp_name = '11-Bdot-p20p28-Xline(forward)-He1kG300G-5900A'  # experiment name
 date = datetime.date.today()
 base_path = r"E:\Shadow data\Energetic_Electron_Ring\AUG2025"
 hdf5_path = os.path.join(base_path, f"{exp_name}_{date}.hdf5")
@@ -73,7 +73,10 @@ def main():
     except KeyboardInterrupt:
         print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
     except Exception as e:
+        import traceback
         print(f'\n______Halted due to error: {str(e)}______', '  at', time.ctime())
+        print("Full traceback:")
+        traceback.print_exc()
     finally:
         print('Data run finished at', datetime.datetime.now())
         print('Time taken: %.2f hours' % ((time.time()-t_start)/3600))

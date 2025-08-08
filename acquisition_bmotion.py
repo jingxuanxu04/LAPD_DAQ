@@ -32,34 +32,24 @@ def configure_bmotion_hdf5_group(
         with open(toml_path, 'r') as toml_file:
             bmotion_config_text = toml_file.read()
             config_grp.create_dataset('bmotion_config', data=np.string_(bmotion_config_text))
-
-        # Create MotionLists group to store each motion group's motion list
-        ml_grp = pos_grp.require_group('MotionLists')
         
-        # Save motion_list from each selected motion group
+        # Save motion_list from each selected motion group directly under Control/Positions
         for mg_key in selected_mg_keys:
             mg = run_manager.mgs[mg_key]
             mg_name = mg.config['name']
             motion_list = mg.mb.motion_list
             
-            # Create group for this motion group using the name as key
-            mg_group = ml_grp.create_group(mg_name)
+            # Create group for this motion group using the name as key directly under Positions
+            mg_group = pos_grp.create_group(mg_name)
             mg_group.attrs['name'] = mg_name
             mg_group.attrs['key'] = str(mg_key)
             
             # Store motion list values
             ds = mg_group.create_dataset('motion_list', data=motion_list.values)
             
-            # Create positions_array for this specific motion group
-            mg_group.create_dataset(
-                'positions_array',
-                shape=(total_shots,),
-                dtype=[
-                    ('shot_num', '>u4'),
-                    ('x', '>f4'),
-                    ('y', '>f4'),
-                ],
-            )
+            # Create structured array to save actual achieved positions (like reference implementation)
+            dtype = [('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4')]
+            mg_group.create_dataset('positions_array', shape=(total_shots,), dtype=dtype)
 
         # No longer need the combined positions_array since each motion group has its own
 
@@ -130,11 +120,15 @@ def select_motion_groups(rm: bmotion.actors.RunManager):
         selection = validated_selection
         break
 
+    # Ensure selection is always a list, even for single selections
+    if not isinstance(selection, list):
+        selection = [selection]
+        
     return selection
 
 
-def select_motion_list_order(rm: bmotion.actors.RunManager, order: Dict[str, str]):
-    for mg_key in order:
+def select_motion_list_order(rm: bmotion.actors.RunManager, order: Dict):
+    for mg_key in list(order.keys()):  # Convert keys to list to avoid changing dict during iteration
         mg = rm.mgs[mg_key]
 
         while True:
@@ -189,24 +183,27 @@ def get_max_motion_list_size(rm: bmotion.actors.RunManager, mg_keys) -> int:
 def move_to_index(
     index: int,
     rm: bmotion.actors.RunManager,
-    ml_order_dict: Dict[str, str],
+    ml_order_dict: Dict,
 ) -> None:
 
     for mg_key, order in ml_order_dict.items():
         mg = rm.mgs[mg_key]
         ml_size = int(mg.mb.motion_list.shape[0])
 
+        # Use a local variable to avoid modifying the passed index
+        motion_index = index
         if order == "backward":
-            index = ml_size - index
+            motion_index = ml_size - index - 1
 
-        if index not in range(ml_size):
+        if motion_index not in range(ml_size):
             warnings.warn(
-                f"Motion list index {index} is out of range for motion "
+                f"Motion list index {motion_index} is out of range for motion "
                 f"group '{mg.config['name']}'.  NO MOTION DONE."
             )
             continue
 
-        mg.move_to(index)
+        # Use move_ml to move to the specified index in the motion list
+        mg.move_ml(motion_index)
 
     # wait for motion to stop
     time.sleep(.5)
@@ -227,15 +224,11 @@ def record_bmotion_positions(
             mg_name = mg.config['name']
             positions = mg.position.value
 
-            # Access the positions_array for this specific motion group
-            dataset = f[f"Control/Positions/MotionLists/{mg_name}/positions_array"]
+            # Access the positions_array for this specific motion group directly under Control/Positions
+            dataset = f[f"Control/Positions/{mg_name}/positions_array"]
             
-            # Record position for this shot (shot_num is 1-based, array is 0-based)
-            dataset[shotnum - 1] = [
-                shotnum,
-                positions[0],
-                positions[1],
-            ]
+            # Record position for this shot using structured array format (shot_num is 1-based, array is 0-based)
+            dataset[shotnum - 1] = (shotnum, positions[0], positions[1])
 
 
 def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
@@ -251,7 +244,7 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
     try:
         selection = select_motion_groups(run_manager)
 
-        ml_order = dict(zip(selection, len(selection) * ["forward"]))
+        ml_order = dict(zip(selection, ["forward"] * len(selection)))
         ml_order = select_motion_list_order(run_manager, ml_order)
     except KeyboardInterrupt as err:
         print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
@@ -301,12 +294,12 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                 print("Current positions:")
                 for mg_key in ml_order:
                     mg = run_manager.mgs[mg_key]
-                    print(f"  '{mg.config['name']}'  : {mg.position}")
+                    print(f"  '{mg.config['name']}'  : x={mg.position[0]:.2f}, y={mg.position[1]:.2f}")
 
                 # Record data and positions
                 for n in range(nshots):
                     acquisition_loop_start_time = time.time()
-
+                    print(f"{n}.", end=' ')
                     try:
                         single_shot_acquisition(msa, active_scopes, shot_num)
 
@@ -325,10 +318,12 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                         with h5py.File(hdf5_path, 'a') as f:
                             for scope_name in msa.scope_ips:
                                 scope_group = f[scope_name]
-                                shot_group = scope_group.create_group(f'shot_{shot_num}')
-                                shot_group.attrs['skipped'] = True
-                                shot_group.attrs['skip_reason'] = str(e)
-                                shot_group.attrs['acquisition_time'] = time.ctime()
+                                # Check if shot group already exists
+                                if f'shot_{shot_num}' not in scope_group:
+                                    shot_group = scope_group.create_group(f'shot_{shot_num}')
+                                    shot_group.attrs['skipped'] = True
+                                    shot_group.attrs['skip_reason'] = str(e)
+                                    shot_group.attrs['acquisition_time'] = time.ctime()
 
                             # Still update positions_array for skipped shots
                             record_bmotion_positions(
@@ -345,11 +340,12 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                         with h5py.File(hdf5_path, 'a') as f:
                             for scope_name in msa.scope_ips:
                                 scope_group = f[scope_name]
-                                shot_group = scope_group.create_group(f'shot_{shot_num}')
-                                shot_group.attrs['skipped'] = True
-                                shot_group.attrs[
-                                    'skip_reason'] = f"Motion failed: {str(e)}"
-                                shot_group.attrs['acquisition_time'] = time.ctime()
+                                # Check if shot group already exists
+                                if f'shot_{shot_num}' not in scope_group:
+                                    shot_group = scope_group.create_group(f'shot_{shot_num}')
+                                    shot_group.attrs['skipped'] = True
+                                    shot_group.attrs['skip_reason'] = f"Motion failed: {str(e)}"
+                                    shot_group.attrs['acquisition_time'] = time.ctime()
 
                             # Still update positions_array for failed shots
                             record_bmotion_positions(
