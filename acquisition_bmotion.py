@@ -1,5 +1,6 @@
 import bapsf_motion as bmotion
 import h5py
+import numpy as np
 import time
 import traceback
 import warnings
@@ -128,6 +129,29 @@ def select_motion_list_order(rm: bmotion.actors.RunManager, order: Dict[str, str
     return order
 
 
+def get_max_motion_list_size(rm: bmotion.actors.RunManager, mg_keys):
+
+    sizes = []
+    for key in mg_keys:
+        mg = rm.mgs[key]
+
+        if not isinstance(mg.mb.motion_list, xr.DataArray):
+            raise RuntimeError(
+                f"Selected motion group '{mg.config['name']}' motion "
+                f"list is invalid."
+            )
+
+        if mg.mb.motion_list.size == 0:
+            raise RuntimeError(
+                f"Selected motion group '{mg.config['name']}' has an "
+                f"empty motion list"
+            )
+
+        sizes.append(mg.mb.motion_list.shape[0])
+
+    return np.max(sizes)
+
+
 def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
     print('Starting acquisition at', time.ctime())
 
@@ -149,20 +173,7 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
         run_manager.terminate()
         raise KeyboardInterrupt from err
 
-
-    selected_mg = motion_groups[selected_key]
-    motion_list = selected_mg.mb.motion_list
-    if motion_list is None:
-        raise RuntimeError(f"Selected motion group '{selected_key}' has no motion list")
-    if not isinstance(motion_list, xr.DataArray):
-        raise RuntimeError(
-            f"Selected motion group '{selected_key}' has invalid motion list type")
-    elif motion_list.size == 0:
-        raise RuntimeError(
-            f"Selected motion group '{selected_key}' has an empty motion list")
-
-    motion_list_size = motion_list.shape[
-        0]  # shape is (N, 2) for a 2D probe drive, N == number of positions
+    max_ml_size = get_max_motion_list_size(run_manager, list(ml_order))
 
     print(f"Using motion group '{selected_key}' with {motion_list_size} positions")
     print(f"Number of shots per position: {nshots}")
