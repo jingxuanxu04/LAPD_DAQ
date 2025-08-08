@@ -335,20 +335,20 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                                 rm=run_manager,
                                 mg_keys=list(ml_order.keys()),
                             )
+                    finally:
+                        shot_num += 1  # Always increment shot number
 
-                    # Calculate and display remaining time
-                    if shot_num > 1:
-                        time_per_shot = (time.time() - acquisition_loop_start_time)
-                        remaining_shots = total_shots - shot_num
-                        remaining_time = remaining_shots * time_per_shot
-                        print(
-                            f' | Remaining: {remaining_time / 3600:.2f}h '
-                            f'({remaining_shots} shots)'
-                        )
-                    else:
-                        print()
-
-                    shot_num += 1  # Always increment shot number
+                # Calculate and display remaining time
+                if shot_num > 1:
+                    time_per_shot = (time.time() - acquisition_loop_start_time)
+                    remaining_shots = total_shots - shot_num
+                    remaining_time = remaining_shots * time_per_shot
+                    print(
+                        f' | Remaining: {remaining_time / 3600:.2f}h '
+                        f'({remaining_shots} shots)'
+                    )
+                else:
+                    print()
 
         except KeyboardInterrupt as err:
             print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
