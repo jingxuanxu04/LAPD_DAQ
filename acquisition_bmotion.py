@@ -102,9 +102,6 @@ def select_motion_groups(rm: bmotion.actors.RunManager):
             print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
             rm.terminate()
             raise KeyboardInterrupt from err
-        except ValueError as err:
-            rm.terminate()
-            raise ValueError("Invalid selection") from err
 
     return selection
 
