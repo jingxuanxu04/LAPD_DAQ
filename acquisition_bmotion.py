@@ -189,6 +189,31 @@ def move_to_index(
         time.sleep(.5)
 
 
+def record_bmotion_positions(
+    hdf5_path: str,
+    shotnum: int,
+    rm: bmotion.actors.RunManager,
+    mg_keys,
+) -> None:
+
+    with h5py.File(hdf5_path, 'a') as f:
+        dataset = f["Control/Positions/positions_array"]
+        n_motion_groups = len(mg_keys)
+
+        for ii, key in enumerate(mg_keys):
+            mg = rm.mgs[key]
+            name = mg.config['name']
+            positions = mg.position.value
+
+            base_index = (shotnum - 1) * n_motion_groups
+            dataset[base_index + ii] = [
+                shotnum,
+                name,
+                positions[0],
+                positions[1],
+            ]
+
+
 def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
     print('Starting acquisition at', time.ctime())
 
@@ -261,11 +286,12 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                         single_shot_acquisition(msa, active_scopes, shot_num)
 
                         # Update positions_array with actual achieved position
-                        with h5py.File(hdf5_path, 'a') as f:
-                            pos_arr = f['Control/Positions/positions_array']
-                            pos_arr[shot_num - 1] = (
-                                shot_num, position_values[0], position_values[1]
-                            )
+                        record_bmotion_positions(
+                            hdf5_path=hdf5_path,
+                            shotnum=shot_num,
+                            rm=run_manager,
+                            mg_keys=list(ml_order.keys()),
+                        )
 
                     except (ValueError, RuntimeError) as e:
                         print(f'\nSkipping shot {shot_num} - {str(e)}')
@@ -280,9 +306,12 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                                 shot_group.attrs['acquisition_time'] = time.ctime()
 
                             # Still update positions_array for skipped shots
-                            pos_array = f['Control/Positions/positions_array']
-                            pos_array[shot_num - 1] = (shot_num, position_values[0],
-                                                       position_values[1])
+                            record_bmotion_positions(
+                                hdf5_path=hdf5_path,
+                                shotnum=shot_num,
+                                rm=run_manager,
+                                mg_keys=list(ml_order.keys()),
+                            )
 
                     except Exception as e:
                         print(f'\nMotion failed for shot {shot_num} - {str(e)}')
@@ -298,9 +327,11 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                                 shot_group.attrs['acquisition_time'] = time.ctime()
 
                             # Still update positions_array for failed shots
-                            pos_array = f['Control/Positions/positions_array']
-                            pos_array[shot_num - 1] = (
-                                shot_num, position_values[0], position_values[1]
+                            record_bmotion_positions(
+                                hdf5_path=hdf5_path,
+                                shotnum=shot_num,
+                                rm=run_manager,
+                                mg_keys=list(ml_order.keys()),
                             )
 
                     # Calculate and display remaining time
