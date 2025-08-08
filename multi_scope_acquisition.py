@@ -401,9 +401,9 @@ class MultiScopeAcquisition:
                     trace_data = np.asarray(data[tr], dtype=np.int16)
                     is_sequence = len(trace_data.shape) > 1
                     if is_sequence:
-                        chunk_size = (1, min(trace_data.shape[1], 512*1024))
+                        chunk_size = (1, min(trace_data.shape[1], 1024*1024))
                     else:
-                        chunk_size = (min(len(trace_data), 512*1024),)
+                        chunk_size = (min(len(trace_data), 1024*1024),)
                     data_ds = shot_group.create_dataset(
                         f'{tr}_data',
                         data=trace_data,
