@@ -36,7 +36,12 @@ def configure_bmotion_hdf5_group(hdf5_path: str, total_shots: int):
         pos_grp.create_dataset(
             'positions_array',
             shape=(total_shots,),
-            dtype=[('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4')],
+            dtype=[
+                ('shot_num', '>u4'),
+                ('motion_group', np.bytes_, 120),
+                ('x', '>f4'),
+                ('y', '>f4'),
+            ],
         )
 
 
