@@ -129,7 +129,7 @@ def select_motion_list_order(rm: bmotion.actors.RunManager, order: Dict[str, str
     return order
 
 
-def get_max_motion_list_size(rm: bmotion.actors.RunManager, mg_keys):
+def get_max_motion_list_size(rm: bmotion.actors.RunManager, mg_keys) -> int:
 
     sizes = []
     for key in mg_keys:
@@ -149,7 +149,7 @@ def get_max_motion_list_size(rm: bmotion.actors.RunManager, mg_keys):
 
         sizes.append(mg.mb.motion_list.shape[0])
 
-    return np.max(sizes)
+    return int(np.max(sizes))
 
 
 def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
@@ -175,11 +175,10 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
 
     max_ml_size = get_max_motion_list_size(run_manager, list(ml_order))
 
-    print(f"Using motion group '{selected_key}' with {motion_list_size} positions")
+    print(f"Maximum motion list size is {max_ml_size}")
     print(f"Number of shots per position: {nshots}")
-    total_shots = motion_list_size * nshots
+    total_shots = max_ml_size * nshots
     print(f"Total shots: {total_shots}")
-    # =======================================================================
 
     # Start acquisition loop
     with MultiScopeAcquisition(hdf5_path, config) as msa:
