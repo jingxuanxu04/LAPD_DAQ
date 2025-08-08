@@ -119,14 +119,6 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
 
     selection = select_motion_groups(run_manager)
 
-    selected_key = selection
-    if selected_key not in motion_groups:
-        selected_key = f"{selected_key}"
-        if selected_key not in motion_groups:
-            raise RuntimeError(
-                f"The specified motion group key '{selected_key}' does not exist.  "
-                f"Available motion group keys:  {motion_groups.keys()}"
-            )
 
     selected_mg = motion_groups[selected_key]
     motion_list = selected_mg.mb.motion_list
