@@ -220,7 +220,6 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
     config = load_experiment_config(config_path)
     nshots = config.getint('nshots', 'num_duplicate_shots', fallback=1)
 
-    # =======================================================================
     print("Loading TOML configuration...", end='')
     run_manager = bmotion.actors.RunManager(toml_path, auto_run=True)
     print("✓")
