@@ -152,6 +152,34 @@ def get_max_motion_list_size(rm: bmotion.actors.RunManager, mg_keys) -> int:
     return int(np.max(sizes))
 
 
+def move_to_index(
+    index: int,
+    rm: bmotion.actors.RunManager,
+    ml_order_dict: Dict[str, str],
+) -> None:
+
+    for mg_key, order in ml_order_dict.items():
+        mg = rm.mgs[mg_key]
+        ml_size = int(mg.mb.motion_list.shape[0])
+
+        if order == "backward":
+            index = ml_size - index
+
+        if index not in range(ml_size):
+            warnings.warn(
+                f"Motion list index {index} is out of range for motion "
+                f"group '{mg.config['name']}'.  NO MOTION DONE."
+            )
+            continue
+
+        mg.move_to(index)
+
+    # wait for motion to stop
+    time.sleep(.5)
+    while rm.is_moving:
+        time.sleep(.5)
+
+
 def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
     print('Starting acquisition at', time.ctime())
 
@@ -199,22 +227,17 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
 
             # Main acquisition loop
             shot_num = 1  # 1-based shot numbering
-            for motion_index in range(motion_list_size):
+            for motion_index in range(max_ml_size):
                 try:
                     print(
-                        f"\nMoving to position {motion_index + 1}/{motion_list_size}...")
-                    try:
-                        selected_mg.move_ml(motion_index)
-                    except ValueError as err:
-                        warnings.warn(
-                            f"Motion list index {motion_index} is out of range. "
-                            f"NO MOTION DONE.\n [{err}]."
-                        )
+                        f"\nMoving to position {motion_index + 1}/{max_ml_size}..."
+                    )
 
-                    # wait for motion to stop
-                    time.sleep(.5)
-                    while selected_mg.is_moving:
-                        time.sleep(.5)
+                    move_to_index(
+                        index=motion_index,
+                        rm=run_manager,
+                        ml_order_dict=ml_order,
+                    )
 
                     # Get current position after movement
                     current_position = selected_mg.position
