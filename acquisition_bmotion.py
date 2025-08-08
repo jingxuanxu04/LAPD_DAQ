@@ -274,14 +274,16 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                     ml_order_dict=ml_order,
                 )
 
-                # Get current position after movement
-                current_position = selected_mg.position
-                position_values = current_position.value  # Get numerical values
+                # print motion group positions
+                print("Current positions:")
+                for mg_key in ml_order:
+                    mg = run_manager.mgs[mg_key]
+                    print(f"  '{mg.config['name']}'  : {mg.position}")
 
-                print(f"Current position: {current_position}")
-
+                # Record data and positions
                 for n in range(nshots):
                     acquisition_loop_start_time = time.time()
+
                     try:
                         single_shot_acquisition(msa, active_scopes, shot_num)
 
