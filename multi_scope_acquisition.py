@@ -401,9 +401,9 @@ class MultiScopeAcquisition:
                     trace_data = np.asarray(data[tr], dtype=np.int16)
                     is_sequence = len(trace_data.shape) > 1
                     if is_sequence:
-                        chunk_size = (1, min(trace_data.shape[1], 512*1024))
+                        chunk_size = (1, min(trace_data.shape[1], 1024*1024))
                     else:
-                        chunk_size = (min(len(trace_data), 512*1024),)
+                        chunk_size = (min(len(trace_data), 1024*1024),)
                     data_ds = shot_group.create_dataset(
                         f'{tr}_data',
                         data=trace_data,
@@ -766,11 +766,13 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                     traceback.print_exc()
                     raise RuntimeError from e
                 
-                print(f"Current position: {current_position}")
+                print(f"Current position: x={position_values[0]:.2f}, y={position_values[1]:.2f}")
 
                 for n in range(nshots):
                     acquisition_loop_start_time = time.time()
                     try:
+                        shot_num += 1  # Always increment shot number
+                        print(f"{n}.", end='  ')
                         single_shot_acquisition(msa, active_scopes, shot_num)
                         
                         with h5py.File(hdf5_path, 'a') as f: # Update positions_array with actual achieved position
@@ -809,16 +811,16 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                             pos_array = f['Control/Positions/positions_array']
                             pos_array[shot_num - 1] = (shot_num, position_values[0], position_values[1])
 
-                    # Calculate and display remaining time
-                    if shot_num > 1:
-                        time_per_shot = (time.time() - acquisition_loop_start_time)
-                        remaining_shots = total_shots - shot_num
-                        remaining_time = remaining_shots * time_per_shot
-                        print(f' | Remaining: {remaining_time/3600:.2f}h ({remaining_shots} shots)')
-                    else:
-                        print()
+                # Calculate and display remaining time
+                if shot_num > 1:
+                    time_per_shot = (time.time() - acquisition_loop_start_time)
+                    remaining_shots = total_shots - shot_num
+                    remaining_time = remaining_shots * time_per_shot
+                    print(f' | Remaining: {remaining_time/3600:.2f}h ({remaining_shots} shots)')
+                else:
+                    print()
                     
-                    shot_num += 1  # Always increment shot number
+
 
         except KeyboardInterrupt:
             print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
