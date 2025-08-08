@@ -15,7 +15,11 @@ from multi_scope_acquisition import (
 )
 
 
-def configure_bmotion_hdf5_group(hdf5_path: str, total_shots: int):
+def configure_bmotion_hdf5_group(
+    hdf5_path: str,
+    total_shots: int,
+    n_motion_groups: int,
+):
     with h5py.File(hdf5_path, 'a') as f:
         ctl_grp = f.require_group('Control')
         pos_grp = ctl_grp.require_group('Positions')
@@ -35,7 +39,7 @@ def configure_bmotion_hdf5_group(hdf5_path: str, total_shots: int):
         # (like position_manager)
         pos_grp.create_dataset(
             'positions_array',
-            shape=(total_shots,),
+            shape=(total_shots * n_motion_groups,),
             dtype=[
                 ('shot_num', '>u4'),
                 ('motion_group', np.bytes_, 120),
@@ -228,7 +232,9 @@ def run_acquisition_bmotion(hdf5_path, toml_path, config_path):
                 )
 
             # create position group in hdf5
-            configure_bmotion_hdf5_group(hdf5_path, total_shots)
+            configure_bmotion_hdf5_group(
+                hdf5_path, total_shots, len(ml_order)
+            )
 
             # Main acquisition loop
             shot_num = 1  # 1-based shot numbering
