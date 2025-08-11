@@ -253,7 +253,7 @@ class TungstenDropper:
         self._load_state()
         
         self.spt = self.mc_w.steps_per_rev()
-        self.one_drop = int(self.spt/12) + 1    
+        self.one_drop = int(self.spt/12) + 10
         
     def _load_state(self):
         """Load ball count and max ball count from cache file."""
@@ -347,7 +347,7 @@ class TungstenDropper:
         '''Sometimes when the motor is stuck, we need to rewind it.'''
         try:
             cur_step = self.mc_w.current_step()
-            self.mc_w.turn_to(cur_step - steps)
+            self.mc_w.turn_to(cur_step - self.one_drop)
             new_step = self.mc_w.current_step()
             if new_step == cur_step:
                 raise RuntimeError("Motor position did not change after rewind command. Check what's going on.")
@@ -449,13 +449,13 @@ def test():
 if __name__ == '__main__':
     
     dropper = TungstenDropper(motor_ip=MOTOR_IP, timeout=15)
-    dropper.set_max_ball_count(100)
-    dropper.reset_ball_count()
+    # dropper.set_max_ball_count(370)
+    # dropper.reset_ball_count()
 
-    client = TriggerClient(PI_HOST, PI_PORT)
-    # Test connection to Pi server
-    print(f"Connecting to GPIO trigger server at {PI_HOST}:{PI_PORT}")
-    client.get_status()  # Will raise error if server not ready
-    print("✓ Server connection established")
-    client.send_trigger()
-    print('Send trigger to test')
+    # client = TriggerClient(PI_HOST, PI_PORT)
+    # # Test connection to Pi server
+    # print(f"Connecting to GPIO trigger server at {PI_HOST}:{PI_PORT}")
+    # client.get_status()  # Will raise error if server not ready
+    # print("✓ Server connection established")
+    # client.send_trigger()
+    # print('Send trigger to test')
