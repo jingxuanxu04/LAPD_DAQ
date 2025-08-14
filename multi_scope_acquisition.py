@@ -24,6 +24,8 @@ Updated July.2025
 - Separated motion control into dedicated motion package
 - Separate scope arming into a separate function
 - Change experiment description to read from experiment_config.txt
+
+TODO: MultiscopeAquisition class getting initial time array needs to be optimized.
 '''
 
 import numpy as np
@@ -101,11 +103,11 @@ def init_acquire_from_scope(scope, scope_name):
     
     for tr in traces:
         try:
-            if stop_triggering(scope) == True:
-                trace_bytes, header_bytes = scope.acquire_bytes(tr)
-                hdr = scope.translate_header_bytes(header_bytes)
-            else:
-                raise Exception('Scope did not enter STOP state')
+            # if stop_triggering(scope) == True:
+            trace_bytes, header_bytes = scope.acquire_bytes(tr)
+            hdr = scope.translate_header_bytes(header_bytes)
+            # else:
+                # raise Exception('Scope did not enter STOP state')
 
             if hdr.subarray_count < 2: # Get number of segments
                 is_sequence = 0 # in RealTime mode
