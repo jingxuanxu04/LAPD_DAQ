@@ -1,6 +1,56 @@
 # LAPD_DAQ
 Data acquisition script using Ethernet motor and LeCroy scope as digitizer on LAPD.
-Modified from Scope_DAQ used on process plasma chamber
+Modified from Scope_DAQ used on process plasma chamber.
+
+## Installation Requirements
+
+### Python Version
+- Python 3.8 or higher
+
+### Required Libraries
+```bash
+# Core functionality
+h5py>=3.7.0         # HDF5 file handling
+numpy>=1.22.0       # Numerical operations
+matplotlib>=3.5.0   # Data visualization
+scipy>=1.8.0        # Signal processing
+
+# Scope communication
+pyvisa>=1.12.0      # Instrument control
+pyvisa-py>=0.5.2    # Pure Python backend for PyVISA
+
+# Motion control (if using probe positioning)
+bapsf_motion>=0.4.0  # BAPSF motion control library (optional)
+```
+
+> **Note:** The versions listed above are the ones the code was developed and tested with. You do not need to install these exact versions—any recent version should work. If you use the provided `requirements.txt`, it will install the latest available versions by default.
+
+### Installation
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/LAPD_DAQ.git
+   cd LAPD_DAQ
+   ```
+
+2. Create and activate a virtual environment:
+   ```bash
+   python -m venv .venv
+   # On Windows:
+   .venv\Scripts\activate
+   # On Linux/macOS:
+   source .venv/bin/activate
+   ```
+
+3. Install required packages:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. For bmotion control (optional):
+   ```bash
+   pip install bapsf_motion
+   ```
 
 ## Configuration
 
