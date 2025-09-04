@@ -408,16 +408,15 @@ experiment_file.hdf5
 │
 ├── Control/
 │   └── Positions/
-│       └── MotionLists/
-│           ├── motion_group_1_name/          # Each motion group gets own section
-│           │   ├── motion_list (dataset)     # Planned positions from bmotion
-│           │   ├── positions_array (dataset) # Actual achieved positions
-│           │   └── attributes: name, key
-│           ├── motion_group_2_name/
-│           │   ├── motion_list (dataset)
-│           │   ├── positions_array (dataset)
-│           │   └── attributes: name, key
-│           └── ...
+│       ├── motion_group_1_name/              # Each motion group directly under Positions
+│       │   ├── motion_list (dataset)         # Planned positions from bmotion
+│       │   ├── positions_array (dataset)     # Actual achieved positions (structured)
+│       │   └── attributes: name, key
+│       ├── motion_group_2_name/
+│       │   ├── motion_list (dataset)
+│       │   ├── positions_array (dataset)     # Structured array: shot_num, x, y
+│       │   └── attributes: name, key
+│       └── ...
 │
 ├── ScopeName1/                               # Standard scope data structure
 │   ├── time_array (dataset)
@@ -439,12 +438,13 @@ experiment_file.hdf5
 
 **positions_array Dataset**
 - **Purpose**: Records actual achieved positions for each shot
-- **Format**: Structured array with fields:
-  - `shot_num`: Shot number (1-based indexing)
-  - `x`: Actual x position achieved by the motion system
-  - `y`: Actual y position achieved by the motion system
+- **Format**: Structured array with dtype `[('shot_num', '>u4'), ('x', '>f4'), ('y', '>f4')]`:
+  - `shot_num`: Shot number (1-based indexing, uint32)
+  - `x`: Actual x position achieved by the motion system (float32)
+  - `y`: Actual y position achieved by the motion system (float32)
 - **Updates**: Populated in real-time during acquisition with position feedback
 - **Size**: Pre-allocated for total number of shots
+- **Access**: Each motion group has its own positions_array directly under `Control/Positions/{group_name}/`
 
 **bmotion_config Dataset**
 - **Purpose**: Preserves complete TOML configuration for reproducibility

@@ -37,8 +37,10 @@ if os.path.exists(parent_dir) and parent_dir not in sys.path:
 # Configuration variables - modify these to match your setup
 PI_HOST = '192.168.7.38'      # Pi server IP address
 PI_PORT = 54321            # Pi server port (must match pi_server.py)
-MOTOR_IP = '192.168.7.99'  # Motor controller IP address
+DROPPER_IP = '192.168.7.99'  
 BUFFER_SIZE = 1024         # Socket buffer size
+KAPTON_WINDOW_IP = '192.168.7.98'  
+
 
 class TriggerClient:
     """
@@ -239,9 +241,10 @@ class TungstenDropper:
     This class is used for loading tungsten balls into the dropper using motor.
     Ball count and max ball count are automatically persisted to a pickle cache file.
     '''
-    def __init__(self, motor_ip, timeout=15, cache_file="tungsten_dropper_state.pkl"):
+    def __init__(self, motor_ip, timeout=15, cache_file=r"C:\Users\daq\Desktop\LAPD_DAQ\tungsten_dropper_state.pkl"):
         from motion import Motor_Control
         self.mc_w = Motor_Control(server_ip_addr=motor_ip, stop_switch_mode=3)
+        self.mc_w.motor_speed = 5
         self.timeout = timeout
         self.cache_file = cache_file
         
@@ -253,7 +256,7 @@ class TungstenDropper:
         self._load_state()
         
         self.spt = self.mc_w.steps_per_rev()
-        self.one_drop = int(self.spt/12) + 1    
+        self.one_drop = int(self.spt/12) + 10
         
     def _load_state(self):
         """Load ball count and max ball count from cache file."""
@@ -348,6 +351,7 @@ class TungstenDropper:
         try:
             cur_step = self.mc_w.current_step()
             self.mc_w.turn_to(cur_step - steps)
+            time.sleep(1) # Wait for motor to rewind
             new_step = self.mc_w.current_step()
             if new_step == cur_step:
                 raise RuntimeError("Motor position did not change after rewind command. Check what's going on.")
@@ -448,14 +452,9 @@ def test():
 
 if __name__ == '__main__':
     
-    dropper = TungstenDropper(motor_ip=MOTOR_IP, timeout=15)
-    dropper.set_max_ball_count(100)
-    dropper.reset_ball_count()
+    dropper = TungstenDropper(motor_ip=DROPPER_IP, timeout=15)
 
     client = TriggerClient(PI_HOST, PI_PORT)
-    # Test connection to Pi server
-    print(f"Connecting to GPIO trigger server at {PI_HOST}:{PI_PORT}")
-    client.get_status()  # Will raise error if server not ready
-    print("✓ Server connection established")
-    client.send_trigger()
-    print('Send trigger to test')
+
+    from motion import Motor_Control
+    mc_k = Motor_Control(server_ip_addr=KAPTON_WINDOW_IP, cm_per_turn=0.425,name="kapton window", stop_switch_mode=3)
