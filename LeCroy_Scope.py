@@ -1,12 +1,18 @@
 """
 # -*- coding: utf-8 -*-
 
-This file defines the class that implements communication with a LeCroy X-Stream scope.
-To use this need:
-	1. Install pyvisa library
-	2. Install LeCroy "passport"
-	3. Either National Instruments Visa or pyvisa-py (see links below)
-	4. If using NI-VISA, may need certain setup (check NI-VISA documentation)
+This file defines the class that implements communication with a LeCroy scope.
+
+To use this code, follow these setup steps:
+1. Install the pyvisa library (required for instrument communication).
+2. Choose a backend:
+	- Option A: Use pyvisa-py (pure Python, works on any OS)
+	- Option B: Use NI-VISA (National Instruments VISA)
+3. If using NI-VISA:
+	- Install the LeCroy "passport" driver for NI-VISA (see links below)
+	- Ensure NI-VISA is properly installed and configured (refer to NI-VISA documentation)
+4. Confirm you can communicate with your LeCroy scope over TCP/IP (VICP protocol).
+5. Refer to the documentation links below for troubleshooting and advanced setup.
 
 See inline comments for the function of the member functions
 
@@ -16,24 +22,15 @@ Header interpretation is based on PP's previous internet scrapings in C++ progra
 PyVisa documentation:                                https://media.readthedocs.org/pdf/pyvisa/1.6/pyvisa.pdf
 LeCroy Automation Command Reference Manual:          http://cdn.teledynelecroy.com/files/manuals/automation_command_ref_manual_ws.pdf
 LeCroy Remote Control Manual for "X-Stream" scopes:  http://cdn.teledynelecroy.com/files/manuals/wm-rcm-e_rev_d.pdf
-pyvisa-py: Recommanded over NI-VISA for Windows 10   https://pyvisa.readthedocs.io/projects/pyvisa-py/en/latest/
+pyvisa-py: compatible for any operating system       https://pyvisa.readthedocs.io/projects/pyvisa-py/en/latest/
 National Instruments Visa at                         http://www.ni.com/download/ni-visa-16.0/6184/en/     (Aug 2016) NOTE: PyVisa FAQ Points to an old version
 	setting up the LeCroy scope "Passport":          http://forums.ni.com/ni/attachments/ni/170/579106/1/VICP-NI-MAX.doc
 LeCroy "passport" for NI-Visa:                       http://teledynelecroy.com/support/softwaredownload/home.aspx
-
-Anaconda:
-Installing pyvisa from the conda-forge channel can be achieved by adding conda-forge to your channels with:
-	c:\>conda config --add channels conda-forge
-Once the conda-forge channel has been enabled, pyvisa can be installed with:
-	c:\>conda install pyvisa
-
-other notes:
-NI VISA Manuals:
-  NI-VISA User Manual                   http://digital.ni.com/manuals.nsf/websearch/266526277DFF74F786256ADC0065C50C
-  NI-VISA Programmer Reference Manual   http://digital.ni.com/manuals.nsf/websearch/87E52268CF9ACCEE86256D0F006E860D
+NI-VISA User Manual                   http://digital.ni.com/manuals.nsf/websearch/266526277DFF74F786256ADC0065C50C
+NI-VISA Programmer Reference Manual   http://digital.ni.com/manuals.nsf/websearch/87E52268CF9ACCEE86256D0F006E860D
 
 
-Originally created on Wed Aug 31, 2016
+Originally created on Wed Aug 31, 2016 to communicate to LeCroy X-Stream scope
 @author: Patrick  
 
 Major update Jan.2025
