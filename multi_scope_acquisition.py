@@ -676,3 +676,17 @@ def run_acquisition(save_path, config_path):
         except KeyboardInterrupt:
             print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
             raise
+
+        finally:
+            # Store the final shot count for each scope group
+            # This makes shot existence checks much faster for large datasets
+            print(f"Storing shot count ({shot_num}) to HDF5 file...")
+            try:
+                with h5py.File(save_path, 'a') as f:
+                    for scope_name in msa.scope_ips:
+                        if scope_name in f:
+                            scope_group = f[scope_name]
+                            scope_group.attrs['shot_count'] = shot_num
+                            print(f"  - {scope_name}: {shot_num} shots recorded")
+            except Exception as e:
+                print(f"Error storing shot count: {e}")
