@@ -2,6 +2,14 @@
 Data acquisition script using Ethernet motor and LeCroy scope as digitizer on LAPD.
 Modified from Scope_DAQ used on process plasma chamber.
 
+## Latest Updates (September 2025)
+
+### Configuration and HDF5 Improvements
+- **Enhanced Configuration Handling**: Configuration files now loaded once with raw text preservation
+- **Performance Optimization**: Added shot_count attribute for faster shot existence checks
+- **Metadata Enhancements**: Full raw configuration text stored in HDF5 for improved reproducibility
+- **Memory Efficiency**: Reduced redundant file operations for better performance
+
 ## Installation Requirements
 
 ### Python Version
@@ -167,6 +175,21 @@ pos_manager = PositionManager(save_path, nz=None)  # is_45deg auto-detected
 pos_manager = PositionManager(save_path, nz=None, is_45deg=False)  # Force non-45deg
 ```
 
+**Enhanced Configuration Handling (September 2025)**
+
+The configuration loading system has been further enhanced for better performance and reliability:
+
+```python
+# Enhanced configuration loading returning both parsed config and raw text
+config, raw_config_text = load_experiment_config('experiment_config.txt')
+```
+
+**New Features:**
+- **Raw Text Preservation**: Configuration file contents are now preserved exactly as written
+- **Single-Read Approach**: Configuration files are opened only once, improving efficiency
+- **Improved Error Handling**: Better fallbacks when configuration files have issues
+- **Memory-Based Storage**: Raw configuration text stored in memory instead of re-reading files
+
 
 ### Data Acquisition Integration
 
@@ -328,9 +351,11 @@ Main experiment configuration containing:
 ### Standard Acquisition Structure
 ```
 experiment_file.hdf5
-├── attributes: description, creation_time, source_code
+├── attributes: description, creation_time, source_code, config_version
+├── Configuration/
+│   └── experiment_config (dataset, raw config text)  # Added in 2025 update
 ├── ScopeName1/
-│   ├── attributes: description, ip_address, scope_type
+│   ├── attributes: description, ip_address, scope_type, shot_count  # shot_count added in 2025
 │   ├── time_array (dataset)
 │   ├── shot_1/
 │   │   ├── attributes: acquisition_time
@@ -357,6 +382,14 @@ experiment_file.hdf5
 - **Time arrays**: Stored as `float64` for maximum precision
 - **Position data**: 32-bit floats for position coordinates
 - **Headers**: Binary data preserving original scope header information
+- **Configuration**: Raw text stored as string datasets for maximum fidelity
+
+### Performance Optimizations (September 2025)
+
+- **shot_count Attribute**: Added to scope groups for fast existence checks and indexing
+- **Raw Config Storage**: Configuration files stored as raw text exactly as written
+- **Memory Optimizations**: Single-read approach for configuration files
+- **Fast Access Pattern**: Direct group access for shot data instead of filtering
 
 ## bmotion Acquisition System
 
@@ -518,12 +551,16 @@ python "Data_Run bmotion.py"
 - Raw int16 data acquisition for maximum speed
 - Chunked HDF5 storage with compression
 - Automatic error recovery and data preservation
+- Shot count tracking for rapid indexing (Sept 2025)
+- Direct group access patterns for large datasets (Sept 2025)
 
 ### Comprehensive Metadata
 - Complete experiment description and parameters
 - Source code preservation for reproducibility
 - Scope and channel configuration details
 - Timing and acquisition metadata
+- Raw configuration file preservation (Sept 2025)
+- Memory-optimized configuration loading (Sept 2025)
 
 ### Robust Error Handling
 - Automatic scope reconnection on failures
