@@ -48,8 +48,24 @@ from motion import PositionManager
 #===============================================================================================================================================
 #===============================================================================================================================================
 def load_experiment_config(config_path='experiment_config.txt'):
-    """Load experiment configuration from config file."""
+    """Load experiment configuration from config file.
+    
+    Returns:
+        tuple: (config, raw_config_text)
+            - config: ConfigParser object with parsed configuration
+            - raw_config_text: Raw text content of the configuration file
+    """
     config = configparser.ConfigParser()
+    
+    # Read the raw config text
+    raw_config_text = ""
+    try:
+        with open(config_path, 'r') as f:
+            raw_config_text = f.read()
+    except Exception as e:
+        print(f"Warning: Could not read raw config file: {e}")
+    
+    # Parse the config
     config.read(config_path)
     
     # Set defaults if sections don't exist
@@ -64,7 +80,7 @@ def load_experiment_config(config_path='experiment_config.txt'):
     if not config.get('experiment', 'description', fallback=None):
         config.set('experiment', 'description', 'No experiment description provided')
     
-    return config
+    return config, raw_config_text
 
 #===============================================================================================================================================
 def stop_triggering(scope, retry=500):
@@ -173,18 +189,19 @@ def acquire_from_scope_sequence(scope, scope_name):
 class MultiScopeAcquisition:
     """Handles scope connections, data acquisition, and scope data storage"""
     
-    def __init__(self, save_path, config):
+    def __init__(self, save_path, config, raw_config_text=""):
         """
         Args:
-            scope_ips: dict of scope names and IP addresses
             save_path: path to save HDF5 file
+            config: ConfigParser object with experiment configuration
+            raw_config_text: Raw text content of the configuration file (optional)
         """
         self.save_path = save_path
-        
         self.scopes = {}
         self.figures = {}
         self.time_arrays = {}  # Store time arrays for each scope
         self.config = config
+        self.raw_config_text = raw_config_text  # Store the raw config text for later use
         
         # Load scope IPs from config
         if 'scope_ips' not in config:
@@ -261,12 +278,22 @@ class MultiScopeAcquisition:
             # Store configuration files
             config_group = f.require_group('Configuration')
             
-            # Store experiment_config.txt
-            try:
-                config_group.create_dataset('experiment_config', data=np.string_(self.config))
-            except Exception as e:
-                print(f"Warning: Could not read experiment_config.txt: {str(e)}")
-                config_group.create_dataset('experiment_config', data=np.string_(f"Error reading file: {str(e)}"))
+            # Store experiment_config.txt from the raw_config_text
+            if self.raw_config_text:
+                config_group.create_dataset('experiment_config', data=np.string_(self.raw_config_text))
+                print("Stored full configuration file content from memory")
+            else:
+                # As a fallback, try to convert config to string using configparser's write method
+                try:
+                    import io
+                    config_buffer = io.StringIO()
+                    self.config.write(config_buffer)
+                    config_text = config_buffer.getvalue()
+                    config_group.create_dataset('experiment_config', data=np.string_(config_text))
+                    print("Stored configuration using ConfigParser's write method")
+                except Exception as e:
+                    print(f"Could not convert config to string: {str(e)}")
+                    config_group.create_dataset('experiment_config', data=np.string_(f"Error saving configuration: {str(e)}"))
             
             # Create scope groups with their descriptions
             for scope_name in self.scope_ips:
@@ -564,7 +591,7 @@ def handle_movement(pos_manager, mc, shot_num, pos, save_path, scope_ips):
 def run_acquisition(save_path, config_path):
 
     print('Starting acquisition loop at', time.ctime())
-    config = load_experiment_config(config_path)
+    config, raw_config_text = load_experiment_config(config_path)
     num_duplicate_shots = int(config.get('nshots', 'num_duplicate_shots', fallback=1))
     num_run_repeats = int(config.get('nshots', 'num_run_repeats', fallback=1))
 
@@ -577,7 +604,7 @@ def run_acquisition(save_path, config_path):
         pos_manager = None
 
     # Initialize multi-scope acquisition
-    with MultiScopeAcquisition(save_path, config) as msa:
+    with MultiScopeAcquisition(save_path, config, raw_config_text) as msa:
         try:
             # Initialize HDF5 file structure
             print("Initializing HDF5 file...", end='')
