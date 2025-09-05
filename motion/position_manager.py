@@ -12,6 +12,7 @@ import numpy as np
 import h5py
 import os
 import sys
+import json
 from .Motor_Control import Motor_Control_2D, Motor_Control_3D
 from .Motor_Control_1D import Motor_Control
 import configparser
@@ -47,7 +48,6 @@ def load_position_config(config_path):
                 pos_config[key] = None
             elif value.startswith('{') and value.endswith('}'):
                 # Handle JSON-like dictionaries (e.g., xstart = {"P16": -38, "P22": -18})
-                import json
                 pos_config[key] = json.loads(value)
             elif '.' in value:
                 pos_config[key] = float(value)
@@ -80,6 +80,18 @@ def get_positions_xy(config):
             - xpos: Array of x positions
             - ypos: Array of y positions
     """
+    # Check required position keys are in config
+    required_keys = ['nx', 'ny', 'xmin', 'xmax', 'ymin', 'ymax']
+    missing_keys = [key for key in required_keys if key not in config]
+    if missing_keys:
+        sys.exit(f'Error: Missing required position keys in config: {missing_keys}')
+        
+    # Check shot parameters are in config
+    if 'num_duplicate_shots' not in config or 'num_run_repeats' not in config:
+        print("Warning: Shot parameters not found in config. Using defaults of 1.")
+        config['num_duplicate_shots'] = 1
+        config['num_run_repeats'] = 1
+        
     nx = config['nx']
     ny = config['ny']
     xmin = config['xmin']
@@ -121,6 +133,18 @@ def get_positions_xyz(config):
             - ypos: Array of y positions
             - zpos: Array of z positions
     """
+    # Check required position keys are in config
+    required_keys = ['nx', 'ny', 'nz', 'xmin', 'xmax', 'ymin', 'ymax', 'zmin', 'zmax']
+    missing_keys = [key for key in required_keys if key not in config]
+    if missing_keys:
+        sys.exit(f'Error: Missing required position keys in config: {missing_keys}')
+        
+    # Check shot parameters are in config
+    if 'num_duplicate_shots' not in config or 'num_run_repeats' not in config:
+        print("Warning: Shot parameters not found in config. Using defaults of 1.")
+        config['num_duplicate_shots'] = 1
+        config['num_run_repeats'] = 1
+    
     nx = config['nx']
     ny = config['ny']
     nz = config['nz']
@@ -263,14 +287,18 @@ def motor_boundary_2D(x, y, z, config):
 class PositionManager:
     """Handles position arrays, HDF5 position data, and position-related metadata"""
     
-    def __init__(self, save_path, config_path):
+    def __init__(self, save_path, config_path, num_duplicate_shots=1, num_run_repeats=1):
         """
         Args:
             save_path: Path to HDF5 file
             config_path: Path to experiment_config.txt file
+            num_duplicate_shots: Number of shots per position
+            num_run_repeats: Number of times to repeat the entire run
         """
         self.save_path = save_path
         self.config_path = config_path
+        self.num_duplicate_shots = num_duplicate_shots
+        self.num_run_repeats = num_run_repeats
         
         # Load position config and automatically determine is_45deg
         self.pos_config, self.is_45deg = load_position_config(config_path)
@@ -279,19 +307,20 @@ class PositionManager:
         import configparser
         full_config = configparser.ConfigParser()
         full_config.read(config_path)
-        self.config = dict(full_config.items()) if full_config.sections() else {}
         
-        # Extract position and shot parameters
+        # Store the actual position config in self.config, not the flattened dict of sections
+        self.config = self.pos_config
+        
+        # Add shot parameters to pos_config for use in position generation functions
+        if self.pos_config:
+            self.pos_config['num_duplicate_shots'] = self.num_duplicate_shots
+            self.pos_config['num_run_repeats'] = self.num_run_repeats
+        
+        # Extract position parameters
         if self.pos_config:
             self.nz = self.pos_config.get('nz', None)
         else:
             self.nz = None
-            
-        # Get num_duplicate_shots from config
-        if 'nshots' in full_config:
-            self.num_duplicate_shots = full_config.getint('nshots', 'num_duplicate_shots', fallback=1)
-        else:
-            self.num_duplicate_shots = 1
             
         # Get positions (or create stationary shots)
         self.positions, self.xpos, self.ypos, self.zpos = self.get_positions()
@@ -305,9 +334,9 @@ class PositionManager:
             xstart = self.config.get('xstart', {})
             xstop = self.config.get('xstop', {})
             nx = self.config.get('nx', 0)
-            nshots = self.config.get('num_duplicate_shots', 1)
             
-            return create_all_positions_45deg(pr_ls, xstart, xstop, nx, nshots)
+            # Use the num_duplicate_shots passed from multi_scope_acquisition
+            return create_all_positions_45deg(pr_ls, xstart, xstop, nx, self.num_duplicate_shots)
         else:
             if self.nz is None:
                 return get_positions_xy(self.config)

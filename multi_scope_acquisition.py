@@ -599,7 +599,12 @@ def run_acquisition(save_path, config_path):
     has_position_config = 'position' in config and config.items('position')
     
     if has_position_config:
-        pos_manager = PositionManager(save_path, config_path)
+        pos_manager = PositionManager(
+            save_path, 
+            config_path,
+            num_duplicate_shots=num_duplicate_shots,
+            num_run_repeats=num_run_repeats
+        )
     else:
         pos_manager = None
 
@@ -633,9 +638,10 @@ def run_acquisition(save_path, config_path):
 
             # Calculate total shots
             if pos_manager is not None:
-                total_shots = len(positions) * num_duplicate_shots * num_run_repeats
+                # Use length of positions array which already includes num_duplicate_shots and num_run_repeats
+                total_shots = len(positions)
             else:
-                # Stationary acquisition - just num_duplicate_shots
+                # Stationary acquisition - just num_duplicate_shots * num_run_repeats
                 total_shots = num_duplicate_shots * num_run_repeats
             
             print(f"Total shots to acquire: {total_shots}")

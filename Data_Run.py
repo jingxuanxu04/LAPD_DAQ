@@ -68,8 +68,6 @@ def main():
     
     except KeyboardInterrupt:
         print('\n______Halted due to Ctrl-C______', '  at', time.ctime())
-    except Exception as e:
-        print(f'\n______Halted due to error: {str(e)}______', '  at', time.ctime())
     finally:
         print('Data run finished at', datetime.datetime.now())
         print('Time taken: %.2f hours' % ((time.time()-t_start)/3600))
