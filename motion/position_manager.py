@@ -13,6 +13,11 @@ import h5py
 import os
 import sys
 import json
+import socket
+import sys
+import time
+import numpy as np
+import h5py
 from .Motor_Control import Motor_Control_2D, Motor_Control_3D
 from .Motor_Control_1D import Motor_Control
 import configparser
@@ -303,26 +308,12 @@ class PositionManager:
         # Load position config and automatically determine is_45deg
         self.pos_config, self.is_45deg = load_position_config(config_path)
         
-        # Load full config for other parameters
+        # Load full config to extract motor IPs
         import configparser
-        full_config = configparser.ConfigParser()
-        full_config.read(config_path)
+        self.full_config = configparser.ConfigParser()
+        self.full_config.read(config_path)
         
-        # Create a combined configuration dict with position config and motor_ips
-        self.config = {}
-        if self.pos_config:
-            self.config.update(self.pos_config)
-            
-            # Add shot parameters to config for use in position generation functions
-            self.config['num_duplicate_shots'] = self.num_duplicate_shots
-            self.config['num_run_repeats'] = self.num_run_repeats
-        
-        # Add motor_ips to config if it exists
-        if 'motor_ips' in full_config:
-            motor_ips = dict(full_config.items('motor_ips'))
-            self.config['motor_ips'] = motor_ips
-        
-        # Extract position parameters
+        # Extract only the necessary position parameters we need throughout the class
         if self.pos_config:
             # Handle 'nz' parameter - check if it's None or not in config
             nz_value = self.pos_config.get('nz', None)
@@ -347,21 +338,30 @@ class PositionManager:
         
     def get_positions(self):
         """Get position arrays based on acquisition type"""
-        if self.is_45deg:
+        # Create a dictionary with just the parameters needed for position generation
+        pos_params = {}
+        if self.pos_config:
+            # Copy the position parameters
+            pos_params.update(self.pos_config)
             
+            # Add shot parameters
+            pos_params['num_duplicate_shots'] = self.num_duplicate_shots
+            pos_params['num_run_repeats'] = self.num_run_repeats
+            
+        if self.is_45deg:
             # Get 45deg specific parameters from config
-            pr_ls = self.config.get('probe_list', ['P16', 'P22', 'P29', 'P34', 'P42'])
-            xstart = self.config.get('xstart', {})
-            xstop = self.config.get('xstop', {})
-            nx = self.config.get('nx', 0)
+            pr_ls = self.pos_config.get('probe_list', ['P16', 'P22', 'P29', 'P34', 'P42'])
+            xstart = self.pos_config.get('xstart', {})
+            xstop = self.pos_config.get('xstop', {})
+            nx = self.pos_config.get('nx', 0)
             
             # Use the num_duplicate_shots passed from multi_scope_acquisition
             return create_all_positions_45deg(pr_ls, xstart, xstop, nx, self.num_duplicate_shots)
         else:
             if self.nz is None:
-                return get_positions_xy(self.config)
+                return get_positions_xy(pos_params)
             else:
-                return get_positions_xyz(self.config)
+                return get_positions_xyz(pos_params)
     
     def initialize_position_hdf5(self):
         """Initialize HDF5 position structure and return positions"""
@@ -444,74 +444,101 @@ class PositionManager:
     # ============================================================================
     def initialize_motor(self):
         """Initialize motor control based on config dict."""
-        # Use the already processed self.nz value instead of fetching again
+        # Use the already processed self.nz value
         nz = self.nz
         
-        # Check if motor_ips is in the config
-        motor_ips = self.config.get('motor_ips', None)
-        
-        if motor_ips is None:
-            print("\nError: No motor_ips found in the configuration")
+        # Get motor IPs directly from the full config
+        if 'motor_ips' not in self.full_config:
+            print("\nError: No [motor_ips] section found in the configuration file")
+            print("  - Please add a [motor_ips] section to your configuration")
+            return None
+            
+        # Parse and clean motor IPs
+        motor_ips = {}
+        for key, value in self.full_config.items('motor_ips'):
+            # Skip empty values or comments
+            if not value or value.strip() == '' or value.strip().startswith('#'):
+                continue
+            motor_ips[key] = value.strip()  # Remove leading/trailing whitespace
+            
+        if not motor_ips:
+            print("\nError: No motor IPs found in the configuration")
+            print("  - Please uncomment or add motor IP addresses in the [motor_ips] section")
             return None
         
-        print("Initializing motor...", end='')
+        print("Initializing motor...")
 
         try:
             if nz is None:
                 print("XY drive in use")
                 # Ensure we have the required IPs for x and y motors
                 if 'x' not in motor_ips or 'y' not in motor_ips:
-                    print(f"Error: Missing required motor IPs for XY drive. Got: {motor_ips}")
+                    print(f"Error: Missing required motor IPs for XY drive")
                     return None
-                mc = Motor_Control_2D(motor_ips['x'], motor_ips['y'])
-                print(f"  - Connected to X motor at {motor_ips['x']}")
-                print(f"  - Connected to Y motor at {motor_ips['y']}")
+                
+                x_ip = motor_ips['x']
+                y_ip = motor_ips['y']
+                
+                # Create motor controller
+                mc = Motor_Control_2D(x_ip, y_ip)
+                print(f"  - Connected to X motor at {x_ip}")
+                print(f"  - Connected to Y motor at {y_ip}")
 
                 # mc.boundary_checker.add_motor_boundary(lambda x, y, z: motor_boundary_2D(x, y, z, self.config))
             else:
                 print("XYZ drive in use")
                 # Ensure we have the required IPs for x, y, and z motors
                 if 'x' not in motor_ips or 'y' not in motor_ips or 'z' not in motor_ips:
-                    print(f"Error: Missing required motor IPs for XYZ drive. Got: {motor_ips}")
+                    print(f"Error: Missing required motor IPs for XYZ drive")
                     return None
-                mc = Motor_Control_3D(motor_ips['x'], motor_ips['y'], motor_ips['z'])
-                print(f"  - Connected to X motor at {motor_ips['x']}")
-                print(f"  - Connected to Y motor at {motor_ips['y']}")
-                print(f"  - Connected to Z motor at {motor_ips['z']}")
+                
+                x_ip = motor_ips['x']
+                y_ip = motor_ips['y']
+                z_ip = motor_ips['z']
+                
+                # Create motor controller
+                mc = Motor_Control_3D(x_ip, y_ip, z_ip)
+                print(f"  - Connected to X motor at {x_ip}")
+                print(f"  - Connected to Y motor at {y_ip}")
+                print(f"  - Connected to Z motor at {z_ip}")
 
                 # mc.boundary_checker.add_probe_boundary(lambda x, y, z: outer_boundary(x, y, z, config), is_outer_boundary=True)
                 # mc.boundary_checker.add_probe_boundary(lambda x, y, z: obstacle_boundary(x, y, z, config))
                 # mc.boundary_checker.add_motor_boundary(lambda x, y, z: motor_boundary(x, y, z, config))
         except KeyboardInterrupt:
             raise KeyboardInterrupt
-        except Exception as e:
-            print(f"Error initializing motor: {str(e)}")
+        except ConnectionRefusedError as e:
+            print(f"Connection refused to motor controller: {str(e)}")
+            print("  - Please check that the motor controllers are powered on")
+            print("  - Verify the IP addresses are correct and can be reached")
+            print("  - Check network connectivity to the motor controller devices")
             return None
-
-        # Test if motor controller initialized correctly
-        if mc is not None:
-            print(f"✓ Motor controller initialized successfully: {type(mc).__name__}")
-            # Test connection to make sure it's working
-            try:
-                # Just try to enable and disable to verify connection
-                mc.enable()
-                mc.disable()
-                print("✓ Connection to motor controller verified")
-            except Exception as e:
-                print(f"× Warning: Motor controller initialized but connection test failed: {str(e)}")
-        else:
-            print("× Failed to initialize motor controller")
+        except socket.error as e:
+            print(f"Socket error connecting to motor controller: {str(e)}")
+            print("  - Please check network configuration")
+            print("  - Verify the IP addresses are correct and can be reached")
+            return None
 
         return mc
 
     def initialize_motor_45deg(self):
         """Initialize motor control for 45deg probes based on config dict."""
-        motor_ips = self.config.get('motor_ips', None)
-        if motor_ips is None:
+        # Get motor IPs directly from the full config
+        if 'motor_ips' not in self.full_config:
+            print("\nError: No [motor_ips] section found in the configuration file")
             return None
-        else:
-            print("Initializing motors...")
-            motors = {}
+            
+        # Parse and clean motor IPs
+        motor_ips = {}
+        for key, value in self.full_config.items('motor_ips'):
+            motor_ips[key] = value.strip()  # Remove leading/trailing whitespace
+            
+        if not motor_ips:
+            print("\nError: No motor IPs found in the configuration")
+            return None
+        
+        print("Initializing motors...")
+        motors = {}
 
         
         for probe in ['P16', 'P22', 'P29', 'P34', 'P42']: # Try to connect to each probe's motor
