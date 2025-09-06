@@ -656,7 +656,8 @@ def run_acquisition(save_path, config_path):
                 if pos_manager is not None:
                     movement_success = handle_movement(pos_manager, mc, shot_num, positions[n], save_path, msa.scope_ips)
                     if not movement_success:
-                        continue  # Skip this shot if movement failed
+                        print(f"Skipping shot {shot_num} due to movement failure.")
+                        continue
                 else:
                     print(f'Shot = {shot_num}') # Stationary acquisition
 
