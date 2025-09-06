@@ -433,11 +433,13 @@ class PositionManager:
             else:
                 # For regular XY/XYZ acquisition
                 pos_arr = f['/Control/Positions/positions_array']
-                if all(p is not None for p in positions.values()):
-                    if self.nz is None:
-                        pos_arr[shot_num-1] = (shot_num, positions['x'], positions['y'])
-                    else:
-                        pos_arr[shot_num-1] = (shot_num, positions['x'], positions['y'], positions['z'])
+                
+                if self.nz is None:
+                    # 2D case - need x and y
+                    pos_arr[shot_num-1] = (shot_num, positions['x'], positions['y'])
+                else:
+                    # 3D case - need x, y, and z
+                    pos_arr[shot_num-1] = (shot_num, positions['x'], positions['y'], positions['z'])
 
     # ============================================================================
         # MOTOR CONTROL FUNCTIONS

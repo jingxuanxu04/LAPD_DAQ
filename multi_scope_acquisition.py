@@ -665,11 +665,15 @@ def run_acquisition(save_path, config_path):
 
                 if pos_manager is not None and mc is not None: # Update position data in HDF5
                     if pos_manager.nz is None:
+                        # For 2D movement, get current probe position
                         xpos, ypos = mc.probe_positions
-                        zpos = None
+                        current_positions = {'x': xpos, 'y': ypos, 'z': None}
                     else:
+                        # For 3D movement, get current probe position
                         xpos, ypos, zpos = mc.probe_positions
-                    current_positions = {'x': xpos, 'y': ypos, 'z': zpos}
+                        current_positions = {'x': xpos, 'y': ypos, 'z': zpos}
+                    
+                    # Update the positions in HDF5 file
                     pos_manager.update_position_hdf5(shot_num, current_positions)
 
                 # Calculate and display remaining time
