@@ -44,7 +44,7 @@ def load_position_config(config_path):
             if ',' in value and not value.startswith('{'):
                 # Handle comma-separated tuples (e.g., x_limits = -40,200)
                 pos_config[key] = tuple(float(x) if '.' in x else int(x) for x in value.split(','))
-            elif value.lower() == 'none':
+            elif value.lower() == 'none' or value == 'None':
                 pos_config[key] = None
             elif value.startswith('{') and value.endswith('}'):
                 # Handle JSON-like dictionaries (e.g., xstart = {"P16": -38, "P22": -18})
@@ -308,22 +308,42 @@ class PositionManager:
         full_config = configparser.ConfigParser()
         full_config.read(config_path)
         
-        # Store the actual position config in self.config, not the flattened dict of sections
-        self.config = self.pos_config
-        
-        # Add shot parameters to pos_config for use in position generation functions
+        # Create a combined configuration dict with position config and motor_ips
+        self.config = {}
         if self.pos_config:
-            self.pos_config['num_duplicate_shots'] = self.num_duplicate_shots
-            self.pos_config['num_run_repeats'] = self.num_run_repeats
+            self.config.update(self.pos_config)
+            
+            # Add shot parameters to config for use in position generation functions
+            self.config['num_duplicate_shots'] = self.num_duplicate_shots
+            self.config['num_run_repeats'] = self.num_run_repeats
+        
+        # Add motor_ips to config if it exists
+        if 'motor_ips' in full_config:
+            motor_ips = dict(full_config.items('motor_ips'))
+            self.config['motor_ips'] = motor_ips
         
         # Extract position parameters
         if self.pos_config:
-            self.nz = self.pos_config.get('nz', None)
+            # Handle 'nz' parameter - check if it's None or not in config
+            nz_value = self.pos_config.get('nz', None)
+            # Ensure None or string 'None' is converted to Python None
+            self.nz = None if (nz_value is None or nz_value == 'None') else nz_value
         else:
             self.nz = None
             
         # Get positions (or create stationary shots)
-        self.positions, self.xpos, self.ypos, self.zpos = self.get_positions()
+        positions_result = self.get_positions()
+        if self.is_45deg:
+            self.positions, self.xpos = positions_result
+            self.ypos = None
+            self.zpos = None
+        elif self.nz is None:
+            # For 2D movement, get_positions_xy returns (positions, xpos, ypos)
+            self.positions, self.xpos, self.ypos = positions_result
+            self.zpos = None
+        else:
+            # For 3D movement, get_positions_xyz returns (positions, xpos, ypos, zpos)
+            self.positions, self.xpos, self.ypos, self.zpos = positions_result
         
     def get_positions(self):
         """Get position arrays based on acquisition type"""
@@ -424,10 +444,14 @@ class PositionManager:
     # ============================================================================
     def initialize_motor(self):
         """Initialize motor control based on config dict."""
-        nz = self.config.get('nz', None)
+        # Use the already processed self.nz value instead of fetching again
+        nz = self.nz
+        
+        # Check if motor_ips is in the config
         motor_ips = self.config.get('motor_ips', None)
-
+        
         if motor_ips is None:
+            print("\nError: No motor_ips found in the configuration")
             return None
         
         print("Initializing motor...", end='')
@@ -435,12 +459,25 @@ class PositionManager:
         try:
             if nz is None:
                 print("XY drive in use")
+                # Ensure we have the required IPs for x and y motors
+                if 'x' not in motor_ips or 'y' not in motor_ips:
+                    print(f"Error: Missing required motor IPs for XY drive. Got: {motor_ips}")
+                    return None
                 mc = Motor_Control_2D(motor_ips['x'], motor_ips['y'])
+                print(f"  - Connected to X motor at {motor_ips['x']}")
+                print(f"  - Connected to Y motor at {motor_ips['y']}")
 
                 # mc.boundary_checker.add_motor_boundary(lambda x, y, z: motor_boundary_2D(x, y, z, self.config))
             else:
                 print("XYZ drive in use")
+                # Ensure we have the required IPs for x, y, and z motors
+                if 'x' not in motor_ips or 'y' not in motor_ips or 'z' not in motor_ips:
+                    print(f"Error: Missing required motor IPs for XYZ drive. Got: {motor_ips}")
+                    return None
                 mc = Motor_Control_3D(motor_ips['x'], motor_ips['y'], motor_ips['z'])
+                print(f"  - Connected to X motor at {motor_ips['x']}")
+                print(f"  - Connected to Y motor at {motor_ips['y']}")
+                print(f"  - Connected to Z motor at {motor_ips['z']}")
 
                 # mc.boundary_checker.add_probe_boundary(lambda x, y, z: outer_boundary(x, y, z, config), is_outer_boundary=True)
                 # mc.boundary_checker.add_probe_boundary(lambda x, y, z: obstacle_boundary(x, y, z, config))
@@ -450,6 +487,20 @@ class PositionManager:
         except Exception as e:
             print(f"Error initializing motor: {str(e)}")
             return None
+
+        # Test if motor controller initialized correctly
+        if mc is not None:
+            print(f"✓ Motor controller initialized successfully: {type(mc).__name__}")
+            # Test connection to make sure it's working
+            try:
+                # Just try to enable and disable to verify connection
+                mc.enable()
+                mc.disable()
+                print("✓ Connection to motor controller verified")
+            except Exception as e:
+                print(f"× Warning: Motor controller initialized but connection test failed: {str(e)}")
+        else:
+            print("× Failed to initialize motor controller")
 
         return mc
 

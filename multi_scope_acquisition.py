@@ -625,10 +625,17 @@ def run_acquisition(save_path, config_path):
                     return
                 else:
                     mc = pos_manager.initialize_motor()
+                    if mc is None:
+                        print("\n× Warning: Failed to initialize motor controller")
+                        print("  - Check [motor_ips] section in your config file")
+                        print("  - Continuing with stationary acquisition (motors disabled)")
+                    else:
+                        print("\n✓ Motor controller initialized and ready for movement")
             else:
                 # Stationary acquisition - no positions or motors
                 positions = None
                 mc = None
+                print("\nStationary acquisition - No position configuration found")
 
             # First shot: Initialize scopes and save time arrays
             print("\nStarting initial acquisition...")
