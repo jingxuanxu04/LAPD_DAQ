@@ -1,0 +1,18 @@
+[experiment]
+description = Rigol DHO diamagnetic measurement
+
+[nshots] 
+num_duplicate_shots = 1
+num_run_repeats = 1
+
+[scopes]
+rigol_scope = Test Rigol DHO scope - Diamagnetic measurement
+
+[channels]
+rigol_scope_C1 = Channel C1 - measurement
+rigol_scope_C2 = Channel C2 - measurement
+rigol_scope_C3 = Channel C3 - measurement
+rigol_scope_C4 = Channel C4 - Trigger signal
+
+[scope_ips]
+rigol_scope = 128.97.13.178
